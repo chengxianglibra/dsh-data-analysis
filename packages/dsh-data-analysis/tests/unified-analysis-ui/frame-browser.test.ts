@@ -139,9 +139,24 @@ test('the Python icon shows the bound source only when its sha256 matches', asyn
   assert.equal(await dialog.locator('pre code').count(), 0)
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   assert.equal(
-    await page.locator('[data-resource="bad"] [data-icon="python"]').getAttribute('data-disabled'),
+    await page
+      .locator('[data-resource="bad"] [data-icon="python"]')
+      .getAttribute('data-unavailable'),
     'true',
   )
+  const mismatchIcon = page.locator('[data-resource="bad"] [data-icon="python"] button')
+  assert.equal(await mismatchIcon.getAttribute('aria-disabled'), null)
+  await mismatchIcon.click()
+  await page.getByRole('dialog').locator('[data-unavailable-details]').waitFor()
+  assert.equal(await page.getByRole('dialog').locator('pre code').count(), 0)
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
+  const missingIcon = page.locator('[data-resource="long"] [data-icon="python"] button')
+  await missingIcon.click()
+  const missing = page.getByRole('dialog').locator('[data-unavailable-details]')
+  await missing.waitFor()
+  assert.equal(await missing.locator('svg').count(), 1)
+  assert.equal(await missing.locator('p').count(), 2)
+  await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click()
 })
 
 test('record tables keep every key column in view while scrolling', async () => {
@@ -249,6 +264,51 @@ test('Taxi heatmap supports point selection without aggregating', async () => {
     '1',
   )
   assert.equal(await sparseCard.locator('[data-mark="empty"]').count(), 0)
+})
+
+test('heatmap keeps the hovered row and column while dimming unrelated saved cells', async () => {
+  const card = page.locator('[data-resource="heatmap"]')
+  const mark = (row: number) => card.locator(`[data-frame-point="${row}:m0"] [data-mark="cell"]`)
+  await mark(0).locator('rect').hover()
+  await card
+    .locator('[data-frame-point="10:m0"] [data-mark="cell"][opacity="0.3"]')
+    .waitFor({ state: 'attached' })
+  assert.equal(await mark(0).getAttribute('opacity'), '1')
+  assert.equal(await mark(1).getAttribute('opacity'), '1')
+  assert.equal(await mark(9).getAttribute('opacity'), '1')
+  assert.equal(await mark(10).getAttribute('opacity'), '0.3')
+  assert.equal(
+    await card.locator('[data-heatmap-scale] span[aria-hidden="true"] > span').count(),
+    5,
+  )
+})
+
+test('heatmap cells match their legend in light and dark cards', async () => {
+  const card = page.locator('[data-resource="taxiHeatmap"]')
+  for (const background of ['oklch(1 0 0)', 'oklch(0.145 0 0)']) {
+    const colors = await card.evaluate((element, cardColor) => {
+      const card = element as HTMLElement
+      card.style.setProperty('--chart-1', 'oklch(0.623 0.214 255)')
+      card.style.setProperty('--card', cardColor)
+      const swatches = [
+        ...card.querySelectorAll<HTMLElement>(
+          '[data-heatmap-scale] span[aria-hidden="true"] > span',
+        ),
+      ]
+      return [...card.querySelectorAll<SVGRectElement>('[data-heat-level]')].map((cell) => ({
+        level: Number(cell.dataset.heatLevel),
+        cell: getComputedStyle(cell).fill,
+        legend: getComputedStyle(swatches[Number(cell.dataset.heatLevel)]!).backgroundColor,
+      }))
+    }, background)
+    assert.ok(colors.some((item) => item.level === 0))
+    assert.ok(colors.some((item) => item.level === 4))
+    for (const item of colors) assert.equal(item.cell, item.legend)
+  }
+  await card.evaluate((element) => {
+    ;(element as HTMLElement).style.removeProperty('--chart-1')
+    ;(element as HTMLElement).style.removeProperty('--card')
+  })
 })
 
 test('long series scroll with the keyboard', async () => {

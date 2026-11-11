@@ -1,3 +1,4 @@
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { formatCell } from '../../presentation/contracts/index.ts'
 import type { Cell, DatasetColumn, TypedDataset } from '../../presentation/contracts/types.ts'
@@ -13,14 +14,43 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/primitives/table.tsx'
-import {
-  cellText,
-  columnIndex,
-  columnLabel,
-  datasetScope,
-  sortedRowIndices,
-  TABLE_PAGE_SIZE,
-} from './model.ts'
+import { cellText, columnIndex, datasetScope, sortedRowIndices, TABLE_PAGE_SIZE } from './model.ts'
+
+const COLUMN_TYPE_LABELS: Record<DatasetColumn['type'], string> = {
+  string: 'str',
+  boolean: 'bool',
+  int64: 'i64',
+  float64: 'f64',
+  decimal: 'decimal',
+  date: 'date',
+  datetime: 'datetime',
+}
+
+/** Saved type, unit and optional Frame aggregation fact for a table header. */
+export function ColumnHeading({
+  column,
+  aggregation,
+}: {
+  column: DatasetColumn
+  aggregation?: string
+}) {
+  const unit = column.unit?.trim()
+  const label = column.label.trimEnd()
+  const unitInLabel = unit && (label.endsWith(`(${unit})`) || label.endsWith(`（${unit}）`))
+  const metadata = [
+    COLUMN_TYPE_LABELS[column.type],
+    aggregation,
+    unit && unit !== '1' && !unitInLabel ? unit : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  return (
+    <>
+      <span className="pr-column-label">{column.label}</span>
+      <span className="pr-column-meta">{metadata}</span>
+    </>
+  )
+}
 
 interface TableSort {
   columnId: string
@@ -42,6 +72,7 @@ export function DatasetTable({
   hideExactTitle = false,
   visibleRowIndices,
   filterSelectionKey,
+  aggregationForColumn,
 }: {
   data: TypedDataset
   columns?: string[]
@@ -63,6 +94,7 @@ export function DatasetTable({
   /** Original saved row indices to display; undefined keeps the entire snapshot. */
   visibleRowIndices?: readonly number[]
   filterSelectionKey?: string
+  aggregationForColumn?: (column: DatasetColumn) => string
 }) {
   const t = useCopy()
 
@@ -162,7 +194,7 @@ export function DatasetTable({
                         setPage(0)
                       }}
                     >
-                      <span className="pr-column-label">{columnLabel(column)}</span>
+                      <ColumnHeading column={column} aggregation={aggregationForColumn?.(column)} />
                       <span className="pr-sort-indicator" aria-hidden="true">
                         {sort?.columnId === column.id
                           ? sort.direction === 'ascending'
@@ -238,31 +270,26 @@ export function DatasetTable({
             variant="outline"
             size="sm"
             type="button"
+            aria-label={t('marivo.presentation.previous-page')}
             disabled={activePage === 0}
             onClick={() => setPage(activePage - 1)}
           >
-            {t('marivo.presentation.previous-page')}
+            <ChevronLeftIcon aria-hidden="true" />
           </Button>
           <span aria-live="polite">
-            {t(
-              hideRowCount
-                ? 'marivo.presentation.page-only-summary'
-                : 'marivo.presentation.page-summary',
-              {
-                p0: activePage + 1,
-                p1: pages,
-                p2: TABLE_PAGE_SIZE,
-              },
-            )}
+            {hideRowCount
+              ? t('marivo.presentation.page-only-summary', { p0: activePage + 1, p1: pages })
+              : `${(activePage * TABLE_PAGE_SIZE + 1).toLocaleString(t.locale)}–${Math.min((activePage + 1) * TABLE_PAGE_SIZE, sorted.length).toLocaleString(t.locale)} / ${sorted.length.toLocaleString(t.locale)}`}
           </span>
           <Button
             variant="outline"
             size="sm"
             type="button"
+            aria-label={t('marivo.presentation.next-page')}
             disabled={activePage === pages - 1}
             onClick={() => setPage(activePage + 1)}
           >
-            {t('marivo.presentation.next-page')}
+            <ChevronRightIcon aria-hidden="true" />
           </Button>
         </div>
       )}

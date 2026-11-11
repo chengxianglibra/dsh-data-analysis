@@ -402,11 +402,6 @@ function AttributionRows({ t, s, facts, rows, labelOf }: PartProps) {
           {t('marivo.presentation.ui-frame-scroll-hint')}
         </p>
       )}
-      {facts.share && (
-        <p className="fv-decomposition-note">
-          {t('marivo.presentation.ui-frame-attribution-share-note')}
-        </p>
-      )}
     </section>
   )
 }
@@ -461,7 +456,15 @@ function Waterfall({
   const series: SavedBarSeries[] = [
     {
       key: 'contribution',
-      fillAt: (index) => (index === totalIndex ? NEUTRAL : color(0)),
+      fillAt: (index) => {
+        if (index === totalIndex) return color(0)
+        const value = rows[index] === undefined ? null : valueAt(s, rows[index]!, name)
+        return value === null || value === 0
+          ? 'var(--foreground)'
+          : value > 0
+            ? 'var(--mv-up)'
+            : 'var(--mv-down)'
+      },
       label: valueName(s, undefined, name),
       values: ranges.map((range) => range?.[1] ?? null),
       ranges,

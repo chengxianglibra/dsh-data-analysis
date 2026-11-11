@@ -60,12 +60,14 @@ export function ChartFrame({
   height,
   width = 640,
   legend,
+  axisTitle,
   children,
 }: {
   label: string
   height: number
   width?: number
   legend?: ReactNode
+  axisTitle?: string
   children: ReactElement
 }) {
   const t = useCopy()
@@ -122,6 +124,11 @@ export function ChartFrame({
   }
   return (
     <figure className="fv-chart space-y-3">
+      {axisTitle && (
+        <div className="text-xs text-muted-foreground" data-axis-title="">
+          {axisTitle}
+        </div>
+      )}
       <section
         ref={regionRef}
         className={
@@ -194,10 +201,21 @@ export function ChartFrame({
   )
 }
 /** Tooltip text is supplied by adapters from original cells, never from Recharts numeric payloads. */
-export function ExactTooltip({ textAt }: { textAt: (index: number) => string }) {
+export function ExactTooltip({
+  textAt,
+  detailsAt,
+  cursorTicks,
+}: {
+  textAt: (index: number) => string
+  cursorTicks?: Tick[]
+  detailsAt?: (index: number) => {
+    label: string
+    rows: { label: string; value: string; color: string }[]
+  }
+}) {
   return (
     <ChartTooltip
-      cursor={false}
+      cursor={cursorTicks ? <TimeCursor ticks={cursorTicks} /> : false}
       isAnimationActive={false}
       content={({ active, payload }) => {
         if (!active || !payload?.length) return null
@@ -209,13 +227,77 @@ export function ExactTooltip({ textAt }: { textAt: (index: number) => string }) 
           typeof source.index !== 'number'
         )
           return null
+        const details = detailsAt?.(source.index)
         return (
           <div className="rounded-lg border bg-background px-3 py-2 text-xs shadow-xl whitespace-pre-wrap">
-            {textAt(source.index)}
+            {details ? (
+              <>
+                <div className="font-medium">{details.label}</div>
+                {details.rows.map((row, index) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: Saved series can share labels and colors; these stateless rows follow series order.
+                  <div className="flex items-center gap-2" key={`${index}:${row.label}`}>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        background: row.color,
+                        width: 8,
+                        height: 8,
+                        borderRadius: 2,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span>{row.label}</span>
+                    <span className="ml-auto tabular-nums">{row.value}</span>
+                  </div>
+                ))}
+              </>
+            ) : (
+              textAt(source.index)
+            )}
           </div>
         )
       }}
     />
+  )
+}
+/** Recharts supplies the active time coordinate; the capsule uses the saved tick label. */
+function TimeCursor({
+  ticks,
+  points,
+  payloadIndex,
+}: {
+  ticks: Tick[]
+  points?: { x: number; y: number }[]
+  payloadIndex?: string | number
+}) {
+  const id = `time-cursor-${useId().replace(/:/g, '')}`
+  const start = points?.[0]
+  const end = points?.[1]
+  const index = Number(payloadIndex)
+  const tick = Number.isInteger(index) ? ticks[index] : undefined
+  if (!start || !end || !tick) return null
+  const width = Math.min(160, Math.max(30, tick.label.length * 7 + 12))
+  return (
+    <g pointerEvents="none" data-time-cursor="">
+      <defs>
+        <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="var(--foreground)" stopOpacity={0.4} />
+          <stop offset="100%" stopColor="var(--foreground)" stopOpacity={0.05} />
+        </linearGradient>
+      </defs>
+      <line x1={start.x} x2={end.x} y1={start.y} y2={end.y} stroke={`url(#${id})`} />
+      <rect
+        x={end.x - width / 2}
+        y={end.y + 3}
+        width={width}
+        height={18}
+        rx={4}
+        fill="var(--foreground)"
+      />
+      <text x={end.x} y={end.y + 16} textAnchor="middle" fill="var(--background)" fontSize={10}>
+        {tick.label}
+      </text>
+    </g>
   )
 }
 export function PeriodTick({
@@ -234,7 +316,7 @@ export function PeriodTick({
   return (
     <g transform={`translate(${x},${y})`} data-tick={tick.label}>
       <title>{tick.title}</title>
-      <text textAnchor="middle" dy={16} fill="currentColor">
+      <text textAnchor="middle" dy={16} fill="var(--muted-foreground)" fontSize={10.5}>
         {tick.label}
         {tick.incomplete ? ' ◌' : ''}
       </text>
@@ -353,7 +435,13 @@ export function MemberTick({
   return (
     <g transform={`translate(${x},${y})`} data-row-label={label} data-row-index={index}>
       <title>{label}</title>
-      <text className="fv-row-label" textAnchor="end" dy={4} fill="currentColor">
+      <text
+        className="fv-row-label"
+        textAnchor="end"
+        dy={4}
+        fill="var(--muted-foreground)"
+        fontSize={10.5}
+      >
         {label.length > 18 ? `${label.slice(0, 17)}…` : label}
       </text>
     </g>

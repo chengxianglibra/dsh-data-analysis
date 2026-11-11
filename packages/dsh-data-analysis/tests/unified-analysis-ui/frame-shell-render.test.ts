@@ -120,10 +120,10 @@ test('icons grey out for missing sections and Python sources, never as zero item
   assert.match(html, /data-icon="coverage"/)
   assert.match(html, /3\/9/)
   assert.doesNotMatch(html, /<span>3\/9<\/span>/)
-  assert.doesNotMatch(html, /data-icon="coverage" data-disabled/)
-  assert.match(html, /data-icon="origins" data-disabled="true"/)
+  assert.doesNotMatch(html, /data-icon="coverage" data-unavailable/)
+  assert.match(html, /data-icon="origins"/)
   assert.doesNotMatch(html, /data-icon="origins"[\s\S]*?<span>0<\/span>/)
-  assert.match(html, /data-icon="python" data-disabled="true"/)
+  assert.match(html, /data-icon="python" data-unavailable="true"/)
   assert.match(html, /No script source/)
   assert.match(html, /aria-label="Python"/)
   assert.doesNotMatch(html, /data-icon="periods"/)
@@ -146,11 +146,11 @@ test('icons grey out for missing sections and Python sources, never as zero item
     codeRef: { executionId: '6f9619ff-8b86-4d01-b42d-00cf4fc964ff', sha256: 'a'.repeat(64) },
     readCode: true,
   })
-  assert.doesNotMatch(origins, /data-icon="origins" data-disabled/)
+  assert.doesNotMatch(origins, /data-icon="origins" data-unavailable/)
   assert.match(origins, /sales\.revenue/)
   // The source icon carries no count badge; the dialog lists the deduplicated objects.
   assert.doesNotMatch(origins, /<span>1<\/span>/)
-  assert.doesNotMatch(origins, /data-icon="python" data-disabled/)
+  assert.doesNotMatch(origins, /data-icon="python" data-unavailable/)
   assert.match(origins, /executionId 6f9619ff/)
   // sessionId and artifactId only live in the (closed) developer area of the Python dialog.
   assert.doesNotMatch(origins, /sessionId|artifactId|>session</)
@@ -158,8 +158,8 @@ test('icons grey out for missing sections and Python sources, never as zero item
 
 test('chart data shares the icon row and explicit visible data stays inline', async () => {
   const html = await r().render(observeTime(6))
-  assert.match(html, /Last 12 periods/)
-  assert.match(html, /month · Asia\/Shanghai/)
+  assert.match(html, /month · 6/)
+  assert.match(html, /data-icon="origins"[\s\S]*aria-haspopup="dialog"/)
   assert.match(html, /<div class="fv-icons(?: [^"]*)?"><span class="fv-icon" data-icon="data"/)
   assert.match(html, /data-icon="data"[\s\S]*aria-haspopup="dialog"/)
   // The chart data entry is an icon like the rest of the row, not a text link.

@@ -50,6 +50,10 @@ test('calendar comparison shows saved correspondences and discloses truncated pa
   comparison.hasMore = true
   comparison.totalCount = 4
   parseAnalysisSnapshot(truncated)
+  const unavailable = structuredClone(snapshot)
+  unavailable.frame.sections.periods = { status: 'unavailable', reason: 'read-failed' }
+  unavailable.frame.sections.semantics = { status: 'unavailable', reason: 'read-failed' }
+  parseAnalysisSnapshot(unavailable)
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-period-browser-'))
   const browser = await chromium.launch()
   try {
@@ -58,11 +62,11 @@ test('calendar comparison shows saved correspondences and discloses truncated pa
         contents: `import {createElement} from 'react';
 import {createRoot} from 'react-dom/client';
 import {AnalysisRenderer} from './src/client/analysis-ui/surface.tsx';
-const full = ${JSON.stringify(full)}, truncated = ${JSON.stringify(truncated)};
+const full = ${JSON.stringify(full)}, truncated = ${JSON.stringify(truncated)}, unavailable = ${JSON.stringify(unavailable)};
 const resource = snapshot => ({kind:'snapshot',declaration:{kind:'frame-snapshot',snapshotRef:'ref'},snapshot,binding:{workspaceId:'w'}});
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
- program:'root = Stack([a,b]);\\na = AnalysisFrameView("full");\\nb = AnalysisFrameView("truncated");',
- title:'Periods',locale:'en-US',resources:{full:resource(full),truncated:resource(truncated)}
+ program:'root = Stack([a,b,c]);\\na = AnalysisFrameView("full");\\nb = AnalysisFrameView("truncated");\\nc = AnalysisFrameView("unavailable");',
+ title:'Periods',locale:'en-US',resources:{full:resource(full),truncated:resource(truncated),unavailable:resource(unavailable)}
 }));`,
         resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
       },
@@ -99,6 +103,20 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     const truncatedDialog = page.getByRole('dialog')
     await truncatedDialog.getByText('Captured 3 / 4 period correspondences.').waitFor()
     assert.equal((await truncatedDialog.locator('thead').innerText()).trim(), 'Current\tBaseline')
+    await truncatedDialog.getByRole('button', { name: 'Close' }).click()
+    const unavailableCard = page.locator('[data-resource="unavailable"]')
+    for (const kind of ['periods', 'origins']) {
+      const button = unavailableCard.locator(`[data-icon="${kind}"] button`)
+      assert.equal(await button.getAttribute('aria-disabled'), null)
+      assert.equal(await button.getAttribute('aria-haspopup'), 'dialog')
+      await button.click()
+      const details = page.getByRole('dialog').locator('[data-unavailable-details]')
+      await details.waitFor()
+      assert.equal(await details.locator('svg').count(), 1)
+      assert.equal(await details.locator('p').count(), 2)
+      assert.equal(await page.getByRole('dialog').locator('table').count(), 0)
+      await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+    }
   } finally {
     await browser.close()
     await rm(directory, { recursive: true, force: true })

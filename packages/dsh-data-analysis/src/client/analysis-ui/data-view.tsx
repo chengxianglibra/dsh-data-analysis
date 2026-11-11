@@ -26,7 +26,13 @@ import { Skeleton } from '../ui/primitives/skeleton.tsx'
 import { datasetChartModel } from './charts/dataset-model.ts'
 import { Heatmap, TimeChart } from './charts/observation.tsx'
 import { ChartSelectionContext, useChartSelection } from './charts/selection-context.tsx'
-import { DataActions, MetricGroup, ResultCard, ResultHeader } from './components/result.tsx'
+import {
+  DataActions,
+  MetricGroup,
+  ResultCard,
+  ResultHeader,
+  ResultStatus,
+} from './components/result.tsx'
 import { type ComponentIdentity, useAnalysisResources } from './context.tsx'
 import { useFocusAfterAsk } from './focus-after-ask.ts'
 import { FrameIcon } from './frame/frame-icon.tsx'
@@ -594,6 +600,39 @@ function DatasetDataView({
       >
         <ResultHeader
           title={title}
+          context={t('marivo.presentation.value-rows', {
+            p0: data.rows.length.toLocaleString(t.locale),
+          })}
+          status={
+            <>
+              {!snapshot.coverage.complete && (
+                <ResultStatus
+                  label={t('marivo.presentation.ui-capture-range', {
+                    p0: snapshot.coverage.capturedRows,
+                    p1: snapshot.coverage.totalRows,
+                  })}
+                >
+                  {t('marivo.presentation.ui-capture-short', {
+                    p0: snapshot.coverage.capturedRows.toLocaleString(t.locale),
+                    p1: snapshot.coverage.totalRows.toLocaleString(t.locale),
+                  })}
+                </ResultStatus>
+              )}
+              {visibleRowIndices && (
+                <ResultStatus
+                  label={t('marivo.presentation.ui-filter-matched', {
+                    p0: visibleRowIndices.length,
+                    p1: data.rows.length,
+                  })}
+                >
+                  {t('marivo.presentation.ui-filter-short', {
+                    p0: visibleRowIndices.length.toLocaleString(t.locale),
+                    p1: data.rows.length.toLocaleString(t.locale),
+                  })}
+                </ResultStatus>
+              )}
+            </>
+          }
           actions={
             <div className="fv-header-actions">
               {!candidate && askResource && resourceName && component && (
@@ -609,22 +648,6 @@ function DatasetDataView({
         />
         <CardContent className="space-y-4 min-w-0">
           {filterSummary}
-          {!snapshot.coverage.complete && (
-            <p className="au-result-status" role="status">
-              {t('marivo.presentation.ui-capture-range', {
-                p0: snapshot.coverage.capturedRows,
-                p1: snapshot.coverage.totalRows,
-              })}
-            </p>
-          )}
-          {visibleRowIndices && (
-            <p className="au-result-status" role="status">
-              {t('marivo.presentation.ui-filter-matched', {
-                p0: visibleRowIndices.length,
-                p1: data.rows.length,
-              })}
-            </p>
-          )}
           {visibleRowIndices?.length === 0 && (
             <p role="status">{t('marivo.presentation.ui-filter-empty')}</p>
           )}

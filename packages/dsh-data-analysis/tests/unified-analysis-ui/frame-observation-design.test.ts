@@ -74,7 +74,7 @@ test('pie legend distinguishes a positive underflow share from zero', async () =
   })
   const html = await renderer.render(snapshot, { view: { chart: 'pie' } })
   const legend = html.match(/<ul class="fv-pie-legend">[\s\S]*?<\/ul>/)?.[0] ?? ''
-  assert.match(legend, /&lt;0\.01%/)
+  assert.match(legend, /&lt;0\.1%/)
   assert.match(legend, /0\.00%/)
 })
 

@@ -1,3 +1,4 @@
+import { CircleAlertIcon } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { ResolvedFrameView } from '../../../presentation/contracts/frame-view.ts'
 import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
@@ -17,10 +18,13 @@ import { useAnalysisResources } from '../context.tsx'
 import { SemanticOrigins, semanticObjects } from '../metadata-view.tsx'
 import { FrameIcon } from './frame-icon.tsx'
 import {
+  aggregationSymbol,
+  type Chip,
   comparisonPeriodGrains,
   comparisonPeriodPage,
   comparisonPeriods,
   endpointLabels,
+  fixedLabel,
   interpretationOf,
   periodDetail,
   periodLabel,
@@ -70,6 +74,7 @@ export function FrameIconButton({
   label,
   tip,
   disabled,
+  unavailable,
   kind,
   onOpen,
   expanded,
@@ -79,6 +84,7 @@ export function FrameIconButton({
   label: string
   tip: string
   disabled?: boolean
+  unavailable?: boolean
   kind: string
   onOpen?: () => void
   expanded?: boolean
@@ -86,9 +92,10 @@ export function FrameIconButton({
   children: ReactNode
 }) {
   return (
-    <span className="fv-icon" data-icon={kind} data-disabled={disabled ? 'true' : undefined}>
+    <span className="fv-icon" data-icon={kind} data-unavailable={unavailable ? 'true' : undefined}>
       <IconButton
         size="icon-xs"
+        className={unavailable ? 'text-muted-foreground' : undefined}
         label={label}
         tip={tip}
         unavailable={disabled}
@@ -99,6 +106,19 @@ export function FrameIconButton({
         {children}
       </IconButton>
     </span>
+  )
+}
+
+/** A missing source remains explainable without presenting an empty table. */
+function UnavailableDetails({ reason, action }: { reason: string; action: string }) {
+  return (
+    <div role="status" className="flex items-start gap-3 text-sm" data-unavailable-details>
+      <CircleAlertIcon size={18} aria-hidden="true" className="shrink-0 text-muted-foreground" />
+      <div>
+        <p>{reason}</p>
+        <p className="text-muted-foreground">{action}</p>
+      </div>
+    </div>
   )
 }
 
@@ -132,7 +152,7 @@ export function CoverageIcon({
             cy="8"
             r="6"
             fill="none"
-            stroke="var(--primary)"
+            stroke={s.coverage.complete ? 'var(--primary)' : 'var(--mv-quality)'}
             strokeWidth="2.5"
             strokeDasharray={`${(share * c).toFixed(2)} ${c.toFixed(2)}`}
             transform="rotate(-90 8 8)"
@@ -166,72 +186,151 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
         kind="periods"
         label={label}
         tip={state ?? `${ends.current} ⇄ ${ends.baseline}`}
-        disabled={!!state}
+        unavailable={!!state}
+        hasPopup="dialog"
+        expanded={open}
         onOpen={() => setOpen(true)}
       >
         <FrameIcon kind="calendar" />
       </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
-        {page?.hasMore && (
-          <p>{t(`${P}ui-frame-periods-captured`, { p0: items.length, p1: page.totalCount })}</p>
-        )}
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead scope="col">{ends.current}</TableHead>
-              <TableHead scope="col">{ends.baseline}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item) => (
-              <TableRow key={JSON.stringify(item.key)}>
-                <TableCell title={periodDetail(t, item.current)}>
-                  {periodLabel(item.current, grains.current)}
-                  <br />
-                  <small>{periodDetail(t, item.current)}</small>
-                </TableCell>
-                <TableCell title={periodDetail(t, item.baseline)}>
-                  {item.baseline ? (
-                    <>
-                      {periodLabel(item.baseline, grains.baseline)}
+        {state ? (
+          <UnavailableDetails reason={state} action={t(`${P}ui-frame-metadata-recapture`)} />
+        ) : (
+          <>
+            {page?.hasMore && (
+              <p>{t(`${P}ui-frame-periods-captured`, { p0: items.length, p1: page.totalCount })}</p>
+            )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">{ends.current}</TableHead>
+                  <TableHead scope="col">{ends.baseline}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((item) => (
+                  <TableRow key={JSON.stringify(item.key)}>
+                    <TableCell title={periodDetail(t, item.current)}>
+                      {periodLabel(item.current, grains.current)}
                       <br />
-                      <small>{periodDetail(t, item.baseline)}</small>
-                    </>
-                  ) : (
-                    t(
-                      `${P}ui-frame-absent-${(item.absentReason ?? 'unmatched').replaceAll('_', '-')}`,
-                    )
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                      <small>{periodDetail(t, item.current)}</small>
+                    </TableCell>
+                    <TableCell title={periodDetail(t, item.baseline)}>
+                      {item.baseline ? (
+                        <>
+                          {periodLabel(item.baseline, grains.baseline)}
+                          <br />
+                          <small>{periodDetail(t, item.baseline)}</small>
+                        </>
+                      ) : (
+                        t(
+                          `${P}ui-frame-absent-${(item.absentReason ?? 'unmatched').replaceAll('_', '-')}`,
+                        )
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </>
+        )}
       </Dialog>
     </>
   )
 }
 
-function OriginsIcon({ snapshot: s }: { snapshot: Snapshot }) {
+function OriginsIcon({
+  snapshot: s,
+  chips,
+  values,
+}: {
+  snapshot: Snapshot
+  chips: readonly Chip[]
+  values: readonly string[]
+}) {
   const t = useCopy()
   const [open, setOpen] = useState(false)
   const section = s.frame.sections.semantics
   const state = sectionState(t, section as Section)
   const paths = semanticObjects(section).map((origin) => origin.path)
   const label = t(`${P}ui-metadata-semantics`)
+  const facts = interpretationOf(s)
+  const columns = values.flatMap((name) => {
+    const column = s.data.columns.find((item) => item.id === name)
+    if (!column) return []
+    const context = facts?.valueContexts[name]
+    const symbol = aggregationSymbol(context)
+    const groups =
+      context && 'groups' in context
+        ? context.groups.map((group) =>
+            group.kind === 'fixed'
+              ? fixedLabel(group.fixed)
+              : (s.frame.axes.find((axis) => axis.token === group.axisToken)?.name ??
+                group.axisToken),
+          )
+        : []
+    return [
+      {
+        column,
+        symbol,
+        groups,
+        scope: context && 'rowScope' in context ? context.rowScope : undefined,
+      },
+    ]
+  })
   return (
     <>
       <FrameIconButton
         kind="origins"
         label={label}
         tip={state ?? (paths.slice(0, 6).join('\n') + (paths.length > 6 ? '\n…' : '') || label)}
-        disabled={!!state}
+        unavailable={!!state}
+        hasPopup="dialog"
+        expanded={open}
         onOpen={() => setOpen(true)}
       >
         <FrameIcon kind="source" />
       </FrameIconButton>
       <Dialog title={label} open={open} onClose={() => setOpen(false)}>
-        <SemanticOrigins section={section} />
+        <dl className="mb-4 grid gap-3 text-sm" data-meta="context">
+          {columns.length > 0 && (
+            <div>
+              <dt className="text-muted-foreground">{t(`${P}ui-semantic-values`)}</dt>
+              <dd>
+                {columns
+                  .map(
+                    ({ column, symbol }) =>
+                      `${symbol ? `${symbol} ` : ''}${column.label}${column.unit && column.unit !== '1' ? ` (${column.unit})` : ''}`,
+                  )
+                  .join(' · ')}
+              </dd>
+            </div>
+          )}
+          {chips.length > 0 && (
+            <div>
+              <dt className="text-muted-foreground">{t(`${P}ui-semantic-context`)}</dt>
+              <dd>{chips.map((chip) => chip.label).join(' · ')}</dd>
+            </div>
+          )}
+          {columns.some((item) => item.groups.length > 0) && (
+            <div>
+              <dt className="text-muted-foreground">{t(`${P}ui-semantic-groups`)}</dt>
+              <dd>{[...new Set(columns.flatMap((item) => item.groups))].join(' · ')}</dd>
+            </div>
+          )}
+          {columns.some((item) => item.scope === 'restricted') && (
+            <div>
+              <dt className="text-muted-foreground">{t(`${P}ui-semantic-scope`)}</dt>
+              <dd>{t(`${P}ui-restricted-short`)}</dd>
+            </div>
+          )}
+        </dl>
+        {state ? (
+          <UnavailableDetails reason={state} action={t(`${P}ui-frame-metadata-recapture`)} />
+        ) : (
+          <SemanticOrigins section={section} />
+        )}
       </Dialog>
     </>
   )
@@ -308,7 +407,9 @@ export function PythonIcon({
         kind="python"
         label={label}
         tip={state ?? `executionId ${codeRef!.executionId}\nsha256 ${codeRef!.sha256.slice(0, 12)}`}
-        disabled={greyed}
+        unavailable={greyed}
+        hasPopup="dialog"
+        expanded={open}
         onOpen={() => setOpen(true)}
       >
         <FrameIcon kind="code" />
@@ -331,9 +432,16 @@ export function PythonIcon({
               <code>{currentCode.text}</code>
             </pre>
           </>
+        ) : state ? (
+          <UnavailableDetails
+            reason={state}
+            action={t(
+              offline ? `${P}ui-frame-python-open-original` : `${P}ui-frame-python-check-source`,
+            )}
+          />
         ) : (
           <p className="pr-muted" role="status">
-            {state ?? t(`${P}ui-frame-python-loading`)}
+            {t(`${P}ui-frame-python-loading`)}
           </p>
         )}
         <details className="fv-dev">
@@ -368,12 +476,16 @@ export function IconRow({
   view,
   codeRef,
   compact,
+  contextChips = [],
+  values = [],
   dataControl,
 }: {
   snapshot: Snapshot
   view: ResolvedFrameView
   codeRef?: PythonCodeRef
   compact?: boolean
+  contextChips?: readonly Chip[]
+  values?: readonly string[]
   dataControl?: ReactNode
 }) {
   const { candidate } = useAnalysisResources()
@@ -400,7 +512,7 @@ export function IconRow({
       {dataControl}
       {coverage && <CoverageIcon snapshot={snapshot} />}
       {periods !== undefined && <PeriodsIcon snapshot={snapshot} index={periods} />}
-      {!candidate && <OriginsIcon snapshot={snapshot} />}
+      {!candidate && <OriginsIcon snapshot={snapshot} chips={contextChips} values={values} />}
       {!candidate && <PythonIcon snapshot={snapshot} codeRef={codeRef} />}
       {periods !== undefined && !comparisonPeriodPage(snapshot, periods) && (
         <span className="au-result-status" role="status">

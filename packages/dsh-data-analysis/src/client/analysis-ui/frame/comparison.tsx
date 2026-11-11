@@ -23,6 +23,7 @@ import {
 } from './domain-point-selection.tsx'
 import { compareMagnitude, divergingScale } from './magnitude.ts'
 import {
+  aggregationSymbol,
   axisOf,
   cellOf,
   columnOf,
@@ -417,6 +418,11 @@ function ComparisonKpi({
   const currentUnit = unitFor(roles.current, current)
   const baselineUnit = unitFor(roles.baseline, baseline)
   const deltaUnit = unitFor(roles.absolute, delta)
+  const contexts = interpretationOf(s)?.valueContexts
+  const symbolLabel = (name: string | undefined, label: string) => {
+    const symbol = name ? aggregationSymbol(contexts?.[name]) : ''
+    return symbol ? `${symbol} ${label}` : label
+  }
   const relative =
     roles.relative && bothPresent(s, 0, roles)
       ? s.frameDisplay?.formats?.some((item) => item.value === roles.relative)
@@ -432,7 +438,9 @@ function ComparisonKpi({
   return (
     <dl className="fv-kpi-values">
       <div className="fv-kpi-current">
-        <dt className={currentInTitle ? 'fv-sr-only' : undefined}>{ends.current}</dt>
+        <dt className={currentInTitle ? 'fv-sr-only' : undefined}>
+          {symbolLabel(roles.current, ends.current)}
+        </dt>
         <dd>
           <SelectableFrameValue
             snapshot={s}
@@ -447,7 +455,7 @@ function ComparisonKpi({
       </div>
       {roles.baseline && (
         <div className="fv-kpi-reference">
-          <dt>{ends.baseline}</dt>
+          <dt>{symbolLabel(roles.baseline, ends.baseline)}</dt>
           <dd>
             <SelectableFrameValue
               snapshot={s}
@@ -582,26 +590,31 @@ export function Numbers({
 }) {
   if (items.length === 0) return null
   return (
-    <dl className="fv-numbers flex flex-wrap gap-x-6 gap-y-2">
-      {items.map((item) => (
-        <div className="grid gap-1" key={item.key} data-number={item.key}>
-          <dd className="text-2xl font-semibold tabular-nums" title={item.title}>
-            {item.point ? (
-              <SelectableFrameValue
-                snapshot={snapshot}
-                row={item.point.row}
-                field={item.point.field}
-                label={`${item.title}: ${item.value}`}
-              >
-                {item.value}
-              </SelectableFrameValue>
-            ) : (
-              item.value
-            )}
-          </dd>
-          <dt className="text-xs text-muted-foreground">{item.label ?? ' '}</dt>
-        </div>
-      ))}
+    <dl className="fv-numbers fv-comparison-grid" data-count={Math.min(items.length, 4)}>
+      {items.map((item) => {
+        const symbol = aggregationSymbol(interpretationOf(snapshot)?.valueContexts[item.key])
+        const label =
+          symbol && item.label !== symbol ? `${symbol} ${item.label ?? ''}`.trim() : item.label
+        return (
+          <div className="fv-comparison-grid-item grid gap-1" key={item.key} data-number={item.key}>
+            <dd className="text-2xl font-semibold tabular-nums" title={item.title}>
+              {item.point ? (
+                <SelectableFrameValue
+                  snapshot={snapshot}
+                  row={item.point.row}
+                  field={item.point.field}
+                  label={`${item.title}: ${item.value}`}
+                >
+                  {item.value}
+                </SelectableFrameValue>
+              ) : (
+                item.value
+              )}
+            </dd>
+            <dt className="text-xs text-muted-foreground">{label ?? ' '}</dt>
+          </div>
+        )
+      })}
     </dl>
   )
 }
@@ -809,7 +822,8 @@ function CompareLine({
   ): SavedSeries => ({
     key: side,
     label,
-    color: side === 'delta' ? NEUTRAL : side === 'baseline' ? '#6a55a0' : '#126c74',
+    color:
+      side === 'delta' ? NEUTRAL : side === 'baseline' ? 'var(--mv-baseline)' : 'var(--chart-1)',
     hollow: side === 'baseline',
     dashed: side === 'baseline',
     values: ticks.map((_, i) => {

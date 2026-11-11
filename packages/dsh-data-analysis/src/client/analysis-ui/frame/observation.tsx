@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import { CartesianGrid, ReferenceLine, Scatter, ScatterChart, XAxis, YAxis } from 'recharts'
 import type {
   Cell,
@@ -151,12 +151,20 @@ function categoryValueText(
 /** A positive category can be too small for the approximate geometry, but is not zero. */
 function categoryPercent(locale: PresentationLocale, share: number, exact: Cell): string {
   const nonzero = exact !== null && compareDecimalText(String(exact), '0') > 0
-  return percent(locale, share === 0 && nonzero ? Number.MIN_VALUE : share, false)
+  if (nonzero && share < 0.001) {
+    const bound = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(0.1)
+    return `<${bound}%`
+  }
+  return percent(locale, share, false)
 }
 
 /** A complete categorical distribution, using saved cells without aggregating rows. */
 export function PieChart({ snapshot: s, classification: c, view }: MainViewProps<'pie'>) {
   const t = useCopy()
+  const [active, setActive] = useState<number | null>(null)
   const axis = axisOf(s, view.axis)
   if (!axis) return null
   const column = columnOf(s, view.value)?.column
@@ -172,10 +180,10 @@ export function PieChart({ snapshot: s, classification: c, view }: MainViewProps
     const share = shares[index]!
     const start = angle
     angle += (share ?? 0) * 2 * Math.PI
-    const text = `${item.label} · ${column ? categoryValueText(s, t.locale, item.exact, column) : '—'} · ${categoryPercent(t.locale, share, item.exact)}`
+    const text = `${item.label} · ${column ? categoryValueText(s, t.locale, item.exact, column) : '—'}`
     return { ...item, index, share, start, end: angle, text }
   })
-  const point = (a: number) => `${150 + 120 * Math.cos(a)},${150 + 120 * Math.sin(a)}`
+  const point = (a: number) => `${150 + 92 * Math.cos(a)},${150 + 92 * Math.sin(a)}`
   return (
     <figure className="fv-chart" data-chart="pie">
       <div className="fv-pie-layout">
@@ -187,29 +195,35 @@ export function PieChart({ snapshot: s, classification: c, view }: MainViewProps
                 <circle
                   cx={150}
                   cy={150}
-                  r={120}
-                  fill={color(item.index)}
-                  stroke="var(--background)"
-                  strokeWidth={2}
+                  r={92}
+                  fill="none"
+                  stroke={color(item.index)}
+                  strokeWidth={active === item.row ? 64 : 56}
                 />
               ) : (
                 <path
-                  d={`M150,150 L${point(item.start)} A120,120 0 ${item.end - item.start > Math.PI ? 1 : 0} 1 ${point(item.end)} Z`}
-                  fill={color(item.index)}
-                  stroke="var(--background)"
-                  strokeWidth={2}
+                  d={`M${point(item.start)} A92,92 0 ${item.end - item.start > Math.PI ? 1 : 0} 1 ${point(item.end)}`}
+                  fill="none"
+                  stroke={color(item.index)}
+                  strokeWidth={active === item.row ? 64 : 56}
                 />
               )
             return (
-              <DomainPointMark
+              // biome-ignore lint/a11y/noStaticElementInteractions: Hover/focus changes presentation; DomainPointMark owns selection and keyboard semantics.
+              <g
                 key={item.row}
-                point={{ row: item.row, field: view.value, label: item.text }}
+                data-pie-row={item.row}
+                opacity={active === null || active === item.row ? 1 : 0.38}
+                onMouseEnter={() => setActive(item.row)}
+                onMouseLeave={() => setActive(null)}
+                onFocus={() => setActive(item.row)}
+                onBlur={() => setActive(null)}
               >
-                <g data-pie-row={item.row}>
+                <DomainPointMark point={{ row: item.row, field: view.value, label: item.text }}>
                   <title>{item.text}</title>
                   {shape}
-                </g>
-              </DomainPointMark>
+                </DomainPointMark>
+              </g>
             )
           })}
         </svg>
@@ -273,7 +287,7 @@ export function CategoricalComposition({
   }))
   const sourceShares = categoryShares(source.map((item) => item.exact))
   if (!sourceShares) return null
-  const entries = source.map((item, index) => ({ ...item, share: sourceShares[index]! }))
+  const entries = source.map((item, index) => ({ ...item, index, share: sourceShares[index]! }))
   entries.sort((a, b) => compareDecimalText(String(b.exact), String(a.exact)) || a.row - b.row)
   let offset = 0
   const shareLabel = t('marivo.presentation.ui-frame-calculated-share')
@@ -285,13 +299,13 @@ export function CategoricalComposition({
         preserveAspectRatio="none"
         aria-label={`${valueName(s, c, view.value)} · ${shareLabel}`}
       >
-        {entries.map((item, index) => {
+        {entries.map((item) => {
           const share = item.share
           const start = offset
           offset += share * 1000
           if (share === 0) return null
           const valueText = categoryValueText(s, t.locale, item.exact, column)
-          const label = `${item.label} · ${valueName(s, c, view.value)}: ${valueText} · ${shareLabel}: ${categoryPercent(t.locale, share, item.exact)}`
+          const label = `${item.label} · ${valueName(s, c, view.value)}: ${valueText}`
           return (
             <DomainPointMark
               key={item.row}
@@ -301,7 +315,16 @@ export function CategoricalComposition({
                   : undefined
               }
             >
-              <rect x={start} y={0} width={share * 1000} height={20} fill={color(index)}>
+              <rect
+                x={start}
+                y={0}
+                width={share * 1000}
+                height={20}
+                fill={color(item.index)}
+                stroke="var(--background)"
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              >
                 <title>{label}</title>
               </rect>
             </DomainPointMark>
@@ -317,7 +340,7 @@ export function CategoricalComposition({
             <span>{shareLabel}</span>
           </span>
         </li>
-        {entries.map((item, index) => {
+        {entries.map((item) => {
           const share = item.share
           const valueText = categoryValueText(s, t.locale, item.exact, column)
           const label = `${item.label} · ${valueName(s, c, view.value)}: ${valueText}`
@@ -326,7 +349,7 @@ export function CategoricalComposition({
               <span
                 className="fv-share-swatch"
                 aria-hidden="true"
-                style={{ background: color(index) }}
+                style={{ background: color(item.index) }}
               />
               <span>{item.label}</span>
               <span className="fv-share-values tabular-nums">
@@ -660,7 +683,16 @@ function ShareComposition({
                   : undefined
               }
             >
-              <rect x={start} y={0} width={value * 1000} height={20} fill={color(index)}>
+              <rect
+                x={start}
+                y={0}
+                width={value * 1000}
+                height={20}
+                fill={color(index)}
+                stroke="var(--background)"
+                strokeWidth={2}
+                vectorEffect="non-scaling-stroke"
+              >
                 <title>{describe(row, value)}</title>
               </rect>
             </DomainPointMark>

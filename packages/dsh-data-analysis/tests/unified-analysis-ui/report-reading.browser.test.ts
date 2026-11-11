@@ -47,8 +47,18 @@ window.readingTest=mode=>{if(mode==='save')saved=true;if(mode==='reopen')host++;
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
+    assert.equal(
+      await page.locator('thead th').first().locator('.pr-column-meta').textContent(),
+      'str',
+    )
+    assert.equal(
+      await page.locator('thead th').nth(1).locator('.pr-column-meta').textContent(),
+      'decimal',
+    )
+    assert.equal(await page.locator('.pr-pagination span').textContent(), 'Page 1 / 7')
     await page.getByRole('button', { name: 'Sort by Value', exact: true }).click()
     await page.getByRole('button', { name: 'Next page', exact: true }).click()
+    assert.equal(await page.locator('.pr-pagination span').textContent(), 'Page 2 / 7')
     const firstRow = await page.locator('tbody tr').first().getAttribute('data-row-index')
     for (const mode of ['save', 'reopen']) {
       await page.evaluate((mode) => Reflect.get(window, 'readingTest')(mode), mode)

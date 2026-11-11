@@ -142,7 +142,7 @@ export function SavedLinePlot({
         margin={{ top: 16, right: 24, bottom: 12, left: 8 }}
         accessibilityLayer
       >
-        <CartesianGrid vertical={false} />
+        <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 4" />
         <XAxis
           dataKey="index"
           type="number"
@@ -174,7 +174,7 @@ export function SavedLinePlot({
             name={line.label}
             stroke={seriesColor(line, index)}
             strokeDasharray={line.dashed ? '5 4' : undefined}
-            type="linear"
+            type="monotone"
             connectNulls={false}
             isAnimationActive={false}
             activeDot={false}
@@ -270,7 +270,7 @@ export function SavedRowPlot({
           margin={{ top: 12, right: endLabelWidth, bottom: 8, left: 8 }}
           accessibilityLayer
         >
-          <CartesianGrid horizontal={false} />
+          <CartesianGrid horizontal={false} stroke="var(--chart-grid)" strokeDasharray="3 4" />
           <XAxis type="number" domain={plotDomain} tickFormatter={tickFormatter} />
           <YAxis
             type="category"
@@ -298,7 +298,7 @@ export function SavedRowPlot({
               key={`${connector.from.y}:${connector.to.y}`}
               segment={[connector.from, connector.to]}
               stroke="var(--muted-foreground)"
-              strokeDasharray="3 2"
+              strokeDasharray="2 3"
               className={connector.total ? 'mv-connector-total' : 'mv-connector'}
             />
           ))}
@@ -334,7 +334,7 @@ export function SavedRowPlot({
                           width={Math.max(p.width, 1)}
                           height={p.height}
                           radius={2}
-                          fill={seriesColor(line, index)}
+                          fill={line.fillAt?.(p.index) ?? seriesColor(line, index)}
                         />
                       </g>
                     </DomainPointMark>
@@ -437,7 +437,13 @@ export function SavedDeltaStrip({
                       y={p.y}
                       width={p.width}
                       height={Math.max(1, p.height)}
-                      fill={(series.values[p.index] ?? 0) < 0 ? '#bb5230' : '#087c65'}
+                      fill={
+                        (series.values[p.index] ?? 0) < 0
+                          ? 'var(--mv-down)'
+                          : (series.values[p.index] ?? 0) > 0
+                            ? 'var(--mv-up)'
+                            : 'var(--foreground)'
+                      }
                       radius={2}
                     />
                   </g>

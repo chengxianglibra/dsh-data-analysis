@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
+import { headerContext } from '../../src/client/analysis-ui/frame/model.ts'
+import { translator } from '../../src/client/i18n/copy.ts'
 import { validateFrameDisplay } from '../../src/presentation/contracts/frame-display.ts'
 import {
   frameDisplaySchema,
@@ -186,4 +188,41 @@ test('record previews require distinct saved coordinates and observation values'
     }),
     '/display/recordPreview',
   )
+})
+
+test('header time context preserves fixed instants and counts full calendar keys', () => {
+  const t = translator('en-US')
+  const fixed = frame({
+    values: [
+      {
+        name: 'v',
+        values: [1],
+        context: {
+          kind: 'observation',
+          subject: null,
+          window: null,
+          time: {
+            kind: 'fixed',
+            start: '2024-01-01T01:02:03Z',
+            end: '2025-01-01T03:04:05Z',
+            timezone: 'UTC',
+          },
+        },
+      },
+    ],
+  })
+  assert.equal(headerContext(t, fixed, ['v']), '2024-01-01 01:02:03 GMT – 2025-01-01 03:04:05 GMT')
+
+  const multi = frame({ axes: [timeAxis(2)], values: [{ name: 'v', values: [1, 2] }] })
+  const axis = multi.frame.axes[0]!
+  const key = structuredClone(axis.keys[0]!)
+  key.slotId = 'second'
+  axis.keys.push(key)
+  multi.frame.coordinates[key.slotId] = {
+    ...multi.frame.coordinates[axis.keys[0]!.slotId]!,
+    values: ['a', 'b'],
+  }
+  multi.frame.coordinates[axis.keys[0]!.slotId]!.values[1] =
+    multi.frame.coordinates[axis.keys[0]!.slotId]!.values[0]!
+  assert.equal(headerContext(t, multi, ['v']), 'month · 2')
 })

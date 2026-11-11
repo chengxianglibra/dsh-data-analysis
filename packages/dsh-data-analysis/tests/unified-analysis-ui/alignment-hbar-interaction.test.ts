@@ -23,7 +23,7 @@ for (const [i, value] of [1, 2, 3, 100].entries()) for (const name of ['left.rev
 paired.data.rows[1][paired.data.columns.findIndex(c => c.id === 'left_present')] = false;
 const bars = frame({axes:[categoryAxis(15)], values:[
   {name:'trips',values:Array.from({length:15}, (_,i)=>100-i),context:observed()},
-  {name:'fare',values:Array.from({length:15}, (_,i)=>1000-i),context:observed()},
+  {name:'fare',type:'decimal',values:Array.from({length:15}, (_,i)=>i===1 ? '1'.repeat(120) + '.12' : String(1000-i)),context:observed()},
   {name:'average',values:Array(15).fill(42),context:statistic('mean',[])},
 ]});
 for (const col of bars.data.columns) if (col.id === 'fare' || col.id === 'average') col.unit='USD';
@@ -77,16 +77,56 @@ test('alignment switches saved metrics and preserves row identity across indepen
   assert.equal(await card.locator('[data-frame-point="1:right.revenue"]').count(), 0)
 })
 
+test('horizontal chart numeric and category ticks use theme secondary text color', async () => {
+  const card = page.locator('[data-resource="bars"]')
+  await card.evaluate((element) =>
+    (element as HTMLElement).style.setProperty('--muted-foreground', 'rgb(170, 180, 190)'),
+  )
+  for (const selector of [
+    '.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value',
+    '[data-row-label] text',
+  ]) {
+    const tick = card.locator(selector).first()
+    await tick.waitFor({ state: 'attached' })
+    assert.equal(
+      await tick.evaluate((element) => getComputedStyle(element).fill),
+      'rgb(170, 180, 190)',
+    )
+  }
+  await card.evaluate((element) =>
+    (element as HTMLElement).style.removeProperty('--muted-foreground'),
+  )
+})
+
 test('horizontal metric selection retains same-unit references and all rows within the requested height', async () => {
   const card = page.locator('[data-resource="bars"]')
   const controls = card.locator('.fv-hbar-controls button')
   assert.equal(await controls.count(), 2)
   assert.equal(await card.locator('[data-mark="bar"]').count(), 15)
+  const side = card.locator('[data-hbar-side-values]')
+  assert.equal(await side.locator('[data-frame-point="0:fare"]').count(), 1)
+  assert.match((await side.textContent()) ?? '', /1,000/)
+  const longValue = side.locator('[data-frame-point="1:fare"]')
+  assert.match((await longValue.getAttribute('aria-label')) ?? '', /^r1 · fare.*: /)
+  assert.match((await longValue.textContent()) ?? '', /111,111,111/)
+  const fits = await longValue.locator('text').evaluate((text) => {
+    const bounds = text.getBoundingClientRect()
+    const svg = text.closest('svg')!.getBoundingClientRect()
+    return bounds.right <= svg.right + 1
+  })
+  assert.equal(fits, true)
+  assert.ok(
+    await card
+      .locator('.fv-plot')
+      .first()
+      .evaluate((node) => node.scrollWidth > node.clientWidth),
+  )
   await controls.nth(1).click()
   assert.equal(await controls.nth(1).getAttribute('aria-pressed'), 'true')
   assert.equal(await card.locator('[data-mark="bar"]').count(), 15)
   assert.equal(await card.locator('.mv-broadcast-reference').count(), 1)
   assert.equal(await card.locator('[data-frame-point="0:fare"]').count(), 1)
+  assert.equal(await side.locator('[data-frame-point="0:trips"]').count(), 1)
   const size = await card.locator('.fv-hbar-controls + section').evaluate((node) => ({
     height: node.clientHeight,
     scrollHeight: node.scrollHeight,

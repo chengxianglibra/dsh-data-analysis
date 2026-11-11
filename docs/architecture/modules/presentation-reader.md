@@ -78,7 +78,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
 - Frame 外壳在 [frame/](../../../packages/dsh-data-analysis/src/client/analysis-ui/frame/) 下：值名、上下文摘要、
   头部数字、主视图与图标行（数据、覆盖、期间对应、语义来源、Python）。普通折线、面积、柱图、横向柱图及热力图复用共享图表；
   比较、分解、对齐、相关和占比等领域视图使用 Recharts 坐标/图形与有限自定义 marks，按解析结果绘图或显示表格；显式 pie 使用完整的单分类轴快照，要求值非负且总量可确定；
-  NA、缺期、不完整期、presence、restricted 与未捕获完整采用视觉编码及必要的短状态标签；
+  标题行显示至多一项时间上下文，作者提供的 `display.subtitle` 单独显示；受限范围、捕获范围与筛选匹配以短标签显示，完整状态保留给辅助技术。NA、缺期、不完整期、presence、restricted 与未捕获完整采用视觉编码及必要的短状态标签；
   不增加复述图种或数值的说明段落，compact 也不能隐藏影响解读的限制。
   数据图标与来源、Python 共用操作行及弹窗，展示已保存的详细数据；成员视图以紧凑标签预览完整、非空的单键成员，完整保存成员可从数据入口查看，复合键及空或截断结果直接显示表格。
   Frame 与 Dataset 的元信息入口统一为组件左下角的小图标，内容与图标行之间不加分隔线；
@@ -86,7 +86,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   显式指定 `display.dataTable: "visible"` 时详细数据默认内联展示，并可用同一图标收起；数据引用不显示行数和横向滚动图标，截断与空数据状态仍可见。
   比较结果按指标展示本期、基期及已有差值，而非平铺原始字段。
   单行比较按本期、基期、已保存的绝对差值和相对变化组织，单位与数字分开；多指标数字块等宽对齐，末行不拉伸。
-  KPI 的变化率与差值使用本地化文字标签，增减方向保留三角标记；零值与缺失值保持区分。
+  KPI 的变化率与差值使用本地化文字标签，增减方向保留三角标记，正值为红色、负值为绿色；零值与缺失值保持区分。
   已知非零但按两位小数会舍入为零的百分比显示为小于 0.01% 的范围；Decimal 的精确非零符号不因浮点下溢丢失。
   分类比较使用按数据范围定位零点的横向差值条，并同行显示基期、本期、差值与相对变化；列标题提供排序，初始按已保存差值的绝对幅度降序排列。
   缺少可绘制差值时仍显示保存的两端和缺失状态，不推算差值；显式 `style: "delta"` 仍要求差值字段。
@@ -137,7 +137,7 @@ DataFrame 的“数据来源与范围”入口集中展示捕获时间，以及�
 Session、Call 和 codeRef 放在可展开的开发者区域。旧执行记录或未声明数据源时明示不可用，源码缺失、读取失败或摘要不一致时显示状态。Frame 不显示 Evidence、Finding 或计算过程；
 来源固定为 Host 绑定的 codeRef：新 Frame/DataFrame 声明中的 codeRef 必须通过 Host 执行记录的结果引用登记校验；旧快照沿用原 provenance。来源详情经 `code/read` RPC 读取已保存脚本，只允许读取所读文档资源绑定的 codeRef。未提供 codeRef 的资源明确显示源码不可用，不从 Marivo Artifact 身份推断脚本。
 sha256 标识完整 execution record，由 Host 校验记录，客户端核对返回摘要与绑定摘要。Frame 的摘要不一致或执行记录缺失时 Python 图标变灰；section 为 `unavailable`
-时对应图标变灰，不显示为 0 项；在阅读界面中，Session/Artifact 只在 Frame Python 详情的开发者区出现。
+时对应图标变灰，不显示为 0 项；图标可打开详情，说明已知原因及后续动作。在阅读界面中，Session/Artifact 只在 Frame Python 详情的开发者区出现。
 
 语义来源为分析时的静态身份，展示去重后的具体对象，不展示 datasource 和 entity；在已保存结果的会话节点和报告 tab 中可经现有[语义浏览器](semantic-browser.md)打开当前定义，
 并提示其可能已变化；候选预览不提供导航。
@@ -163,7 +163,7 @@ Reader 接受 current v4 历史指针、当前快照及当前 Catalog build。�
 分析文档的 `locale`（`zh-CN` 或 `en-US`）决定 Surface 内容、辅助说明和日期／数字格式；Host 控件使用系统语言。
 业务正文、字段标识、单位、精确数值和原始语义事实不由插件翻译。
 
-Surface 通过 Harness 的 `--dsw-*` token 继承背景、文字和边框；图表色板、网格、图例和标签遵循与 analysis-ui 一致的视觉规则，
+Surface 通过 Harness 的 `--dsw-*` token 继承背景、文字和边框；图表色板、网格、图例和标签遵循[数据视图统一规格](data-view-spec.md)，
 色板通过 CSS 变量跟随 Host 已解析的明暗主题，脱离 Host 时回退到独立页面的显式主题或系统偏好。
 Frame 提示按保存值格式化，Dataset 提示保留精确值；图形坐标的近似值不代替保存值。主题切换不重挂 Frame 或 Dataset 图表。
 

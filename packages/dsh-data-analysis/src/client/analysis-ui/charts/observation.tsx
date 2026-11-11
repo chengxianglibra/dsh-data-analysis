@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import {
   Area,
   Bar,
@@ -49,6 +49,18 @@ import {
 } from './recharts.tsx'
 import { useChartSelection } from './selection-context.tsx'
 
+/** Preserve a saved label that already contains its declared unit. */
+function valueLabelWithUnit(s: ChartModel, name: string): string {
+  const label = valueName(s, name)
+  const unit = columnOf(s, name)?.column.unit?.trim()
+  return !unit ||
+    unit === '1' ||
+    label.endsWith(`(${unit})`) ||
+    label.endsWith(`（${unit}）`) ||
+    label.endsWith(` ${unit}`)
+    ? label
+    : `${label} ${unit}`
+}
 /** Only identical declared units share a numeric scale; unknown units remain field-specific. */
 function unitGroups(s: ChartModel, values: string[], broadcast: string[]) {
   const groups = new Map<string, { values: string[]; broadcast: string[] }>()
@@ -130,6 +142,9 @@ function TimeChartPlot({
   showLegend = true,
 }: ChartProps<'line' | 'area' | 'bar' | 'interval-bar'> & { showLegend?: boolean }) {
   const t = useCopy()
+  const chartId = useId().replace(/:/g, '')
+  const [activeSeries, setActiveSeries] = useState<string>()
+  const [activeMark, setActiveMark] = useState<string>()
   const axis = axisOf(s, view.axis)
   if (!axis) return null
   const { ticks, tickOf } = ticksOf(s, axis)
@@ -150,7 +165,7 @@ function TimeChartPlot({
     view.values.map((name, vi) => ({
       key: `s${gi}_${vi}`,
       name,
-      label: [group.label, valueName(s, name)].filter(Boolean).join(' · '),
+      label: [group.label, valueLabelWithUnit(s, name)].filter(Boolean).join(' · '),
       color: color(seriesAxis ? gi : vi),
       marker: seriesAxis ? gi : undefined,
       rows: new Map(group.rows.map((row) => [tickOf(row), row])),
@@ -246,6 +261,9 @@ function TimeChartPlot({
       <ChartFrame
         label={label}
         height={height}
+        axisTitle={[...view.values, ...view.broadcast]
+          .map((name) => valueLabelWithUnit(s, name))
+          .join(' · ')}
         width={s.frameStyle && bars ? barChartWidth : undefined}
         legend={
           <>
@@ -281,7 +299,31 @@ function TimeChartPlot({
           margin={{ top: 16, right: 24, bottom: 12, left: 8 }}
           accessibilityLayer
         >
-          <CartesianGrid vertical={false} />
+          <defs>
+            {series.map((line) => (
+              <linearGradient
+                key={line.key}
+                id={`${chartId}-area-${line.key}`}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <stop offset="0%" stopColor={line.color} stopOpacity={0.26} />
+                <stop offset="100%" stopColor={line.color} stopOpacity={0} />
+              </linearGradient>
+            ))}
+            <pattern
+              id={`${chartId}-incomplete`}
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <line x1="0" y1="0" x2="0" y2="6" stroke="var(--mv-quality)" strokeWidth="2" />
+            </pattern>
+          </defs>
+          <CartesianGrid vertical={false} stroke="var(--chart-grid)" strokeDasharray="3 4" />
           <XAxis
             dataKey="index"
             type="number"
@@ -295,10 +337,38 @@ function TimeChartPlot({
           <YAxis
             domain={domain}
             padding={bars ? undefined : { top: 4, bottom: 4 }}
+            tick={{ fill: 'var(--muted-foreground)', fontSize: 10.5 }}
             tickFormatter={(value) => compact(t.locale, value)}
             width={64}
           />
-          <ExactTooltip textAt={tip} />
+          <ExactTooltip
+            textAt={tip}
+            cursorTicks={ticks}
+            detailsAt={(index) => ({
+              label: ticks[index]?.title ?? '',
+              rows: [
+                ...series.map((line) => {
+                  const row = line.rows.get(index)
+                  return {
+                    label: line.label,
+                    color: line.color,
+                    value: displayed(
+                      s,
+                      row === undefined ? null : cellOf(s, row, line.name),
+                      columnOf(s, line.name)?.column,
+                    ),
+                  }
+                }),
+                ...refs
+                  .filter((ref) => index >= ref.from && index <= ref.to)
+                  .map((ref) => ({
+                    label: valueName(s, ref.name),
+                    color: NEUTRAL,
+                    value: displayed(s, ref.value, columnOf(s, ref.name)?.column),
+                  })),
+              ],
+            })}
+          />
           {domain[0] <= 0 && domain[1] >= 0 && <ReferenceLine y={0} stroke="var(--border)" />}
           {series.map((line) => {
             const dot = (input: unknown) => {
@@ -310,7 +380,17 @@ function TimeChartPlot({
               const title = `${ticks[index]?.title ?? ''}\n${line.label}: ${displayed(s, cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
               return (
                 <SelectableMark row={row} field={line.name} label={title}>
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: Hover only controls visual emphasis; the parent owns selection. */}
                   <circle
+                    onMouseEnter={() => {
+                      setActiveMark(`${line.key}:${index}`)
+                      setActiveSeries(line.key)
+                    }}
+                    onMouseLeave={() => {
+                      setActiveMark(undefined)
+                      setActiveSeries(undefined)
+                    }}
+                    opacity={activeMark && activeMark !== `${line.key}:${index}` ? 0.3 : 1}
                     cx={point.cx}
                     cy={point.cy}
                     r={seriesAxis ? 4 : 3}
@@ -332,6 +412,14 @@ function TimeChartPlot({
                   fill={line.color}
                   isAnimationActive={false}
                   maxBarSize={s.frameStyle ? 44 : undefined}
+                  barSize={Math.max(
+                    1,
+                    Math.min(
+                      44,
+                      (((barChartWidth - 96) / Math.max(1, ticks.length)) * 0.62) /
+                        Math.max(1, series.length),
+                    ),
+                  )}
                   shape={(input) => {
                     const p = rectangleGeometry(input)
                     if (!p) return <g />
@@ -371,6 +459,7 @@ function TimeChartPlot({
                     const title = `${ticks[p.index]?.title ?? ''}\n${line.label}: ${displayed(s, cellOf(s, row, line.name), columnOf(s, line.name)?.column)}`
                     return (
                       <SelectableMark row={row} field={line.name} label={title}>
+                        {/* biome-ignore lint/a11y/noStaticElementInteractions: Hover changes presentation only; selection is on the parent. */}
                         <g
                           data-mark={
                             ticks[p.index]?.incomplete
@@ -380,6 +469,9 @@ function TimeChartPlot({
                                 : 'bar'
                           }
                           data-highlighted={highlighted || undefined}
+                          opacity={activeMark && activeMark !== `${line.key}:${p.index}` ? 0.3 : 1}
+                          onMouseEnter={() => setActiveMark(`${line.key}:${p.index}`)}
+                          onMouseLeave={() => setActiveMark(undefined)}
                         >
                           <title>{title}</title>
                           <Rectangle
@@ -388,11 +480,19 @@ function TimeChartPlot({
                             width={p.width}
                             height={Math.max(p.height, 1)}
                             fill={highlighted ? color(3) : line.color}
-                            fillOpacity={ticks[p.index]?.incomplete ? 0.45 : 1}
-                            stroke={ticks[p.index]?.incomplete ? line.color : undefined}
-                            strokeDasharray={ticks[p.index]?.incomplete ? '3 2' : undefined}
+                            fillOpacity={ticks[p.index]?.incomplete ? 0.22 : 1}
                             radius={2}
                           />
+                          {ticks[p.index]?.incomplete && (
+                            <Rectangle
+                              x={p.x}
+                              y={p.y}
+                              width={p.width}
+                              height={Math.max(p.height, 1)}
+                              fill={`url(#${chartId}-incomplete)`}
+                              radius={2}
+                            />
+                          )}
                           {showLabels && (
                             <text
                               x={p.x + p.width / 2}
@@ -423,10 +523,14 @@ function TimeChartPlot({
                 key={line.key}
                 dataKey={line.key}
                 name={line.label}
-                type="linear"
+                type="monotone"
                 stroke={line.color}
-                fill={line.color}
-                fillOpacity={0.16}
+                strokeWidth={2}
+                strokeOpacity={activeSeries && activeSeries !== line.key ? 0.3 : 1}
+                fill={`url(#${chartId}-area-${line.key})`}
+                fillOpacity={activeSeries && activeSeries !== line.key ? 0.3 : 1}
+                onMouseEnter={() => setActiveSeries(line.key)}
+                onMouseLeave={() => setActiveSeries(undefined)}
                 baseValue={0}
                 connectNulls={false}
                 isAnimationActive={false}
@@ -448,8 +552,12 @@ function TimeChartPlot({
                 key={line.key}
                 dataKey={line.key}
                 name={line.label}
-                type="linear"
+                type="monotone"
                 stroke={line.color}
+                strokeWidth={2}
+                strokeOpacity={activeSeries && activeSeries !== line.key ? 0.3 : 1}
+                onMouseEnter={() => setActiveSeries(line.key)}
+                onMouseLeave={() => setActiveSeries(undefined)}
                 strokeDasharray={seriesAxis ? `${4 + series.indexOf(line)} 2` : undefined}
                 connectNulls={false}
                 isAnimationActive={false}
@@ -578,7 +686,13 @@ export function HBarChart(props: ChartProps<'hbar'>) {
             ))}
           </fieldset>
         )}
-        {selected && <HBarChartPlot {...props} view={{ ...props.view, ...selected }} />}
+        {selected && (
+          <HBarChartPlot
+            {...props}
+            view={{ ...props.view, ...selected }}
+            sideValue={props.view.values.find((name) => !selected.values.includes(name))}
+          />
+        )}
         {references.map((group) => (
           <section className="fv-parent" key={key(group)}>
             <h4>{group.broadcast.map((name) => valueName(props.model, name)).join(' · ')}</h4>
@@ -623,16 +737,87 @@ function HBarMemberTick({
   return (
     <g transform={`translate(${x},${y})`} data-row-label={label} data-row-index={index}>
       <title>{label}</title>
-      <text className="fv-row-label" textAnchor="end" dy={4} fill="currentColor">
+      <text
+        className="fv-row-label"
+        textAnchor="end"
+        dy={4}
+        fill="var(--muted-foreground)"
+        fontSize={10.5}
+      >
         {text}
       </text>
     </g>
   )
 }
-function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'hbar'>) {
+/** A second saved measure is a right-side value column, not an implied position. */
+function HBarSideValues({
+  model: s,
+  name,
+  rows,
+  offset,
+  labels,
+  onWidth,
+}: {
+  model: ChartModel
+  name: string
+  rows: number[]
+  offset: number
+  labels: string[]
+  onWidth: (width: number) => void
+}) {
+  const area = usePlotArea()
+  const ref = useRef<SVGGElement>(null)
+  useLayoutEffect(() => {
+    const texts = ref.current?.querySelectorAll('text')
+    if (!texts?.length) return
+    let width = 0
+    for (const text of texts) width = Math.max(width, text.getComputedTextLength())
+    if (width > 0) onWidth(Math.ceil(width) + 16)
+  })
+  if (!area || !rows.length) return null
+  const x = area.x + area.width + offset + 8
+  const column = columnOf(s, name)?.column
+  return (
+    <g ref={ref} data-hbar-side-values="">
+      <text x={x} y={area.y - 2} fill="var(--muted-foreground)" fontSize={10}>
+        {valueLabelWithUnit(s, name)}
+      </text>
+      {rows.map((row, index) => {
+        const text = displayed(s, cellOf(s, row, name), column)
+        const y = area.y + ((index + 0.5) * area.height) / rows.length
+        const mark = (
+          <text key={row} x={x} y={y} dominantBaseline="central" fill="currentColor" fontSize={11}>
+            <title>{text}</title>
+            {text}
+          </text>
+        )
+        return cellOf(s, row, name) === null ? (
+          <g key={row}>{mark}</g>
+        ) : (
+          <SelectableMark
+            key={row}
+            row={row}
+            field={name}
+            label={`${labels[row] ?? ''} · ${valueName(s, name)}: ${text}`}
+          >
+            {mark}
+          </SelectableMark>
+        )
+      })}
+    </g>
+  )
+}
+function HBarChartPlot({
+  model: s,
+  view,
+  height: requestedHeight,
+  sideValue,
+}: ChartProps<'hbar'> & { sideValue?: string }) {
   const t = useCopy()
   const regionRef = useRef<HTMLElement>(null)
   const [availableWidth, setAvailableWidth] = useState(0)
+  const [measuredSideWidth, setMeasuredSideWidth] = useState(0)
+  const [activeBar, setActiveBar] = useState<string>()
   const axis = axisOf(s, view.axis)
   useEffect(() => {
     const element = regionRef.current
@@ -684,6 +869,22 @@ function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'
     ].join('\n')
   const label = summary(t, view.values.map((name) => valueName(s, name)).join(' · '), rows.map(tip))
   const showLabels = !!s.frameStyle && view.values.length === 1
+  const sideColumn = sideValue ? columnOf(s, sideValue)?.column : undefined
+  const sideWidth = sideValue
+    ? Math.max(
+        measuredSideWidth,
+        16 +
+          12 *
+            rows.reduce(
+              (max, row) =>
+                Math.max(
+                  max,
+                  Array.from(displayed(s, cellOf(s, row, sideValue), sideColumn)).length,
+                ),
+              Array.from(valueLabelWithUnit(s, sideValue)).length,
+            ),
+      )
+    : 0
   const valueWidth = showLabels
     ? Math.min(
         1000,
@@ -697,7 +898,9 @@ function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'
   const axisWidth = s.frameStyle
     ? Math.min(
         naturalAxisWidth,
-        availableWidth ? Math.max(90, availableWidth - valueWidth - 80) : naturalAxisWidth,
+        availableWidth
+          ? Math.max(90, availableWidth - valueWidth - sideWidth - 80)
+          : naturalAxisWidth,
       )
     : 140
   const chartHeight = Math.max(140, rows.length * (22 * view.values.length + 8) + 48)
@@ -714,7 +917,7 @@ function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'
     >
       <ChartFrame
         label={label}
-        width={s.frameStyle ? Math.max(250, axisWidth + valueWidth + 80) : undefined}
+        width={s.frameStyle ? Math.max(250, axisWidth + valueWidth + sideWidth + 80) : undefined}
         height={chartHeight}
         legend={
           <Legend
@@ -727,13 +930,14 @@ function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'
           desc={label}
           data={referenceData}
           layout="vertical"
-          margin={{ top: 12, right: valueWidth, bottom: 8, left: 8 }}
+          margin={{ top: 18, right: valueWidth + sideWidth, bottom: 8, left: 8 }}
           accessibilityLayer
         >
-          <CartesianGrid horizontal={false} />
+          <CartesianGrid horizontal={false} stroke="var(--chart-grid)" strokeDasharray="3 4" />
           <XAxis
             dataKey="__reference"
             allowDataOverflow
+            tick={{ fill: 'var(--muted-foreground)', fontSize: 10.5 }}
             type="number"
             domain={numericDomain(
               [
@@ -761,8 +965,28 @@ function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'
             width={axisWidth}
             interval={0}
           />
-          <ExactTooltip textAt={tip} />
+          <ExactTooltip
+            textAt={tip}
+            detailsAt={(row) => ({
+              label: axis.labels[row] ?? '',
+              rows: [...view.values, ...view.broadcast].map((name, index) => ({
+                label: valueName(s, name),
+                value: displayed(s, cellOf(s, row, name), columnOf(s, name)?.column),
+                color: index < view.values.length ? color(index) : NEUTRAL,
+              })),
+            })}
+          />
           <ReferenceLine x={0} stroke="var(--border)" />
+          {sideValue && (
+            <HBarSideValues
+              model={s}
+              name={sideValue}
+              rows={rows}
+              offset={valueWidth}
+              labels={axis.labels}
+              onWidth={setMeasuredSideWidth}
+            />
+          )}
           {view.values.map((name, vi) => (
             <Bar
               key={name}
@@ -788,7 +1012,13 @@ function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'
                 const title = `${axis.labels[p.index] ?? ''} · ${valueName(s, name)}: ${displayed(s, cellOf(s, p.index, name), columnOf(s, name)?.column)}`
                 return (
                   <SelectableMark row={p.index} field={name} label={title}>
-                    <g data-mark="bar">
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: Hover only controls visual emphasis; the parent owns selection. */}
+                    <g
+                      data-mark="bar"
+                      opacity={activeBar && activeBar !== `${name}:${p.index}` ? 0.3 : 1}
+                      onMouseEnter={() => setActiveBar(`${name}:${p.index}`)}
+                      onMouseLeave={() => setActiveBar(undefined)}
+                    >
                       <title>{title}</title>
                       <Rectangle {...p} width={Math.max(p.width, 1)} radius={2} fill={color(vi)} />
                     </g>
@@ -834,6 +1064,10 @@ function HBarChartPlot({ model: s, view, height: requestedHeight }: ChartProps<'
       </ChartFrame>
     </section>
   )
+}
+/** Cells and legend share the same opaque mix against the card background. */
+function heatColor(level: number): string {
+  return `color-mix(in oklch, var(--chart-1) ${8 + level * 22}%, var(--card))`
 }
 /** The grid is one SVG pattern; sparse layouts do not allocate a mark for each missing pair. */
 function HeatGrid({
@@ -886,12 +1120,14 @@ function HeatCell({
   rows,
   fill,
   children,
+  text,
 }: {
   input: unknown
   columns: number
   rows: number
-  fill: { fill: string; fillOpacity: number }
+  fill: { fill: string; fillOpacity: number; level?: number }
   children: ReactNode
+  text?: string
 }) {
   const area = usePlotArea()
   const point = coordinates(input)
@@ -906,8 +1142,23 @@ function HeatCell({
         width={Math.max(1, width - 2)}
         height={Math.max(1, height - 2)}
         rx={2}
-        {...fill}
+        fill={fill.fill}
+        fillOpacity={fill.fillOpacity}
+        data-heat-level={fill.level}
       />
+      {text && width >= 48 && height >= 20 && (
+        <text
+          x={point.cx}
+          y={point.cy}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={10}
+          fill={fill.level !== undefined && fill.level >= 3 ? 'white' : 'var(--foreground)'}
+          pointerEvents="none"
+        >
+          {text}
+        </text>
+      )}
       {children}
     </g>
   )
@@ -975,7 +1226,12 @@ function HeatmapColumnTick({
       : (text.match(/.{1,11}/gu) ?? [''])
   return (
     <g transform={`translate(${x},${y})`}>
-      <text data-heatmap-column={label} textAnchor="middle" fill="currentColor">
+      <text
+        data-heatmap-column={label}
+        textAnchor="middle"
+        fill="var(--muted-foreground)"
+        fontSize={10.5}
+      >
         <title>{item?.title ?? label}</title>
         {lines.map((line, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: Wrapped label lines have fixed physical positions, including repeated words.
@@ -1011,7 +1267,13 @@ function HeatmapRowTick({
       data-row-index={index}
     >
       <title>{item?.title ?? label}</title>
-      <text className="fv-row-label" textAnchor="end" dy={4} fill="currentColor">
+      <text
+        className="fv-row-label"
+        textAnchor="end"
+        dy={4}
+        fill="var(--muted-foreground)"
+        fontSize={10.5}
+      >
         {visible}
         {item?.incomplete ? ' ◌' : ''}
       </text>
@@ -1020,6 +1282,7 @@ function HeatmapRowTick({
 }
 export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
   const t = useCopy()
+  const [active, setActive] = useState<{ x: number; y: number }>()
   const xAxis = axisOf(s, view.x)
   const yAxis = axisOf(s, view.y)
   if (!xAxis || !yAxis) return null
@@ -1045,26 +1308,27 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
     y: yOf.get(index)!,
     value: valueAt(s, index, view.value),
   }))
-  const domain = numericDomain(data.map((point) => point.value))
-  const min = domain[0]
-  const max = domain[1]
-  const diverging = min < 0 && max > 0
-  const fill = (value: number | null) => ({
-    fill: value === null ? 'var(--muted)' : color(value < 0 && diverging ? 1 : 0),
-    fillOpacity:
-      value === null
-        ? 0.35
-        : 0.12 +
-          0.88 *
-            (diverging
-              ? Math.abs(value) / Math.max(Math.abs(min), Math.abs(max))
-              : (value - min) / (max - min || 1)),
-  })
+  const finite = data.filter((point) => point.value !== null)
+  const min = finite.reduce((result, point) => Math.min(result, point.value!), Infinity)
+  const max = finite.reduce((result, point) => Math.max(result, point.value!), -Infinity)
+  const scale = Math.max(Math.abs(min), Math.abs(max)) || 1
+  const fill = (value: number | null) => {
+    if (value === null) return { fill: 'var(--muted)', fillOpacity: 0.35 }
+    const level = Math.max(
+      0,
+      Math.min(
+        4,
+        Math.round(
+          4 * (max === min ? 0.5 : (value / scale - min / scale) / (max / scale - min / scale)),
+        ),
+      ),
+    )
+    return { fill: heatColor(level), fillOpacity: 1, level }
+  }
   const col = columnOf(s, view.value)?.column
   const tip = (row: number) =>
     `${xLabels[xOf.get(row)!]?.title ?? ''} · ${yLabels[yOf.get(row)!]?.title ?? ''}: ${displayed(s, cellOf(s, row, view.value), col)}`
   const label = summary(t, valueName(s, view.value), rowsOf(s).map(tip))
-  const finite = data.filter((point) => point.value !== null)
   const minPoint = finite.reduce<(typeof finite)[number] | undefined>(
     (best, point) => (!best || point.value! < best.value! ? point : best),
     undefined,
@@ -1080,10 +1344,7 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
       height={Math.max(180, ys.length * 28 + 80)}
       legend={
         minPoint && maxPoint ? (
-          <div
-            className="flex gap-3 text-xs"
-            data-heatmap-scale={diverging ? 'diverging' : 'sequential'}
-          >
+          <div className="flex gap-3 text-xs" data-heatmap-scale="sequential">
             <span>{valueName(s, view.value)}</span>
             <span>
               {t('marivo.presentation.ui-chart-missing-pairs', {
@@ -1096,7 +1357,19 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
             <span title={displayed(s, cellOf(s, minPoint.index, view.value), col)}>
               {displayed(s, cellOf(s, minPoint.index, view.value), col)}
             </span>
-            <span aria-hidden="true">→</span>
+            <span aria-hidden="true" className="inline-flex gap-0.5 items-center">
+              {[0, 1, 2, 3, 4].map((level) => (
+                <span
+                  key={level}
+                  style={{
+                    width: 12,
+                    height: 10,
+                    borderRadius: 2,
+                    background: heatColor(level),
+                  }}
+                />
+              ))}
+            </span>
             <span title={displayed(s, cellOf(s, maxPoint.index, view.value), col)}>
               {displayed(s, cellOf(s, maxPoint.index, view.value), col)}
             </span>
@@ -1138,7 +1411,19 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
           missing={xs.length * ys.length - data.length}
           nulls={data.length - finite.length}
         />
-        <ExactTooltip textAt={tip} />
+        <ExactTooltip
+          textAt={tip}
+          detailsAt={(row) => ({
+            label: `${xLabels[xOf.get(row)!]?.title ?? ''} · ${yLabels[yOf.get(row)!]?.title ?? ''}`,
+            rows: [
+              {
+                label: valueName(s, view.value),
+                value: displayed(s, cellOf(s, row, view.value), col),
+                color: color(0),
+              },
+            ],
+          })}
+        />
         <Scatter
           data={data}
           isAnimationActive={false}
@@ -1148,9 +1433,25 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
             if (typeof row !== 'number') return <g />
             const value = valueAt(s, row, view.value)
             const mark = (
-              <g data-mark={value === null ? 'empty' : 'cell'}>
+              // biome-ignore lint/a11y/noStaticElementInteractions: Hover changes presentation only; selection is on the parent.
+              <g
+                data-mark={value === null ? 'empty' : 'cell'}
+                opacity={active && active.x !== xOf.get(row) && active.y !== yOf.get(row) ? 0.3 : 1}
+                onMouseEnter={() => setActive({ x: xOf.get(row)!, y: yOf.get(row)! })}
+                onMouseLeave={() => setActive(undefined)}
+              >
                 <title>{tip(row)}</title>
-                <HeatCell input={input} columns={xs.length} rows={ys.length} fill={fill(value)}>
+                <HeatCell
+                  input={input}
+                  columns={xs.length}
+                  rows={ys.length}
+                  fill={fill(value)}
+                  text={
+                    value !== null && xs.length * ys.length <= 100
+                      ? displayed(s, cellOf(s, row, view.value), col)
+                      : undefined
+                  }
+                >
                   {null}
                 </HeatCell>
               </g>

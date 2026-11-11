@@ -276,7 +276,7 @@ test('heatmap scale shows saved bounds and omits a scale when all values are mis
   snapshot.data.rows[0]![index] = -2
   snapshot.data.rows[1]![index] = 5
   const html = await r().render(snapshot)
-  assert.match(html, /data-heatmap-scale="diverging"/)
+  assert.match(html, /data-heatmap-scale="sequential"/)
   assert.match(html, /m0 \(USD\)/)
   assert.match(html, /title="-\$2\.00"/)
   assert.match(html, /title="\$5\.00"/)

@@ -83,6 +83,35 @@ test('Frame line and area expose accessible points with saved identities', async
   }
 })
 
+test('time chart ticks use the theme secondary text color', async () => {
+  const card = page.locator('[data-resource="line"]')
+  await card.evaluate((element) =>
+    (element as HTMLElement).style.setProperty('--muted-foreground', 'rgb(170, 180, 190)'),
+  )
+  for (const selector of [
+    '.recharts-yAxis-tick-labels .recharts-cartesian-axis-tick-value',
+    '[data-tick] text',
+  ]) {
+    const tick = card.locator(selector).first()
+    await tick.waitFor({ state: 'attached' })
+    assert.equal(
+      await tick.evaluate((element) => getComputedStyle(element).fill),
+      'rgb(170, 180, 190)',
+    )
+  }
+  await card.evaluate((element) =>
+    (element as HTMLElement).style.removeProperty('--muted-foreground'),
+  )
+})
+
+test('time hover retains the saved period in a cursor capsule', async () => {
+  const card = page.locator('[data-resource="line"]')
+  await card.locator('.recharts-line-dots circle').first().hover()
+  const cursor = card.locator('[data-time-cursor]')
+  await cursor.waitFor()
+  assert.ok((await cursor.locator('text').textContent())?.length)
+})
+
 test('Dataset and domain charts expose accessible roots', async () => {
   await checkSurface('dataset')
   await checkSurface('domain')

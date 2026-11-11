@@ -135,6 +135,7 @@ test('five and seven KPI blocks keep equal widths and aligned columns without fi
         }
       })
       const firstRow = layout.items.filter((item) => Math.abs(item.top - layout.items[0]!.top) < 1)
+      assert.ok(firstRow.length <= 4, JSON.stringify(layout))
       for (const [index, item] of layout.items.entries()) {
         assert.ok(Math.abs(item.width - layout.items[0]!.width) < 1, JSON.stringify(layout))
         assert.ok(
@@ -149,6 +150,12 @@ test('five and seven KPI blocks keep equal widths and aligned columns without fi
         assert.ok(lastRow.at(-1)!.right < layout.parent.right - 1, JSON.stringify(layout))
       }
       assert.ok((await overflow()) <= 1)
+      const borders = await collection
+        .locator('.fv-comparison-grid-item')
+        .evaluateAll((nodes) => nodes.map((node) => getComputedStyle(node).borderLeftColor))
+      for (const [index, border] of borders.entries()) {
+        assert.equal(border === 'rgba(0, 0, 0, 0)', index % firstRow.length === 0)
+      }
       const clipped = await collection
         .locator('.fv-kpi-value, .fv-kpi-reference dd')
         .evaluateAll((nodes) =>

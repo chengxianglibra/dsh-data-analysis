@@ -29,7 +29,8 @@ Dataset 不因共用外壳或图表获得 Frame context 或期间推断；数据
 构建、依赖和类型检查及依赖样式的测试入口会生成本地 `styles.generated.ts`。该文件由 Git 忽略，浏览器通过客户端 bundle 加载编译后的样式。
 直接运行源码夹具前可执行 `npm run prepare:source` 生成样式和 Catalog，再用 `npm run check:ui-styles` 核对本地样式。
 Host 已解析主题优先，独立渲染再使用显式主题或 OS；报告与业务内容消费同一组 shadcn semantic tokens。
-数据色使用同一组明暗 chart tokens，操作 accent、业务状态与数据系列互不替代。
+数据色使用同一组明暗 chart tokens，操作 accent、业务状态与数据系列互不替代；
+Frame / Dataset 的色值、方向色、状态编码与语义放置见[数据视图统一规格](data-view-spec.md)。
 
 主题变化通过 CSS 生效，不重挂图表。Surface、Card 和结果拥有明确容器作用域，窄容器重排正文和操作行，
 图表与表格在自己的滚动区保留可读字号；Stack 仍遵守声明的 direction / wrap，不按视口重写 program。

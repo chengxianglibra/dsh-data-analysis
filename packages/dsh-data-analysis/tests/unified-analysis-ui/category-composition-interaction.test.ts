@@ -24,6 +24,11 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
   program:'root = AnalysisFrameView("categories", {chart: "pie", style: "stacked"});',
   title:'Categories', locale:'en-US', resources:{categories:resource},
   askPoint:async selection => {window.selections.push(selection)},
+}));
+createRoot(document.getElementById('pie')).render(createElement(AnalysisRenderer, {
+  program:'root = AnalysisFrameView("categories", {chart: "pie"});',
+  title:'Categories', locale:'en-US', resources:{categories:resource},
+  askPoint:async selection => {window.selections.push(selection)},
 }));`,
         resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
       },
@@ -37,7 +42,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     })
     await writeFile(
       path.join(directory, 'index.html'),
-      '<!doctype html><meta charset="utf-8"><div id="root"></div><script src="page.js"></script>',
+      '<!doctype html><meta charset="utf-8"><div id="root"></div><div id="pie"></div><script src="page.js"></script>',
     )
     const page = await browser.newPage()
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
@@ -50,6 +55,15 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'selections')), [
       { resourceName: 'categories', row: 1, field: 'v' },
     ])
+    const pie = page.locator('[data-chart="pie"]')
+    const first = pie.locator('[data-pie-row="0"]')
+    const second = pie.locator('[data-pie-row="1"]')
+    await first.locator('[role="button"]').focus()
+    assert.equal(await first.getAttribute('opacity'), '1')
+    assert.equal(await second.getAttribute('opacity'), '0.38')
+    assert.equal(await first.locator('path').getAttribute('stroke-width'), '64')
+    await first.locator('[role="button"]').blur()
+    assert.equal(await second.getAttribute('opacity'), '1')
   } finally {
     await browser.close()
     await rm(directory, { recursive: true, force: true })

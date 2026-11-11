@@ -112,7 +112,6 @@ test('attribution orders signed saved contributions, keeps endpoint presence and
   assert.deepEqual(names, ['r1', 'r0', 'r2'])
   assert.match(table, /data-frame-point="0:contribution"[^>]*[^>]*>\+5\.00<\/button>/)
   assert.match(table, /data-contribution-sign="negative"/)
-  assert.match(table, /fv-decomposition-note/)
   assert.doesNotMatch(table, /data-frame-point="2:current"|999,999/)
 })
 

@@ -9,7 +9,7 @@ const frozen = Array.from(
 export const FRAME_STYLES = `
 .au-result{container:mv-result / inline-size}
 .fv{width:100%;min-width:0}
-.fv:is([data-resource-kind=frame],[data-resource-kind=dataset]){--card-spacing:18px;--chart-1:var(--dsw-alias-state-success-label,light-dark(#147761,#65ceb0));--chart-2:var(--dsw-alias-state-warn-label,light-dark(#c59421,#e7bf5a));--fv-negative:var(--dsw-alias-state-error-label,light-dark(#a94d3e,#ef9988))}
+.fv:is([data-resource-kind=frame],[data-resource-kind=dataset]){--card-spacing:18px}
 .fv:is([data-resource-kind=frame],[data-resource-kind=dataset]) .fv-title{font-size:15px;line-height:1.35}
 .fv:is([data-resource-kind=frame],[data-resource-kind=dataset]) .fv-head [data-slot=card-description]{font-size:12px;line-height:1.5}
 .fv-head button{white-space:nowrap}
@@ -59,12 +59,13 @@ export const FRAME_STYLES = `
 .fv-comparison-table thead th{white-space:nowrap}
 .fv-comparison-table td.pr-numeric{white-space:nowrap}
 .fv-comparison-details{display:grid;gap:24px}
-.fv-comparison-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.fv-comparison-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0}
 .fv-comparison-grid[data-count="1"]{grid-template-columns:minmax(0,1fr)}
 .fv-comparison-grid[data-count="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
 .fv-comparison-grid[data-count="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
 .fv-comparison-grid[data-count="4"]{grid-template-columns:repeat(4,minmax(0,1fr))}
-.fv-comparison-grid-item{container-type:inline-size;min-width:0;padding:12px;background:var(--muted);border-radius:8px}
+.fv-comparison-grid-item{container-type:inline-size;min-width:0;padding:12px;border-left:1px solid var(--border)}
+.fv-comparison-grid-item:first-child,.fv-comparison-grid-item:nth-child(4n+1){border-left-color:transparent}
 .fv-comparison-grid-item>h4{margin:0 0 3px;font-size:12px;font-weight:500;line-height:1.4;color:var(--muted-foreground);overflow-wrap:anywhere}
 .fv-kpi-values{display:grid;gap:5px;min-width:0;margin:0}
 .fv-kpi-values dt{font-size:12px;color:var(--muted-foreground)}
@@ -82,11 +83,11 @@ export const FRAME_STYLES = `
 .fv-comparison-grid .fv-kpi-reference dt{font-size:11px}
 .fv-comparison-grid .fv-kpi-reference dd{white-space:normal;overflow-wrap:anywhere;overflow:visible}
 .fv-comparison-grid .fv-kpi-changes{gap:0 4px;margin-top:4px;font-size:12px;font-weight:500;overflow-wrap:anywhere}
-.fv-comparison-grid .fv-kpi-changes [data-sign=negative]{color:var(--fv-negative)}
-.fv-comparison-grid .fv-kpi-changes [data-sign=positive]{color:var(--chart-1)}
-@container mv-result (min-width:701px) and (max-width:900px){.fv-comparison-grid:not([data-count="1"]):not([data-count="2"]){grid-template-columns:repeat(3,minmax(0,1fr))}}
-@container mv-result (max-width:700px){.fv-comparison-grid:not([data-count="1"]){grid-template-columns:repeat(2,minmax(0,1fr))}}
-@container mv-result (max-width:350px){.fv-comparison-grid{grid-template-columns:minmax(0,1fr)!important}}
+.fv-comparison-grid .fv-kpi-changes [data-sign=negative]{color:var(--mv-down)}
+.fv-comparison-grid .fv-kpi-changes [data-sign=positive]{color:var(--mv-up)}
+@container mv-result (min-width:701px) and (max-width:900px){.fv-comparison-grid:not([data-count="1"]):not([data-count="2"]){grid-template-columns:repeat(3,minmax(0,1fr))}.fv-comparison-grid-item:nth-child(4n+1){border-left-color:var(--border)}.fv-comparison-grid-item:nth-child(3n+1){border-left-color:transparent}}
+@container mv-result (max-width:700px){.fv-comparison-grid:not([data-count="1"]){grid-template-columns:repeat(2,minmax(0,1fr))}.fv-comparison-grid-item:nth-child(odd){border-left-color:transparent}}
+@container mv-result (max-width:350px){.fv-comparison-grid{grid-template-columns:minmax(0,1fr)!important}.fv-comparison-grid-item{border-left-color:transparent}}
 .fv-compare-controls{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px;padding:0;border:0}
 .fv-delta-scroll{max-width:100%;overflow-x:auto}
 .fv-delta-table{border-collapse:collapse;width:100%;min-width:740px;font-size:12px;font-variant-numeric:tabular-nums}
@@ -100,14 +101,14 @@ export const FRAME_STYLES = `
 .fv-delta-axis-label>span:last-child{right:0}
 .fv-delta-plot{position:relative;height:26px}
 .fv-delta-zero{position:absolute;left:50%;top:0;bottom:0;border-left:1px solid var(--border)}
-.fv-delta-bar{position:absolute;top:7px;height:12px;background:var(--fv-negative);border-radius:2px}
-.fv-delta-positive{background:var(--chart-1)}
+.fv-delta-bar{position:absolute;top:7px;height:12px;background:var(--mv-down);border-radius:2px}
+.fv-delta-positive{background:var(--mv-up)}
 .fv-decomposition-details{max-width:100%;overflow-x:auto}
 .fv-decomposition-table{border-collapse:collapse;width:100%;min-width:740px;font-size:12px;font-variant-numeric:tabular-nums}
 .fv-decomposition-table :is(th,td){padding:9px 8px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;vertical-align:middle}
 .fv-decomposition-table thead th{color:var(--muted-foreground);font-weight:500}
-.fv-decomposition-table [data-contribution-sign=negative]{color:var(--fv-negative)}
-.fv-decomposition-table [data-contribution-sign=positive]{color:var(--chart-1)}
+.fv-decomposition-table [data-contribution-sign=negative]{color:var(--mv-down)}
+.fv-decomposition-table [data-contribution-sign=positive]{color:var(--mv-up)}
 .fv-decomposition-table [data-contribution-sign] button{color:inherit}
 .fv-decomposition-table :is(th,td):first-child{position:sticky;left:0;z-index:1;text-align:left;background:var(--background);white-space:normal;min-width:140px;overflow-wrap:anywhere}
 .fv-decomposition-contribution{display:flex;align-items:center;gap:10px;justify-content:flex-end}
@@ -117,8 +118,8 @@ export const FRAME_STYLES = `
 .fv-decomposition-note{margin:8px 0 0;color:var(--muted-foreground);font-size:12px;line-height:1.5}
 .fv-decomposition-field-label{display:none}
 .fv-decomposition-negative,.fv-decomposition-positive{position:absolute;top:2px;height:8px;border-radius:2px}
-.fv-decomposition-negative{background:var(--fv-negative)}
-.fv-decomposition-positive{background:var(--chart-1)}
+.fv-decomposition-negative{background:var(--mv-down)}
+.fv-decomposition-positive{background:var(--mv-up)}
 @container mv-result (max-width:650px){
   .fv-decomposition-table{display:block;min-width:0}
   .fv-decomposition-table thead{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

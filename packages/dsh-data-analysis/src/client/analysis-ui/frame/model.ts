@@ -442,6 +442,57 @@ export interface Chip {
   label: string
   title?: string
 }
+/** Only saved statistic contexts carry aggregation facts. */
+export function aggregationSymbol(context: FrameValueContext | null | undefined): string {
+  if (context?.kind !== 'statistic' && context?.kind !== 'pair_statistic') return ''
+  switch (context.statistic) {
+    case 'sum':
+      return 'Σ'
+    case 'mean':
+      return 'μ'
+    case 'row_count':
+      return '#'
+    case 'pair_count':
+      return 'n'
+    default:
+      return ''
+  }
+}
+
+function fixedTimeLabel(time: { start: string; end: string; timezone: string }): string {
+  const format = (instant: string) => {
+    const parts = dateParts(instant, time.timezone)
+    return parts ? preciseInstant(parts) : instant
+  }
+  return `${format(time.start)} – ${format(time.end)}`
+}
+
+/** A single saved time context for the card header. */
+export function headerContext(
+  t: Translator,
+  s: Snapshot,
+  values: string[],
+  comparison?: number,
+): string | undefined {
+  if (comparison !== undefined) {
+    const ends = endpointLabels(t, s, comparison)
+    if (ends.specific) return `${ends.current} ⇄ ${ends.baseline}`
+  }
+  const interpretation = interpretationOf(s)
+  for (const name of values) {
+    const context = interpretation?.valueContexts[name]
+    if (context?.kind === 'observation' && context.time?.kind === 'fixed') {
+      return fixedTimeLabel(context.time)
+    }
+  }
+  const axis = s.frame.axes.find((item) => item.variant?.kind === 'calendar')
+  if (axis?.variant?.kind === 'calendar') {
+    const count = new Set(s.data.rows.map((_, row) => axisKey(s, axis, row))).size
+    return `${grainLabel(t, axis.variant.grain)} · ${count}`
+  }
+  return undefined
+}
+
 /** Context chips from saved facts only; absent facts produce no chip. */
 export function contextChips(t: Translator, s: Snapshot, values: string[]): Chip[] {
   const chips: Chip[] = []
@@ -457,7 +508,7 @@ export function contextChips(t: Translator, s: Snapshot, values: string[]): Chip
     if (context.window) add({ label: windowLabel(t, context.window) })
     if (context.time?.kind === 'fixed')
       add({
-        label: `${instantText(context.time.start, context.time.timezone, 'day')} – ${instantText(context.time.end, context.time.timezone, 'day')}`,
+        label: fixedTimeLabel(context.time),
         title: context.time.timezone,
       })
   }

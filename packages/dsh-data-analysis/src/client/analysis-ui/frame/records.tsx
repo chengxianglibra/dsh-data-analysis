@@ -1,7 +1,8 @@
 import type { FrameClassification } from '../../../presentation/contracts/frame-view.ts'
 import type { Cell } from '../../../presentation/contracts/types.ts'
 import { useCopy } from '../../i18n/context.tsx'
-import { cellText, columnLabel } from '../../presentation/model.ts'
+import { cellText } from '../../presentation/model.ts'
+import { ColumnHeading } from '../../presentation/table.tsx'
 import { Button } from '../../ui/primitives/button.tsx'
 import {
   Table,
@@ -12,7 +13,14 @@ import {
   TableRow,
 } from '../../ui/primitives/table.tsx'
 import { useSelectableFramePoint } from './domain-point-selection.tsx'
-import { cellOf, columnOf, displayFrameCell, type Snapshot } from './model.ts'
+import {
+  aggregationSymbol,
+  cellOf,
+  columnOf,
+  displayFrameCell,
+  interpretationOf,
+  type Snapshot,
+} from './model.ts'
 import { useFrameSelection } from './selection-context.tsx'
 
 export interface RecordsPreviewSpec {
@@ -86,7 +94,12 @@ export function RecordsPreview({
                 <TableHead scope="col">{preview.label}</TableHead>
                 {values.map((column) => (
                   <TableHead key={column!.id} scope="col" className="pr-numeric">
-                    {columnLabel(column!)}
+                    <ColumnHeading
+                      column={column!}
+                      aggregation={aggregationSymbol(
+                        interpretationOf(s)?.valueContexts[column!.id],
+                      )}
+                    />
                   </TableHead>
                 ))}
               </TableRow>

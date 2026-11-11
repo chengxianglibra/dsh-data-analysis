@@ -15,22 +15,42 @@ export function ResultCard({ className, ...props }: ComponentPropsWithoutRef<'di
 export function ResultHeader({
   title,
   actions,
+  context,
+  status,
   children,
 }: {
   title?: ReactNode
   actions?: ReactNode
+  context?: ReactNode
+  status?: ReactNode
   children?: ReactNode
 }) {
   return (
     <CardHeader className="fv-head au-result-header">
-      {title && (
-        <CardTitle role="heading" aria-level={3} className="fv-title">
-          {title}
-        </CardTitle>
-      )}
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        {title && (
+          <CardTitle role="heading" aria-level={3} className="fv-title">
+            {title}
+          </CardTitle>
+        )}
+        {context && <span className="text-[11px] text-muted-foreground">{context}</span>}
+        {status}
+      </div>
       {actions && <CardAction className="au-result-header-actions">{actions}</CardAction>}
       {children && <CardDescription>{children}</CardDescription>}
     </CardHeader>
+  )
+}
+
+export function ResultStatus({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+    >
+      {children}
+    </span>
   )
 }
 

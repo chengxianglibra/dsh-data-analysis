@@ -93,6 +93,14 @@ window.renderBuild('build-1');`,
     assert.equal(wholeMetric.resourceName, 'metric')
     assert.equal(wholeMetric.component.kind, 'dataset')
     assert.equal(wholeMetric.component.statementId, 'metric')
+    const partial = page.locator('[data-resource="partial"]')
+    const partialStatus = partial.locator('.au-result-header').getByRole('status')
+    assert.equal(await partialStatus.getAttribute('aria-label'), 'Captured 3 / 5 rows')
+    assert.equal(await partialStatus.textContent(), '3 / 5 rows')
+    assert.equal(
+      await partial.locator('[data-icon="coverage"] circle').last().getAttribute('stroke'),
+      'var(--mv-quality)',
+    )
     const compactAsk = page
       .locator('[data-resource="partial"]')
       .getByRole('button', { name: 'Ask about this data' })
@@ -236,10 +244,8 @@ window.renderBuild('build-1');`,
     assert.equal(await table.getByRole('button', { name: 'Copy saved data' }).count(), 0)
     await page
       .locator('[data-resource="restricted"]')
-      .getByRole('status')
-      .filter({ hasText: 'Only the restricted member scope is shown.' })
+      .getByRole('status', { name: 'Only the restricted member scope is shown.' })
       .waitFor()
-    const partial = page.locator('[data-resource="partial"]')
     assert.equal(await partial.getAttribute('data-density'), 'compact')
     assert.match((await partial.getByRole('status').first().textContent()) ?? '', /3.*5/)
     const chart = page.locator('[data-resource="chart"]')

@@ -18,7 +18,7 @@ import { FishLogo } from '../../ui/fish-logo.tsx'
 import { Button } from '../../ui/primitives/button.tsx'
 import { CardContent } from '../../ui/primitives/card.tsx'
 import { Popover, PopoverAnchor, PopoverContent } from '../../ui/primitives/popover.tsx'
-import { MetricGroup, ResultCard, ResultHeader } from '../components/result.tsx'
+import { MetricGroup, ResultCard, ResultHeader, ResultStatus } from '../components/result.tsx'
 import { type ComponentIdentity, useAnalysisResources } from '../context.tsx'
 import { useFocusAfterAsk } from '../focus-after-ask.ts'
 import { ResourceAskButton } from '../resource-ask-button.tsx'
@@ -50,6 +50,7 @@ import {
   contextChips,
   displayFrameCell,
   endpointLabels,
+  headerContext,
   interpretationOf,
   type Snapshot,
   valueName,
@@ -554,6 +555,12 @@ export function FrameShell({
     ...contextChips(t, s, c.primaryValues),
     ...(decomposition ? decompositionChips(decomposition) : []),
   ].filter((chip, i, all) => all.findIndex((x) => x.label === chip.label) === i)
+  const context = headerContext(
+    t,
+    s,
+    c.primaryValues,
+    view.chart === 'comparison' || view.chart === 'comparison-grid' ? view.comparison : undefined,
+  )
   const numbers = headerNumbers(t, s, c, view)
   // A single-row comparison carries its own header numbers next to the alias control.
   const comparisonNumbers = view.chart === 'comparison' && s.data.rows.length === 1
@@ -654,6 +661,15 @@ export function FrameShell({
       </PopoverContent>
     </Popover>
   )
+  const contextInData = (candidate || compactDensity) && chips.length > 0 && (
+    <div className="mb-3 text-sm text-muted-foreground" data-meta="context">
+      {chips.map((chip) => (
+        <div key={chip.label} title={chip.title}>
+          {chip.label}
+        </div>
+      ))}
+    </div>
+  )
   const dataTable =
     view.chart === 'members' ? (
       <MembersTable snapshot={referenceSnapshot} />
@@ -712,6 +728,42 @@ export function FrameShell({
       >
         <ResultHeader
           title={name}
+          context={context === name ? undefined : context}
+          status={
+            <>
+              {decomposition?.restricted && (
+                <ResultStatus label={t('marivo.presentation.ui-frame-restricted-scope')}>
+                  {t('marivo.presentation.ui-restricted-short')}
+                </ResultStatus>
+              )}
+              {!s.coverage.complete && (
+                <ResultStatus
+                  label={t('marivo.presentation.ui-capture-range', {
+                    p0: s.coverage.capturedRows,
+                    p1: s.coverage.totalRows,
+                  })}
+                >
+                  {t('marivo.presentation.ui-capture-short', {
+                    p0: s.coverage.capturedRows.toLocaleString(t.locale),
+                    p1: s.coverage.totalRows.toLocaleString(t.locale),
+                  })}
+                </ResultStatus>
+              )}
+              {visibleRowIndices && (
+                <ResultStatus
+                  label={t('marivo.presentation.ui-filter-matched', {
+                    p0: visibleRowIndices.length,
+                    p1: s.data.rows.length,
+                  })}
+                >
+                  {t('marivo.presentation.ui-filter-short', {
+                    p0: visibleRowIndices.length.toLocaleString(t.locale),
+                    p1: s.data.rows.length.toLocaleString(t.locale),
+                  })}
+                </ResultStatus>
+              )}
+            </>
+          }
           actions={
             <div className="fv-header-actions">
               {!candidate && askResource && resourceName && component && (
@@ -725,37 +777,16 @@ export function FrameShell({
             </div>
           }
         >
-          {[display?.subtitle, ...(!compactDensity ? chips.map((chip) => chip.label) : [])]
-            .filter(Boolean)
-            .join(' · ') || undefined}
+          {display?.subtitle}
         </ResultHeader>
         <CardContent className="space-y-4 min-w-0">
           {filterSummary}
-          {decomposition?.restricted && (
-            <p className="au-result-status" role="status">
-              {t('marivo.presentation.ui-frame-restricted-scope')}
-            </p>
-          )}
-          {!s.coverage.complete && (
-            <p className="au-result-status" role="status">
-              {t('marivo.presentation.ui-capture-range', {
-                p0: s.coverage.capturedRows,
-                p1: s.coverage.totalRows,
-              })}
-            </p>
-          )}
-          {visibleRowIndices && (
-            <p className="au-result-status" role="status">
-              {t('marivo.presentation.ui-filter-matched', {
-                p0: visibleRowIndices.length,
-                p1: s.data.rows.length,
-              })}
-            </p>
-          )}
           {visibleRowIndices?.length === 0 && (
             <p role="status">{t('marivo.presentation.ui-filter-empty')}</p>
           )}
-          {numbers.length > 0 && <Numbers items={numbers} snapshot={s} />}
+          {numbers.length > 0 && view.chart !== 'correlation' && (
+            <Numbers items={numbers} snapshot={s} />
+          )}
           {view.chart === 'comparison' ? (
             <ComparisonView
               snapshot={s}
@@ -779,15 +810,23 @@ export function FrameShell({
               />
             )
           )}
+          {numbers.length > 0 && view.chart === 'correlation' && (
+            <Numbers items={numbers} snapshot={s} />
+          )}
           {!(showData && !inlineData && dataOpen) && pointMenu}
           {showData && inlineData && dataOpen && (
-            <div className="fv-data-reference">{dataTable}</div>
+            <div className="fv-data-reference">
+              {contextInData}
+              {dataTable}
+            </div>
           )}
           <IconRow
             snapshot={s}
             view={view}
             codeRef={codeRef}
             compact={compactDensity}
+            contextChips={chips}
+            values={c.primaryValues}
             dataControl={
               showData ? (
                 <FrameIconButton
@@ -810,7 +849,10 @@ export function FrameShell({
               onClose={() => setDataState({ inline: false, open: false })}
               onAfterClose={focusAfterAsk.finish}
             >
-              <div className="fv-data-reference">{dataTable}</div>
+              <div className="fv-data-reference">
+                {contextInData}
+                {dataTable}
+              </div>
               {pointMenu}
             </Dialog>
           )}

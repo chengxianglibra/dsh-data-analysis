@@ -30,6 +30,7 @@
 | 分析视图 | [分析视图阅读器](modules/presentation-reader.md) | 共享 AnalysisSurface、目录与版本历史 |
 | 分析交互 | [下一步推荐](modules/analysis-next-steps.md) | 当前 Chat 临时推荐按钮、收尾与原生输入提交 |
 | 前端 | [插件私有 UI 组件](modules/custom-ui-components.md) | 主题角色、控件、结果外壳、容器布局与 Host 弹层接入 |
+| 前端 | [数据视图统一规格](modules/data-view-spec.md) | Frame / Dataset 的色彩、标题行、语义放置、标记、状态编码与弹窗 |
 | 分析视图 | [分析视图离线导出](modules/report-publishing.md) | 固定版本离线导出；对象存储发布不可用 |
 | 插件交付 | [公开接口与破坏性迁移](modules/public-surface.md) | 模型协议、稳定扩展入口与逐项导出迁移 |
 | 插件交付 | [插件集成与交付](modules/plugin-integration-delivery.md) | 安装回滚、资源关闭、Host 接缝、兼容与分发 |

@@ -129,7 +129,7 @@ export function AlignmentView({
               const series: SavedSeries[] = (['left', 'right'] as const).map((side) => ({
                 key: `${pi}-${side}`,
                 label: valueName(s, c, pair[side]),
-                color: color(side === 'left' ? 0 : 1),
+                color: side === 'left' ? 'var(--mv-baseline)' : color(0),
                 hollow: side === 'left',
                 dashed: side === 'left',
                 values: ticks.map((_, i) => {
@@ -234,7 +234,7 @@ export function AlignmentView({
         const series: SavedSeries[] = (['left', 'right'] as const).map((side) => ({
           key: side,
           label: valueName(s, c, pair[side]),
-          color: color(side === 'left' ? 0 : 1),
+          color: side === 'left' ? 'var(--mv-baseline)' : color(0),
           hollow: side === 'left',
           values: facet.map((row) => get(row, pair[side], side)),
           exact: (i) =>

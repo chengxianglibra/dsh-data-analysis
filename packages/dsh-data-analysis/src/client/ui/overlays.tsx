@@ -105,7 +105,7 @@ function DetailsContent({
   return (
     <div
       ref={setRoot}
-      className="mv-ui rounded-xl bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10"
+      className="mv-ui rounded-[14px] bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10"
     >
       <UIStyleSheet />
       <PortalContainer.Provider value={root}>

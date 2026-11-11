@@ -45,7 +45,23 @@ test('large Decimal values keep correct shares and precise sorting; tiny values 
   const html = await renderer.render(snapshot, { view: { chart: 'pie', style: 'stacked' } })
   assert.match(html, /data-chart="category-composition"/)
   assert.equal((html.match(/50\.00%/g) ?? []).length >= 2, true)
-  assert.match(html, /&lt;0\.01%/)
+  assert.match(html, /&lt;0\.1%/)
+})
+
+test('small nonzero shares below 0.1% stay distinct from the boundary and zero', async () => {
+  const snapshot = frame({
+    axes: [categoryAxis(4)],
+    values: [{ name: 'v', type: 'decimal', values: ['0.75', '1', '998.25', '0'] }],
+  })
+  for (const view of [
+    { chart: 'pie' as const },
+    { chart: 'pie' as const, style: 'stacked' as const },
+  ]) {
+    const html = await renderer.render(snapshot, { view })
+    assert.equal((html.match(/&lt;0\.1%/g) ?? []).length, 1)
+    assert.match(html, /0\.10%/)
+    assert.match(html, /0\.00%/)
+  }
 })
 
 test('both categorical views scale exact Decimals before converting their shares to floats', async () => {
@@ -98,7 +114,7 @@ test('extreme mixed magnitudes preserve positive and zero labels without overflo
   ]) {
     const html = await renderer.render(snapshot, { view })
     assert.match(html, /100\.00%/)
-    assert.match(html, /&lt;0\.01%/)
+    assert.match(html, /&lt;0\.1%/)
     assert.match(html, /0\.00%/)
     assert.doesNotMatch(html, /10000000000000000000000\.00%/)
   }
@@ -108,6 +124,7 @@ test('the original pie remains the default and does not silently become a stack'
   const snapshot = frame({ axes: [categoryAxis(2)], values: [{ name: 'v', values: [2, 1] }] })
   const html = await renderer.render(snapshot, { view: { chart: 'pie' } })
   assert.match(html, /data-chart="pie"/)
+  assert.match(html, /fill="none" stroke="var\(--chart-1\)"/)
   assert.doesNotMatch(html, /data-chart="category-composition"/)
 })
 

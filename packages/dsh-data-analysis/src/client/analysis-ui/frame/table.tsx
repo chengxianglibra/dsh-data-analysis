@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useCopy } from '../../i18n/context.tsx'
 import { DatasetTable } from '../../presentation/table.tsx'
 import { useSelectableFramePoint } from './domain-point-selection.tsx'
-import { displayFrameCell, type Snapshot } from './model.ts'
+import { aggregationSymbol, displayFrameCell, interpretationOf, type Snapshot } from './model.ts'
 import { useFrameSelection } from './selection-context.tsx'
 import { MAX_FROZEN } from './styles.ts'
 
@@ -105,6 +105,9 @@ export function DataTable({
       >
         <DatasetTable
           data={data}
+          aggregationForColumn={(column) =>
+            aggregationSymbol(interpretationOf(snapshot)?.valueContexts[column.id])
+          }
           visibleRowIndices={visibleRowIndices}
           filterSelectionKey={filterSelectionKey}
           columns={visible}

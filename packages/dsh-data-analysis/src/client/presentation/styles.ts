@@ -14,9 +14,11 @@ export const PRESENTATION_STYLES = `
 .pr-table :is(th,td){min-width:90px;max-width:400px}
 .pr-table td{white-space:pre-wrap;overflow-wrap:anywhere}
 .pr-table .pr-numeric{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.pr-table td[data-cell-null=true]{color:var(--muted-foreground)}
+:is(.pr-table,.fv-records-preview) td[data-cell-null=true]{color:var(--muted-foreground);font-style:italic}
+:is(.pr-table,.fv-records-preview) tbody tr:hover{background:var(--muted)}
 .pr-table th.pr-numeric button{margin-left:auto}
 .pr-column-label{white-space:normal;overflow-wrap:anywhere}
+.pr-column-meta{color:var(--muted-foreground);font:10px var(--mv-font-mono,ui-monospace,monospace);white-space:nowrap}
 .pr-sort-indicator{flex:none}
 .pr-cell-select{max-width:100%;white-space:normal;cursor:pointer}
 button.pr-cell-select{background:transparent;border:0;padding:0;color:inherit}
