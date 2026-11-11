@@ -69,18 +69,11 @@ CSV, JSON, Parquet, and Excel `.xlsx` files are supported. Reading `.xlsx` for t
 Convert older `.xls` files to `.xlsx`, CSV, or Parquet first.
 To view or deliver a CSV, TSV, or XLSX file, ask the assistant to use native `present`, then open the read-only DSH spreadsheet preview on the right. Tables you want to inspect in an analysis view use the report reader. The plugin does not write XLSX or analyze older `.xls` files.
 
-**Databases**: Open Data Sources (数据源) beside the session title to view connections and their configuration status in the current workspace:
+**Databases**: Ask the assistant in chat to add, change, remove, or test a data source. Supply non-secret connection details in chat; enter passwords and tokens in the credential form.
 
-1. Select Add Data Source (新增数据源), choose an engine, and enter a name and connection details.
-2. If authentication is required, enter the username, password, or token under Connection Credentials (连接凭证).
-3. Save and test the connection. Use the result to check the address, credentials, or access permissions.
+Open Data Sources (数据源) beside the session title to view the current workspace's data sources, connection properties, and credential status, and to add, replace, or delete saved credentials. Saved values are not displayed; credentials may be shared across data sources or workspaces.
 
-Use Edit Configuration (编辑配置) to update an existing connection. Its name and engine stay fixed; test the connection again after saving.
-Saved credential values are not displayed; leave them blank to keep using them. Submit passwords and tokens through the credential form, not in chat messages.
-
-If a data source needs to be added or repaired during analysis, the assistant can open the configuration page.
-Enter a new connection or choose Use Existing Data Source (使用已有数据源), then select Save and Test, Continue on Success (保存并测试，成功后继续).
-The assistant resumes analysis after verifying the connection and access to the target data.
+When analysis or a test needs credentials, the assistant waits for you to enter them. Saving and continuing resumes the original call; saving credentials does not establish that the connection works.
 
 ### 2. Ask questions in natural language
 

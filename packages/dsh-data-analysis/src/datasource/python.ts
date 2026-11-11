@@ -30,7 +30,6 @@ import {
   type MarivoCredentialService,
   type PreparedCredentialExecution,
 } from './service.ts'
-import { datasourceToolValue } from './test.ts'
 
 export interface MarivoPythonExecutionSummary {
   phase: 'preparing' | 'executing' | 'capturing-code'
@@ -108,37 +107,6 @@ const commonOutput = {
   execution: { ...executionSchema, required: true },
   project: projectSchema,
 } as const
-const failureSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    code: { type: 'string', required: true },
-    exception_type: { type: 'string', required: true },
-    backend_code: { ...nullableString, required: true },
-    backend_name: { ...nullableString, required: true },
-    message: { type: 'string', required: true },
-  },
-} as const satisfies ValueSchemaSpec
-const repairSchema = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    kind: { type: 'string', required: true },
-    help_target: {
-      type: 'object',
-      additionalProperties: false,
-      required: true,
-      properties: {
-        surface: { type: 'string', required: true },
-        canonical_id: { ...nullableString, required: true },
-      },
-    },
-    action: { type: 'string', required: true },
-    snippet: { ...nullableString, required: true },
-    candidates: { type: 'array', items: { type: 'string' }, required: true },
-    preserves_evidence: { oneOf: [{ type: 'boolean' }, { type: 'null' }], required: true },
-  },
-} as const satisfies ValueSchemaSpec
 const pythonOutputSchema = {
   oneOf: [
     {
@@ -208,18 +176,6 @@ const pythonOutputSchema = {
             nextAction: { type: 'string', required: true },
           },
         },
-      },
-    },
-    {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        ...commonOutput,
-        status: { type: 'string', const: 'failed', required: true },
-        name: { type: 'string', required: true },
-        latency_ms: { ...nullableNumber, required: true },
-        failure: { oneOf: [failureSchema, { type: 'null' }], required: true },
-        repair: { oneOf: [repairSchema, { type: 'null' }], required: true },
       },
     },
   ],
@@ -410,16 +366,11 @@ export function registerMarivoPythonTool(
               args.datasources,
             ),
           )
-          if (!('status' in admission) || admission.status !== 'ready')
+          if (admission.status !== 'ready')
             return {
-              ...datasourceToolValue(admission),
+              ...admission,
               ...(project ? { project } : {}),
-              execution: summary(
-                'not-started',
-                'handoff' in admission && admission.handoff
-                  ? admission.handoff.nextAction
-                  : 'Resolve the datasource credential requirement or reported connection failure before retrying.',
-              ),
+              execution: summary('not-started', admission.handoff.nextAction),
             }
           prepared = admission
           const { binding } = prepared.bridge

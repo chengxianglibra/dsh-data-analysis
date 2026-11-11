@@ -258,7 +258,6 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
         .filter((name) => name.startsWith('marivo_'))
         .sort(),
       [
-        'marivo_datasource_configure',
         'marivo_datasource_test',
         'marivo_help',
         'marivo_next_steps',

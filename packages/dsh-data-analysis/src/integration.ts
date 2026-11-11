@@ -1,5 +1,4 @@
 import { MarivoDatasourceBridge } from './datasource/bridge.ts'
-import type { ManagedCredentialDefaults } from './datasource/defaults.ts'
 import type { CredentialStore } from './datasource/service.ts'
 import type { MarivoEnvironment } from './environment/index.ts'
 
@@ -11,8 +10,6 @@ export interface MarivoIntegrationV1 {
   readonly onWorkspaceBound?: (environment: MarivoEnvironment) => Promise<void>
   /** Harness-managed store used only by datasource operations. */
   readonly datasourceCredentials?: CredentialStore
-  /** Credential reference names, validated against the live Workspace Runtime schema. */
-  readonly managedCredentialDefaults?: ManagedCredentialDefaults
 }
 
 export { withDatasourceDefaults } from './datasource/defaults.ts'

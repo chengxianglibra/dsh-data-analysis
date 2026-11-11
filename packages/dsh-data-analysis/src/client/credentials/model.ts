@@ -1,19 +1,12 @@
-import type {
-  DatasourceAuthoring,
-  DatasourceConfiguration,
-  DatasourceCreateInput,
-} from '../../datasource/authoring.ts'
 import { credentialRevisionSchema } from '../../datasource/changes-contract.ts'
-import type { DatasourceAuthoringView } from '../../datasource/defaults.ts'
 import type {
-  ConfigurationRequestView,
   CredentialAction,
   CredentialContextView,
   CredentialOperationView,
   CredentialRequestView,
 } from '../../datasource/service.ts'
 import { PendingTasks } from '../../lifecycle.ts'
-import { CopyError, errorMessage, message, type Notice } from './../i18n/copy.ts'
+import { errorMessage, type Notice } from './../i18n/copy.ts'
 import type { BrowserRpc } from '../semantic-browser/model.ts'
 import type { CredentialChanges } from './changes.ts'
 
@@ -51,7 +44,7 @@ export interface CredentialClientState {
   generation: string
   revision?: string
   datasources: CredentialContextView[]
-  requests: (CredentialRequestView | ConfigurationRequestView)[]
+  requests: CredentialRequestView[]
   requestId: string
   selected: string
   loading: boolean
@@ -199,159 +192,6 @@ export class CredentialClientModel {
     this.#patch({ open: true, requestId: '' })
     for (const entry of this.#operations.values()) void this.#query(entry.handle)
     await this.selectWorkspace(workspaceId, selectedToken)
-  }
-  async authoring(
-    workspaceId: string,
-    signal: AbortSignal,
-    mode: 'create' | 'edit' = 'create',
-  ): Promise<DatasourceAuthoringView & { generation: string }> {
-    return (await this.#call(
-      'authoring',
-      { workspaceId, mode },
-      signal,
-    )) as DatasourceAuthoringView & {
-      generation: string
-    }
-  }
-  async createDatasource(
-    workspaceId: string,
-    schema: DatasourceAuthoring & { generation: string },
-    input: DatasourceCreateInput,
-  ): Promise<void> {
-    let result: { name: string }
-    try {
-      result = (await this.#call('create-datasource', {
-        workspaceId,
-        generation: schema.generation,
-        fingerprint: schema.fingerprint,
-        ...input,
-      })) as { name: string }
-    } catch (error) {
-      if (
-        error instanceof CredentialResponseError &&
-        [
-          'datasource-credential-ref-invalid',
-          'datasource-already-exists',
-          'context-changed',
-        ].includes(error.code)
-      )
-        throw error
-      throw new CopyError(
-        message('marivo.credentials.value-if-submission-is-unconfirmed-refresh-the-list-to', {
-          p0: error instanceof Error ? errorMessage(error) : 'marivo.credentials.create-failed',
-        }),
-      )
-    }
-    if (!this.#state.open || this.#state.workspaceId !== workspaceId) return
-    await this.selectWorkspace(workspaceId)
-    if (this.#state.workspaceId !== workspaceId) return
-    const created = this.#state.datasources.find((item) => item.name === result.name)
-    if (created) this.select(created.token)
-  }
-  async configuration(
-    workspaceId: string,
-    name: string,
-    signal: AbortSignal,
-  ): Promise<DatasourceConfiguration> {
-    return (await this.#call(
-      'configuration',
-      { workspaceId, name },
-      signal,
-    )) as DatasourceConfiguration
-  }
-  async saveConfiguration(
-    workspaceId: string,
-    schema: DatasourceAuthoring & { generation: string },
-    input: DatasourceCreateInput,
-    original?: DatasourceConfiguration,
-    requestId?: string,
-    changes: Record<string, string> = {},
-  ): Promise<void> {
-    try {
-      let result: { name: string; request?: ConfigurationRequestView }
-      try {
-        result = (await this.#call(original ? 'update-datasource' : 'create-datasource', {
-          workspaceId,
-          generation: schema.generation,
-          fingerprint: schema.fingerprint,
-          ...input,
-          ...(original ? { name: original.name, version: original.version } : {}),
-          ...(requestId ? { requestId } : {}),
-        })) as { name: string; request?: ConfigurationRequestView }
-      } catch (error) {
-        if (
-          error instanceof CredentialResponseError &&
-          [
-            'datasource-credential-ref-invalid',
-            'datasource-already-exists',
-            'datasource-config-changed',
-            'datasource-identity-fixed',
-            'context-changed',
-            'operation-busy',
-          ].includes(error.code)
-        )
-          throw error
-        throw new CopyError(
-          message('marivo.credentials.value-if-saving-is-unconfirmed-reload-the-configuration-to', {
-            p0: error instanceof Error ? errorMessage(error) : 'marivo.credentials.save-failed',
-          }),
-        )
-      }
-
-      if (
-        !this.#state.open ||
-        this.#state.workspaceId !== workspaceId ||
-        (requestId && this.#state.requestId !== requestId)
-      )
-        return
-      if (result.request) {
-        this.#acceptRequest(result.request)
-        const context = result.request.context
-        if (context) {
-          this.#checkCredentialWrites(context, changes)
-          const ready = context.refs.every(
-            (ref) => context.credentials[ref]?.configured || changes[ref],
-          )
-          if (ready || Object.keys(changes).length) await this.start(context, 'submit', changes)
-        }
-      } else {
-        await this.selectWorkspace(workspaceId)
-        if (this.#state.workspaceId !== workspaceId) return
-        const selected = this.#state.datasources.find((item) => item.name === result.name)
-        if (selected) {
-          this.select(selected.token)
-          this.#checkCredentialWrites(selected, changes)
-          if (Object.keys(changes).length) await this.start(selected, 'save', changes)
-        }
-      }
-    } finally {
-      for (const ref of Object.keys(changes)) delete changes[ref]
-    }
-  }
-  #checkCredentialWrites(context: CredentialContextView, changes: Record<string, string>) {
-    if (Object.keys(changes).some((ref) => context.credentials[ref]?.configured))
-      throw new Error(
-        'marivo.credentials.configuration-saved-but-the-reference-already-exists-existing-credentials',
-      )
-  }
-  #acceptRequest(request: ConfigurationRequestView) {
-    this.#patch({
-      requests: [...this.#state.requests.filter((item) => item.id !== request.id), request],
-    })
-  }
-  async selectConfiguration(workspaceId: string, requestId: string, name: string): Promise<void> {
-    const request = (await this.#call('select-configuration', {
-      workspaceId,
-      requestId,
-      name,
-    })) as ConfigurationRequestView
-    if (
-      this.#state.workspaceId !== workspaceId ||
-      this.#state.requestId !== requestId ||
-      !this.#state.open
-    )
-      return
-    this.#acceptRequest(request)
   }
   close(): void {
     this.#read?.abort()
@@ -516,13 +356,12 @@ export class CredentialClientModel {
             generation: string
             cursor: string
             requests: CredentialRequestView[]
-            configurationRequests?: ConfigurationRequestView[]
           }
           if (readSignal.aborted) continue
           credentialRevisionSchema.parse({ generation: value.generation, cursor: value.cursor })
           if (value.generation !== item.value.generation)
             throw new Error('credential-generation-changed')
-          const requests = [...value.requests, ...(value.configurationRequests ?? [])]
+          const requests = value.requests
           this.#patch({
             generation: value.generation,
             revision: value.cursor,
@@ -626,9 +465,7 @@ export class CredentialClientModel {
         .filter(
           ([scope, entry]) =>
             entry.handle.generation === generation &&
-            (entry.workspaceId !== workspaceId ||
-              scopes.has(scope) ||
-              entry.operation?.action === 'delete-datasource'),
+            (entry.workspaceId !== workspaceId || scopes.has(scope)),
         )
         .map(([scope, entry]) => [
           scope,
@@ -738,7 +575,7 @@ export class CredentialClientModel {
     action: CredentialAction,
     changes: Record<string, string> = {},
     reference?: string,
-    deleteCredentials?: boolean,
+    workspaceId = context.workspaceId,
   ): Promise<void> {
     const settling = this.#settling.get(context.token)
     if (settling) {
@@ -749,7 +586,7 @@ export class CredentialClientModel {
       const refreshed = this.#state.datasources.find((item) => item.token === context.token)
       if (
         this.#lifetime.signal.aborted ||
-        this.#state.workspaceId !== context.workspaceId ||
+        (!requestId && this.#state.workspaceId !== workspaceId) ||
         this.#state.generation !== generation ||
         this.#state.selected !== selected ||
         this.#state.requestId !== requestId ||
@@ -788,8 +625,7 @@ export class CredentialClientModel {
       id: crypto.randomUUID(),
       scope: context.token,
     }
-    const requestId =
-      action === 'submit' || action === 'diagnose' ? this.#state.requestId : undefined
+    const requestId = action === 'submit' ? this.#state.requestId : undefined
     const operation: CredentialOperationView = {
       id: handle.id,
       scope: handle.scope,
@@ -802,7 +638,7 @@ export class CredentialClientModel {
     this.#operations.set(handle.id, {
       handle,
       name: context.name,
-      workspaceId: context.workspaceId,
+      workspaceId,
       operation,
     })
     this.#patch({
@@ -823,9 +659,6 @@ export class CredentialClientModel {
         ...(requestId ? { requestId } : {}),
         changes,
         ...(reference ? { reference } : {}),
-        ...(action === 'delete-datasource'
-          ? { deleteCredentials: deleteCredentials === true }
-          : {}),
       })
     } catch (error) {
       if (error instanceof CredentialResponseError && START_REJECTIONS.has(error.code)) {
@@ -884,9 +717,7 @@ export class CredentialClientModel {
           if (signal.aborted) return
           if (!operation) {
             const error =
-              entry.operation?.action === 'delete-datasource'
-                ? 'marivo.credentials.deletion-status-cannot-be-recovered-some-deletion-may-have'
-                : 'marivo.credentials.operation-status-cannot-be-recovered-saving-may-have-occurred'
+              'marivo.credentials.operation-status-cannot-be-recovered-saving-may-have-occurred'
             this.#settle({ ...entry, operation: undefined, error })
             return
           }

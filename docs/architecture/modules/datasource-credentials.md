@@ -2,37 +2,13 @@
 
 ## 所有权与入口
 
-DSH Credentials 保存、解析和描述凭证；Marivo 定义 datasource、凭证字段和连接失败语义；插件负责
-Workspace 绑定、管理页面、等待中的调用和单次执行注入。凭证使用遵循 Marivo 公开的
-`md.credential_scope(resolver)` 契约。
+DSH Credentials 保存、解析和描述凭证；Marivo 定义 datasource、凭证字段和连接失败语义；插件负责 Workspace 绑定、凭证页面、等待中的调用和单次执行注入。凭证使用遵循 Marivo 公开的 `md.credential_scope(resolver)` 契约。
 
-在 DSH 会话标题旁点击“数据源”，打开该会话所属 Workspace 的原生右侧 Tab，不提供 Workspace 筛选项。
-数据源列表以横向标签排列在内容上方，名称右侧以绿点表示凭证已配齐或无需凭证，红点表示尚未配齐；
-配置及进行中状态通过无障碍描述和悬停提示提供；方向键移动标签焦点，Enter 或 Space 切换详情。
-标题右上角依次提供新增和刷新图标。
-Tab 直接承载新增/编辑数据源、属性、凭证配置与连接测试，不再打开数据源弹出页。
-每个 Tab occurrence 拥有独立的选择、表单和操作查询；共享监听器只分发 Host 凭证待办，
-新待办及“等待配置凭证”入口打开所属会话的数据源 Tab。切换会话保留 Host Tab 状态；Workspace 绑定撤销时使旧页面失效。
-刷新不终止已提交操作的状态查询，操作句柄按会话及 occurrence 保存用于页面重载恢复；不保存未提交的输入值。
-入口通过 `conversation.session.header.actions` 使用所属会话的 `workspaceId`；
-无会话或空会话时 Harness 不显示会话标题，侧栏底部不保留入口。管理页不要求 live Agent，显示 datasource、
-引擎、连接属性、字段引用、是否配置、来源、是否可写和最近测试。连接属性只读展示公开 `md.load().describe()` 的
-`backend_type` 与 `literal_fields`，凭证字段使用 `env_refs` 独立展示；读取属性不解析 Harness 凭据。
-数据源名称右侧提供编辑配置图标，“连接状态”右侧提供测试连接图标；图标保留中文悬停提示和无障碍名称。
-“删除已保存值”和确认删除按钮使用浅红色背景，深色模式使用对应的深红底色。
-页面支持新增数据源，以及字段旁的“新增凭证”“确认更换”、删除和测试，不回显已保存的凭据值。替换与删除需要明确确认。
-管理页的新增和更换直接保存当前字段，不自动测试尚未配齐的凭证，也没有独立的“保存并验证”按钮；“测试连接”使用已保存值。
-等待中的调用使用“提交凭证并继续”保存整组输入并验证，成功后继续原调用。
-同一原始引用跨 Workspace 共享；测试结果属于对应的环境和 datasource 定义，凭证更新后标记过期。
-入口与“语义层”共用会话标题按钮样式；管理页按数据源列表、数据源属性、凭证配置与连接状态分区，
-沿用语义对象页的标题、属性行及图标按钮视觉层级，适配窄屏和深色模式。图标操作提供可访问名称与提示，
-选中数据源仍保留键盘焦点指示。已结束的调用不再列入会话待办；当前打开的调用仍显示结束原因和返回管理入口。
-页面只保留操作所需状态与反馈；常驻区域不重复解释安全机制、等待预算或连接测试的限定条件。
-保存或连接失败、取消及凭证删除结果须保持面板可操作；`data-error` 布尔值与 `data-tone` 状态值直接
-用于渲染，不经过文案翻译。连接测试失败时保留原调用的待处理状态，由用户修正配置后重新验证。
+会话标题旁的“数据源”入口以及空白会话快捷入口打开所属 Workspace 的右侧 Tab。页面只读展示数据源、引擎、连接属性、凭证字段与引用、配置状态、来源和可写性，支持刷新及凭证新增、更换、删除；已保存值不回显，替换和删除需要确认。原始引用可跨 Workspace 共享。数据源名称的状态表示凭证是否配置，不表示连接是否成功。
 
-原始引用按 UTF-8 字节编码到 `DSH_DATA_ANALYSIS_CREDENTIAL_<HEX>`，区分大小写。只访问映射地址，
-不回退到同名 Host credential。继续拒绝 `MARIVO_*`、`DSH_DATA_ANALYSIS_*` 和 Host 自有 Shell facts。
+数据源定义由 Agent 在对话中依据 live Help 调用 Marivo 公开 API 创建、修改或删除；连接测试由对话中的 `marivo_datasource_test` 执行。密码和令牌只在凭证表单中输入，不通过聊天或代码传递。
+
+原始引用按 UTF-8 字节编码到 `DSH_DATA_ANALYSIS_CREDENTIAL_<HEX>`，区分大小写。只访问映射地址，不回退到同名 Host credential。继续拒绝 `MARIVO_*`、`DSH_DATA_ANALYSIS_*` 和 Host 自有 Shell facts。
 
 ## 待办通知与连接生命周期
 
@@ -49,71 +25,13 @@ Host 遇到临时 `credential-state-unavailable` 时，在原订阅内以 1、2�
 Host 继续复用状态变化唤醒与每 25 秒的上下文复核，未变化时不发送通知。HTTP watch 不提供 cursor 长轮询，页面空闲时不占用凭证 HTTP 长轮询连接。断开通知不取消等待中的原调用，
 凭据提交仍继续原调用，不重放写入。Harness 原生 HMR SSE 保持不变。
 
-## 删除数据源与对应凭证
-
-管理页的数据源名称旁提供“删除数据源”，确认区显示目标及凭证引用。默认保留已保存凭证；
-用户勾选“同时删除对应的已保存凭证”后才一并处理。引用可能跨数据源、跨 Workspace 共享，
-确认区提示删除凭证对共享使用者的影响；现有字段旁的单个凭证删除入口继续保留。
-
-删除定义通过 checked Runtime 的公开 `md.remove(name)` 执行，同一 Python 进程先复核公开
-`md.load().describe()` 的 definition fingerprint。可删除范围由 Marivo 决定，包括对内置 `default` 的保护；
-插件不直接删除定义文件，不删除远端数据库数据，也不级联修改语义层、Artifact 或 Evidence。
-
-删除沿用 Host generation、context token、credential version 和 operation ID，按数据源与现有写入串行。
-提交后通过 operation 查询结果，不自动重放删除；开始删除时使旧管理上下文、等待中的配置请求及尚未启动的执行失效。
-已启动的执行仍遵循原生命周期，不因删除自动回滚。只有确认定义删除成功后，才按去重引用调用 Harness
-`CredentialProvider.unset()`；凭证值不被解析、回显或传入 Python。未勾选时，不使其他数据源的共享凭证失效。
-
-数据源删除和凭证删除不是跨系统事务。只读来源、provider 失败或取消可能留下部分凭证；结果分别展示
-数据源是否确认删除、已删除引用和删除失败引用，标签移除后仍保留结果，用户可以关闭。失败凭证可在 Harness
-凭证管理或其原来源处理，不因后续失败恢复已删除的定义。浏览器重载可恢复进行中操作的查询句柄；
-已关闭或已完成并清理的客户端结果不作为持久删除审计。
-
-## 新增与编辑数据源
-
-表单通过 checked Runtime 读取公开 `md.DatasourceSpec` union 和各 Spec 的 dataclass 字段，展示引擎、必填项、默认值及说明。
-各字段说明位于字段名称下方、输入框上方，长说明和窄屏自然换行。字段标识保持原名；说明仅在完整文本匹配时翻译为中文，
-Runtime 新增或修改的未知说明保留原文，避免套用过期解释。
-插件不维护引擎注册表或连接字段 schema。表单优先展示必填与常用连接字段，将其他参数放入高级设置；来源时区保持可见。`ai_context` 和 DuckDB `read_only` 不在连接表单中编辑，编辑已有数据源时保留其原值；新建 DuckDB 数据源忽略该字段的管理员默认配置，使用 Runtime 默认值。其余复杂配置字段接受 JSON。MySQL 和 PostgreSQL 的 `autocommit` 只允许默认或 `true`，不静默更改已有的无效值。
-关系型连接凭证在同一表单直接填写；手动指定的引用只能复用，不与新凭证值一起提交。DuckDB `secrets` 分别以 scoped S3、HTTP bearer 或 HTTP Header 表单编辑；S3 保留区域、临时令牌与可选连接参数，HTTP Header 支持多项。输入新凭证值会生成新引用，留空可复用已保存引用；共享值的替换需在凭据管理中明确确认。插件按 Runtime 的 `EnvRef` 字段构造 `md.env()`，按结构化结果构造公开 secret 对象。未知或无法完整编辑的 scoped 配置阻止提交，避免丢失字段。值仅保留在当前表单内存。非法引用在执行 Python 和写入前拒绝，
-保留安全错误码 `datasource-credential-ref-invalid`，页面说明引用命名规则且不回显被拒绝的输入。
-`wall_clock_timezone` 用于解释未声明时区的本地时间与业务日期，不改变连接设置或实际时间点。新建时优先使用管理员配置的默认值，否则使用浏览器设备的当前时区；用户可搜索全球时区列表选择，也可输入其他时区、固定偏移或留空不声明。编辑时保留已有值或未声明状态，并在并发版本检查中包含该字段。
-新增表单切换引擎会重置字段和凭证草稿；存在未保存输入时先请求确认，取消保留输入，确认后清除旧引擎草稿。
-点击“确认新增数据源”时 Host 重新解析 Workspace 并核对 generation 与 Runtime fingerprint，在串行写入区间内调用 `md.register(spec)`。
-Marivo 校验定义并拥有项目文件写入；现有同名定义拒绝新增。配置 RPC 不接受项目路径、Python 代码或凭证值，引用须符合 DSH 的命名限制。
-普通管理入口保存配置后刷新当前 Workspace，选中新数据源并保存同页填写的凭证，随后可单独测试连接。
-新增请求不自动重放；响应未确认时提示先刷新核对。插件串行化自己的新增操作，同名检查与外部编辑器的同时写入不构成跨进程事务。
-已明确拒绝的非法引用、同名定义和过期上下文只提示修正原因，不附加“提交结果未确认”。
-
-数据源详情中的“编辑配置”回填当前 Runtime 字段，名称与引擎只读。配置快照包含版本；
-保存前重新读取并核对版本，经插件串行写入后调用 `md.register()`。`md.load().describe()` 的属性和引用、
-公开 Semantic Details 的 `context` 共同用于完整回填，保留 `extra`、scoped secret 引用与 `ai_context`；
-读取不完整时拒绝保存，不直接操作配置文件。修改引用不删除旧的 Harness 共享凭证。
-配置变化刷新打开的管理页并使旧测试失效；其他 Tab 的编辑草稿保留，陈旧提交须重新加载。
-此校验不构成与外部文件修改者之间的原子 compare-and-swap。
-
-配置请求通过同一 watch 通道的 `configurationRequests` 传递，尚未选择数据源时没有 context。
-`configuration`、`update-datasource`、`select-configuration` 补齐私有 RPC；选择或保存后重新绑定 context，
-沿用已有凭证操作及查询句柄。请求的 Workspace、Runtime 与 Session 身份在操作前和完成时核验。
-请求页使用“保存并测试，成功后继续”：先保存配置，再通过已有凭证 `start` 操作保存凭证并测试，失败不回滚；凭证不齐时仍可进入已有凭证表单。
-配置 RPC 始终只接受引用，不携带值；客户端提交后清空凭证输入，失败或离开页面后不重放秘密值。
-自动引用名包含数据源名、字段名与随机标识，不由凭证值派生。编辑时留空保留原引用，填写新值生成新引用；
-手动指定引用时只能复用已有值，不能同时填写新值。更换共享凭证需要通过已有凭证页确认，不删除旧引用。
-请求说明默认折叠；新增流程与“使用已有数据源”通过显式切换区分，下拉框只在复用流程出现。
-只有本次配置与凭证版本的成功测试才能完成一次原调用。取消配置请求返回非成功结果，不创建后续任务。
-切换会话不抢占其他会话；Tab 关闭或重连可重新打开待办，原调用结束和 Host 重启不恢复旧任务。
-
 ## 工具与自动续接
 
-在 Harness 中连接配置由 Host 表单拥有；Runtime `marivo-semantic` 中通用 datasource authoring 指引不授予 Agent 代写连接配置的权限，业务语义建模仍由该 Skill 指导。常驻路由明确此适配边界。
-子 Agent/委派调用缺配置或凭据时不打开表单，返回 `handoff.reason: parent-agent-required` 和 `nextAction`，由父 Agent 完成 Host 交互后续接受阻工作。`credentialInteraction: none` 返回 `web-interaction-disabled`，要求在可交互 Host 处理后再执行。回执仅携带名称、引用和非秘密修复信息，不重复请求秘密值；`marivo_python` 准备失败摘要沿用相同 nextAction。
+Agent 依据绑定 Runtime 的 live Help 通过 `marivo_python` 修改非秘密数据源定义，凭证引用使用 Marivo 公开 API；具体凭证值由用户在 Host 表单中填写。删除数据源不级联删除共享凭证。
 
-- `marivo_datasource_configure({ mode, name?, reason })`：`create` 打开新增页，也允许选择已有数据源；
-  `edit` 必须提供现有名称并直接打开编辑页。`reason` 为不含凭证的简短说明；工具不接受配置值。
-  Web 根 Agent 保持原调用等待，成功返回 `status: ok`、`name` 和连接耗时，随后核验目标表；
-  `failed`、`cancelled`、`call-ended`、`context-changed`、`needs-configuration` 均不是连接成功。
-  Web 根 Agent 在打开表单前通过绑定 Runtime 明确准备当前项目，回执的 `project` 说明 created/already-ready；沿用 authoring 的固定 subprocess policy 与取消链。委派和无交互 handoff 不初始化项目。
-- `marivo_datasource_test({ name })`：执行真实 `md.load().test()`，同步管理页的 `lastTest/stale`。
+子 Agent/委派调用缺凭据时返回 `handoff.reason: parent-agent-required` 和 `nextAction`，由父 Agent 完成 Host 交互。`credentialInteraction: none` 返回 `web-interaction-disabled`；回执不包含秘密值。
+
+- `marivo_datasource_test({ name })`：通过 Host 凭证执行真实 `md.load().test()`，将连接结果返回对话。
 - `marivo_python({ code, datasources, project?, resultVariables?, timeoutMs? })`：project 省略为 none；required 明确准备当前 Workspace 项目。非空 datasources 或声明 resultVariables 必须使用 required，否则在用户代码执行和凭据准入前拒绝。顺序固定为绑定、必要项目准备、凭据准入、fresh identity、一次用户 Python。
   声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源；纯 Catalog 定义读取不连接数据源时可传空列表，
   仍安装拒绝未声明凭证请求的 resolver。
@@ -133,9 +51,7 @@ codeRef 只证明该次执行登记导出了该引用，不证明最初生产来
 记录失败通过 `codeCaptureError` 单独返回，保留原执行结果；调用方不应因此重放已经成功的分析。
 非零退出、超时或取消不签发成功执行引用。报告构建的精确引用读取见[展示数据投影](presentation-projection.md)。
 
-默认 `credentialInteraction: 'web'`。缺失配置时，根 Agent 的 test/python 保持原调用等待，并在会话标题
-显示待办入口。用户提交后先保存，再测试；成功继续原调用。测试失败保持表单，可修改后重试，或把 Marivo
-的失败与修复信息交还 Agent。已经配置齐全时的测试失败直接返回 Agent，不制造缺失输入待办。
+默认 `credentialInteraction: 'web'`。缺少凭证时，根 Agent 的 test/python 保持原调用等待，并显示待办入口。用户保存凭证后复核状态并继续原调用；保存不自动测试连接，测试或分析的结果由原调用返回对话。
 
 页面刷新只恢复 Host 待办和操作状态，不保存未提交值、不重放调用。用户取消、Agent 销毁或外层 Code Mode
 超时后，原调用结束，晚到的提交不能复活它。`credentialInteraction: 'none'` 与 subagent 返回
@@ -209,35 +125,20 @@ Host 消费并移除该头；该状态不改变原 worker 退出码，也不从�
 私有 RPC 使用 Host generation、context token、凭证 version 和 operation ID。相同 ID 只执行一次；
 响应丢失后仅查询，不重发秘密值。Client 按 operation ID 独立查询、展示与取消；刷新恢复全部未完成句柄，
 一个操作结束或晚到的响应不覆盖另一个操作。Client 操作列表只展示进行中状态，结束后立即移除记录和
-恢复句柄；对应数据源保留最近测试结果及必要的失败、取消或部分保存反馈，不累积历史操作列表。
+恢复句柄；保留必要的失败、取消或部分保存反馈，不累积历史操作列表。
 Host 为响应丢失恢复而保留终态和待办 30 分钟，容量有界；Host 重启后明确不可恢复。
 同一数据源的已完成操作须先刷新权威状态，后续操作才使用新的凭证版本；刷新失败或会话上下文变化时停止提交。
 Host 明确拒绝的前置条件直接展示原因；提交结果不确定时只查询原 operation ID，不重发凭证值。
-管理页关闭或刷新不取消正在保存的操作，显式取消才终止验证。已经成功保存的字段不会因为后续测试失败而回滚。
+管理页关闭或刷新不取消正在保存的操作，显式取消才终止操作。已经成功保存的字段不会因其他字段失败而回滚。
 
 写入与 snapshot 解析串行，写入时使受影响的待执行快照失效。执行前后复核定义和 version，拒绝旧上下文的晚到动作。
 外部 DSH credential 更新也使受影响的准备失效，并刷新等待表单的配置状态。准备、快照和连接测试期间的引用有单独的
 计数跟踪，不依赖管理页；中途更新会使旧快照或测试结果失效，完成后释放跟踪。provider 错误只投影安全错误码；
 原始值、异常详情不进入 RPC。只读来源由 DSH provider 拒绝写入，页面同时展示不可写状态。
 
-## 新建字段默认值
+## 集成方 authoring 能力
 
-Harness profile 中本插件的可选 `datasourceDefaults` 使用 `backend → 字段名 → JSON 值` 映射，
-作用于该插件实例服务的 Workspace；不增加项目侧配置或热更新机制。配置示例见[用户说明](../../../README.md)。
-配置通过 loader 原样传入，authoring 的 `mode: 'create'` 取得 checked Runtime schema 后校验完整映射，返回独立的 `creationDefaults`；
-不改写 Runtime 字段 `default`、backend 列表或 fingerprint。未配置时响应保持原样。
-authoring 省略 mode 时沿用 create；编辑表单显式使用 `mode: 'edit'`，只读取 Runtime schema，不校验或返回新建默认值，
-因此错误的新建默认值不会阻止已有数据源编辑。
-
-未知 backend、未知字段、错误类型、非 JSON 值及凭证引用或 scoped secret 字段明确失败，错误仅使用固定错误码和中文说明，
-不回显配置值。普通字符串、数字、布尔值按 Runtime 字段类型校验，JSON 字段的具体业务约束仍由 Runtime 保存流程校验。
-此配置仅用于非敏感值，不能用 JSON 字段绕过 Harness 凭据管理存储密钥。
-
-新增表单初始化和切换 backend 时填入配置值；未指定的字段继续显示原占位符或默认选项，不强制写入 Runtime 默认值。
-用户修改或清空后不会在重渲染时补回。`0`、`false` 和 JSON 按原表单格式转换；显式配置的空字符串保留并作为字符串提交，
-其他空字段继续沿用原有省略规则。编辑时保留原配置中的显式空字符串，即使管理员已移除新建默认值，修改其他字段也不会将它省略。
-编辑已有数据源只读取已保存配置，选择复用已有数据源不应用默认值。
-提交仍使用原 generation、Runtime fingerprint 与配置保存流程，不在服务端补齐默认值。
+公开 integration seam 保留 Workspace authoring bridge 与 `withDatasourceDefaults`，供已有集成在 Workspace 初始化时使用；社区页面不使用这些能力。集成方继续依据 checked Runtime 的 schema 验证非秘密默认值。
 
 ## 验证
 
@@ -248,7 +149,7 @@ npm run validate:datasource-execution:real
 npm run validate:credentials:web
 ```
 
-配置、新建默认值、定义编辑、删除及模型续接分别验证；本地验证指南放在 `docs/testing/validation.md`。
+凭证管理、对话中的定义变更、测试及模型续接分别验证；本地验证指南放在 `docs/testing/validation.md`。
 
 ## Python 设置验收记录
 

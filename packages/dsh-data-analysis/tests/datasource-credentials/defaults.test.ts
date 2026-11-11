@@ -1,14 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { creationFieldValues } from '../../src/client/credentials/defaults.ts'
-import { CredentialClientModel } from '../../src/client/credentials/model.ts'
-import { errorMessage as readError, translator } from '../../src/client/i18n/copy.ts'
 import type { DatasourceAuthoring } from '../../src/datasource/authoring.ts'
-import { type DatasourceDefaults, withDatasourceDefaults } from '../../src/datasource/defaults.ts'
-import { registerCredentialRpc } from '../../src/datasource/rpc.ts'
-import { Config } from '../../src/plugin.ts'
-import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
-import { fixture } from './fixtures.ts'
+import { withDatasourceDefaults } from '../../src/datasource/defaults.ts'
 
 const schema: DatasourceAuthoring = {
   fingerprint: 'runtime-fingerprint',
@@ -28,63 +21,15 @@ const schema: DatasourceAuthoring = {
   })),
 }
 
-test('Harness configuration carries optional defaults and defers value validation without echoing secrets', () => {
-  assert.equal(Config({}).datasourceDefaults, undefined)
-  const defaults = { trino: { port: 0 } }
-  assert.deepEqual(Config({ datasourceDefaults: defaults }).datasourceDefaults, defaults)
-  assert.equal(
-    Config({
-      datasourceDefaults: 'private-canary' as unknown as NonNullable<Config['datasourceDefaults']>,
-    }).datasourceDefaults,
-    'private-canary',
-  )
-})
-
 test('creation defaults are separate from the untouched Runtime schema and preserve typed falsy values', () => {
   const before = structuredClone(schema)
   assert.equal(withDatasourceDefaults(schema, undefined), schema)
-  assert.deepEqual(creationFieldValues(schema, 'trino'), {})
   const configured = { trino: { host: '', port: 0, secure: false, extra: { tags: [null, true] } } }
   const result = withDatasourceDefaults(schema, configured)
   assert.deepEqual(schema, before)
   assert.equal(result.fingerprint, before.fingerprint)
   assert.deepEqual(result.backends, before.backends)
   assert.deepEqual(result.creationDefaults, configured)
-  assert.deepEqual(creationFieldValues(result, 'trino'), {
-    host: '',
-    port: '0',
-    secure: 'false',
-    extra: '{"tags":[null,true]}',
-  })
-  assert.deepEqual(creationFieldValues(result, 'duckdb'), {})
-})
-
-test('new datasource timezone defaults to the browser only when the live field exists and no administrator default is set', () => {
-  const timezoneSchema = structuredClone(schema)
-  timezoneSchema.backends[0]!.fields.push({
-    name: 'wall_clock_timezone',
-    type: 'string',
-    required: false,
-    description: '',
-  })
-  assert.equal(
-    creationFieldValues(timezoneSchema, 'trino', 'Asia/Shanghai').wall_clock_timezone,
-    'Asia/Shanghai',
-  )
-  assert.equal(
-    creationFieldValues(timezoneSchema, 'duckdb', 'Asia/Shanghai').wall_clock_timezone,
-    undefined,
-  )
-  for (const configured of ['', 'America/New_York']) {
-    const view = withDatasourceDefaults(timezoneSchema, {
-      trino: { wall_clock_timezone: configured },
-    })
-    assert.equal(
-      creationFieldValues(view, 'trino', 'Asia/Shanghai').wall_clock_timezone,
-      configured,
-    )
-  }
-  assert.equal(creationFieldValues(timezoneSchema, 'trino', '').wall_clock_timezone, undefined)
 })
 
 test('invalid defaults fail without echoing any configured value', () => {
@@ -129,101 +74,4 @@ test('managed reference defaults use live fields and cannot enter ordinary confi
     withDatasourceDefaults(schema, {}, { trino: { missing_env: 'WAREHOUSE_PASSWORD' } }),
   )
   assert.throws(() => withDatasourceDefaults(schema, { trino: { password: 'WAREHOUSE_PASSWORD' } }))
-})
-
-test('authoring RPC and client carry defaults without modifying creation payload or Runtime identity', async (t) => {
-  const f = fixture()
-  t.after(() => f.service.close())
-  f.bridge.authoring = async () => ({ ...schema, fingerprint: f.bridge.binding.fingerprint })
-  let submitted: unknown
-  f.bridge.create = async (input) => {
-    submitted = input
-    return { name: 'warehouse' }
-  }
-  const { connection, channels } = createConnectionFixture()
-  t.after(registerCredentialRpc(connection, f.service, f.resolve, { trino: { port: 0 } }))
-  const handler = channels.get('/dsh-data-analysis-credentials')!
-  const model = new CredentialClientModel({
-    call: async (_channel, endpoint, payload, signal) =>
-      handler(endpoint, payload, signal ?? f.controller.signal),
-  })
-  t.after(() => model.dispose())
-  const result = await model.authoring('workspace', f.controller.signal)
-  assert.equal(result.fingerprint, f.bridge.binding.fingerprint)
-  assert.deepEqual(result.creationDefaults, { trino: { port: 0 } })
-  await model.createDatasource('workspace', result, {
-    backend: 'trino',
-    fields: { name: 'warehouse', port: 99 },
-  })
-  assert.deepEqual(submitted, { backend: 'trino', fields: { name: 'warehouse', port: 99 } })
-})
-
-test('invalid defaults produce actionable safe RPC and client errors', async (t) => {
-  const f = fixture()
-  t.after(() => f.service.close())
-  f.bridge.authoring = async () => schema
-  const { connection, channels } = createConnectionFixture()
-  t.after(
-    registerCredentialRpc(connection, f.service, f.resolve, { trino: { port: 'private-canary' } }),
-  )
-  const handler = channels.get('/dsh-data-analysis-credentials')!
-  const response = await handler('authoring', { workspaceId: 'workspace' }, f.controller.signal)
-  assert.deepEqual(response, {
-    ok: false,
-    error: { code: 'internal', message: 'datasource-defaults-type-invalid', details: {} },
-  })
-  const model = new CredentialClientModel({ call: async () => response })
-  t.after(() => model.dispose())
-  await assert.rejects(model.authoring('workspace', f.controller.signal), (error: unknown) => {
-    assert.match(
-      `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
-      /字段值类型与当前 Runtime 不匹配/,
-    )
-    return true
-  })
-})
-
-test('edit authoring ignores invalid creation defaults while create still fails explicitly', async (t) => {
-  const invalid: DatasourceDefaults[] = [
-    { unknown: { host: 'private-canary' } },
-    { trino: { unknown: 'private-canary' } },
-    { trino: { port: 'private-canary' } },
-    { trino: { password: 'private-canary' } },
-  ]
-  for (const defaults of invalid) {
-    const f = fixture()
-    t.after(() => f.service.close())
-    f.bridge.authoring = async () => schema
-    const existing = {
-      name: 'warehouse',
-      backend: 'duckdb',
-      fields: { host: 'saved' },
-      version: 'v1',
-    }
-    f.bridge.configuration = async () => existing
-    const { connection, channels } = createConnectionFixture()
-    t.after(registerCredentialRpc(connection, f.service, f.resolve, defaults))
-    const handler = channels.get('/dsh-data-analysis-credentials')!
-    const model = new CredentialClientModel({
-      call: async (_channel, endpoint, payload, signal) =>
-        handler(endpoint, payload, signal ?? f.controller.signal),
-    })
-    t.after(() => model.dispose())
-    const [editing, configuration] = await Promise.all([
-      model.authoring('workspace', f.controller.signal, 'edit'),
-      model.configuration('workspace', 'warehouse', f.controller.signal),
-    ])
-    assert.deepEqual(editing, { generation: f.service.generation, ...schema })
-    assert.deepEqual(configuration, existing)
-    assert.doesNotMatch(JSON.stringify(editing), /private-canary|creationDefaults/)
-    await assert.rejects(model.authoring('workspace', f.controller.signal), (error: unknown) => {
-      assert.match(
-        `${error instanceof Error ? `${error.name}: ` : ''}${translator('zh-CN')(readError(error))}`,
-        /datasourceDefaults/,
-      )
-      return true
-    })
-    const legacy = await handler('authoring', { workspaceId: 'workspace' }, f.controller.signal)
-    assert.equal((legacy as { ok: boolean }).ok, false)
-  }
 })

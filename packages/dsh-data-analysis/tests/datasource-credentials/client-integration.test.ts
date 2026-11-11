@@ -73,7 +73,7 @@ test('unknown generation or operation is reported as unrecoverable, never as an 
   })
   t.after(() => model.dispose())
   await model.selectWorkspace('workspace')
-  await model.start(view, 'test')
+  await model.start(view, 'save')
   assert.match(translator('zh-CN')(model.getSnapshot().error), /保存可能已经发生/)
   assert.equal(model.getSnapshot().operation, undefined)
 })
@@ -294,7 +294,7 @@ test('refresh recovers every outstanding operation independently without resendi
           value: {
             id: handle.id,
             scope: handle.scope,
-            action: 'test',
+            action: 'save',
             status: 'succeeded',
             phase: 'settled',
             saved: [],
@@ -351,7 +351,7 @@ test('an unrecoverable background operation keeps a scoped warning without leavi
               ? null
               : {
                   ...handle,
-                  action: 'test',
+                  action: 'save',
                   status: 'succeeded',
                   phase: 'settled',
                   saved: [],

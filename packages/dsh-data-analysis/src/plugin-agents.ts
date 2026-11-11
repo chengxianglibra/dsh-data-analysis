@@ -1,7 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createMarivoBridgeSet, type MarivoBridgeSet } from './bridges.ts'
-import { registerMarivoDatasourceConfigureTool } from './datasource/configure.ts'
 import { registerMarivoPythonTool } from './datasource/python.ts'
 import { type MarivoPythonOptions, resolvePythonOptions } from './datasource/python-options.ts'
 import { type CredentialStore, MarivoCredentialService } from './datasource/service.ts'
@@ -33,7 +32,7 @@ const ROUTING_PROMPT = [
   'For attachment or Workspace data files, load dsh-data-analysis-files. For governed analysis, load marivo-analysis; load marivo-semantic when shared definitions are needed or authoring is requested. For project HTTP services, load marivo-service when the bound Runtime provides it.',
   'For reports or dashboards, load dsh-data-analysis-presentation before preparing data. That Skill owns the progressive report workflow and completion criteria.',
   'Use marivo_help for current Marivo API contracts, including upstream marivo help examples. It uses the verified Runtime; report failures without switching installations.',
-  'Run analysis with marivo_python in the bound Workspace. Configure or repair connections through marivo_datasource_configure. Harness credential forms own secret values; never put them in chat or code.',
+  'Run analysis and create, edit, or remove datasource definitions with marivo_python in the bound Workspace. Use marivo_help and the live Runtime contracts for datasource authoring. Put only non-secret configuration and credential references in code; use Harness credential forms for secret values, never chat or code. Use marivo_datasource_test when a connection test is requested or useful.',
   'Answer ordinary questions in chat. Deliver reports with marivo_report_write and requested files with Harness native present. Honor the requested format and explain the actual delivery status.',
 ].join('\n')
 
@@ -124,9 +123,6 @@ export function createMarivoAgentInstallation(
     try {
       controller.addDisposer(
         registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentialService),
-      )
-      controller.addDisposer(
-        registerMarivoDatasourceConfigureTool(agent.ctx, datasourceSource, credentialService),
       )
       controller.addDisposer(
         registerMarivoPythonTool(

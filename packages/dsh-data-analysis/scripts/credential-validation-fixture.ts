@@ -124,7 +124,13 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
     const shell = agent.ctx.get('shell')!,
       originalExecute = shell.execute.bind(shell)
     shell.execute = (spec) => {
-      starts++
+      // Project initialization is also a Shell operation; count only the worker
+      // payload that launches user Python after credential admission.
+      if (spec.stdin) {
+        const payload: unknown = JSON.parse(spec.stdin)
+        if (payload && typeof payload === 'object' && 'worker' in payload && 'code' in payload)
+          starts++
+      }
       return originalExecute(spec)
     }
     let tests = 0
@@ -288,7 +294,7 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
               : { VALIDATION_TOKEN: secret },
         })
         fulfilled++
-        // A submitted operation stays live while its diagnostic test finishes.
+        // Wait for the credential submission to settle before handling another request.
         while (
           service
             .watch(agent.session.id)
@@ -302,7 +308,7 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
       clearTimeout(deadline)
       assert(accepted > 0)
       assert.equal(starts, 1, 'the real Agent must complete one Python execution')
-      assert.equal(tests, 2, 'only credential submission should test connections')
+      assert.equal(tests, 0, 'credential submission must not test connections')
       assert.equal(pythonResults.length, 1)
       assert(!pythonResults[0]!.isError)
       assert.equal((pythonResults[0]!.value as { exitCode: number }).exitCode, 0)
@@ -316,7 +322,7 @@ export async function runCredentialValidation(realModel: boolean): Promise<void>
       for (const item of await readdir(dir, { withFileTypes: true })) {
         const file = path.join(dir, item.name)
         if (item.isDirectory()) await scan(file)
-        else
+        else if (item.isFile())
           for (const value of [secret, secondSecret])
             assert(
               !(await readFile(file)).includes(Buffer.from(value)),

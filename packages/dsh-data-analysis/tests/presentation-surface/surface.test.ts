@@ -3,31 +3,21 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import {
-  MARIVO_DATASOURCE_CONFIGURE_TOOL_NAME,
-  MARIVO_DATASOURCE_TEST_TOOL_NAME,
-} from '../../src/datasource/index.ts'
+import { MARIVO_DATASOURCE_TEST_TOOL_NAME } from '../../src/datasource/index.ts'
 import { MARIVO_HELP_TOOL_NAME } from '../../src/disclosure/index.ts'
 import { MARIVO_PRESENT_TOOL_NAME } from '../../src/presentation/receipt.ts'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
-test('presentation exposes Help, datasource configuration/test, Python and present', () => {
+test('presentation exposes Help, datasource test, Python and present', () => {
   assert.deepEqual(
     [
       MARIVO_HELP_TOOL_NAME,
       MARIVO_DATASOURCE_TEST_TOOL_NAME,
-      MARIVO_DATASOURCE_CONFIGURE_TOOL_NAME,
       'marivo_python',
       MARIVO_PRESENT_TOOL_NAME,
     ].sort(),
-    [
-      'marivo_datasource_configure',
-      'marivo_datasource_test',
-      'marivo_help',
-      'marivo_python',
-      'marivo_report_write',
-    ],
+    ['marivo_datasource_test', 'marivo_help', 'marivo_python', 'marivo_report_write'],
   )
 })
 

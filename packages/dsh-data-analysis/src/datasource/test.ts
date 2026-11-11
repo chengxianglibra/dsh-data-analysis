@@ -12,7 +12,7 @@ export function createMarivoDatasourceTestTool(
   return defineTool({
     name: MARIVO_DATASOURCE_TEST_TOOL_NAME,
     description:
-      'Test an existing datasource through Host-managed credentials after a relevant change, connection failure or explicit request. Normal analysis needs no preliminary test; successful marivo_datasource_configure already tested the connection. status=ok establishes connection-test success, not table access or analytical readiness. A Web root Agent can wait for missing credentials; delegated or noninteractive calls return needs-credentials without a form. Follow the returned failure or handoff information; never request secret values in chat.',
+      'Test an existing datasource through Host-managed credentials after a relevant change, connection failure or explicit request. Normal analysis needs no preliminary test. status=ok establishes connection-test success, not table access or analytical readiness. A Web root Agent can wait for missing credentials; delegated or noninteractive calls return needs-credentials without a form. Follow the returned failure or handoff information; never request secret values in chat.',
     parameters: {
       name: { type: 'string', required: true, description: 'Configured datasource name.' },
     },

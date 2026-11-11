@@ -29,7 +29,6 @@ import type {} from '@deepseek-ai/dsh-storage-domain'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import z from '@deepseek-ai/schemastery'
 import { MarivoDatasourceBridge } from './datasource/bridge.ts'
-import type { DatasourceDefaults } from './datasource/defaults.ts'
 import { DEFAULT_PYTHON_TIMEOUT_MS } from './datasource/python-options.ts'
 import { registerCredentialRpc } from './datasource/rpc.ts'
 import { MarivoCredentialService } from './datasource/service.ts'
@@ -75,8 +74,6 @@ export const inject = [
 
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config extends PythonTimeoutConfig {
-  /** Non-secret creation defaults by backend; checked against each live Runtime schema. */
-  readonly datasourceDefaults?: DatasourceDefaults
   readonly credentialInteraction?: 'web' | 'none'
 
   /** Explicit project root override; otherwise each Agent uses session.header.cwd. */
@@ -93,8 +90,6 @@ export interface Config extends PythonTimeoutConfig {
 
 /** Cordis loader schema. Runtime defaults are resolved in {@link apply}. */
 export const Config = z.object({
-  // Defer validation to authoring so loader errors cannot echo configured values.
-  datasourceDefaults: z.any(),
   pythonTimeoutMs: z
     .number()
     .min(1)
@@ -249,28 +244,21 @@ export async function applyWithIntegration(
       nextStepsPublish: (notice) => nextSteps.publish(notice),
     })
     agentInstallation.install()
-    disposeCredentials = registerCredentialRpc(
-      ctx.connection,
-      credentialService,
-      async (id) => {
-        const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
-        if (!workspace) throw new Error('Workspace unavailable')
-        const root =
-          config.projectRoot ?? process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ?? workspace.path
-        const environment = await manager.resolve(root)
-        const current = ctx.workspaceRegistry.get(WorkspaceId(id))
-        if (
-          !current ||
-          current.path !== workspace.path ||
-          (config.projectRoot ?? process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ?? current.path) !==
-            root
-        )
-          throw new Error('Workspace changed')
-        return new MarivoDatasourceBridge(environment)
-      },
-      config.datasourceDefaults,
-      integration.managedCredentialDefaults,
-    )
+    disposeCredentials = registerCredentialRpc(ctx.connection, credentialService, async (id) => {
+      const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
+      if (!workspace) throw new Error('Workspace unavailable')
+      const root =
+        config.projectRoot ?? process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ?? workspace.path
+      const environment = await manager.resolve(root)
+      const current = ctx.workspaceRegistry.get(WorkspaceId(id))
+      if (
+        !current ||
+        current.path !== workspace.path ||
+        (config.projectRoot ?? process.env.DSH_DATA_ANALYSIS_PROJECT_ROOT ?? current.path) !== root
+      )
+        throw new Error('Workspace changed')
+      return new MarivoDatasourceBridge(environment)
+    })
     let lastDiagnostic = -Infinity
     const usage = new SemanticReferenceUsage(ctx.storageDomain, Date.now, () => {
       if (Date.now() - lastDiagnostic >= 30_000) {

@@ -19,7 +19,7 @@
 | 运行基础 | [Runtime 与 Workspace](modules/runtime-workspace.md) | profile 共享安装、Workspace 隔离与绑定身份 |
 | 运行基础 | [Environment 执行](modules/environment-execution.md) | checked runner、子进程、预算、取消与脱敏 |
 | Agent 接入 | [实时 Help 披露](modules/help-disclosure.md) | live Help transport、Skill 激活与上下文恢复 |
-| Agent 接入 | [数据源与凭证](modules/datasource-credentials.md) | 配置续接、凭据管理、连接测试与一次 Python 执行准入 |
+| Agent 接入 | [数据源与凭证](modules/datasource-credentials.md) | 凭据管理、连接测试与一次 Python 执行准入 |
 | Agent 接入 | [Python 工具卡片](modules/python-tool-card.md) | 冻结调用快照的代码与输出展示，不执行或重放分析 |
 | Agent 接入 | [文件分析 Skill](modules/file-analysis-skill.md) | 原生附件路径、pandas/DuckDB 与结果交付 |
 | 语义交互 | [语义对象引用输入](modules/semantic-reference-input.md) | Catalog 检索、原子引用、提交核验与热度 |
@@ -72,13 +72,13 @@ Help 使用启动时验证的 shared Runtime，不为读取 API Help 初始化 W
 
 每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，报告或看板在准备组件数据之前加载 `dsh-data-analysis-presentation`；已有普通单结果可直接展示。需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。可选 Runtime Skill 以实际安装为准，当前 Marivo 0.6.4 包未提供 `marivo-service`。
 
-默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_configure`、`marivo_datasource_test`、`marivo_python`、`marivo_report_write`、`marivo_report_read`、`marivo_next_steps`。持久化 Frame、Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API，不另加 convenience wrapper。
+默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_report_write`、`marivo_report_read`、`marivo_next_steps`。持久化 Frame、Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API，不另加 convenience wrapper。
 
 ### 配置与执行
 
 Harness Credentials 是秘密值权威；Marivo 的公开 description、DatasourceSpec 和 resolver 拥有字段及使用语义。插件配置与表单只保存凭据引用，秘密值通过 Harness 接口管理。
 
-`marivo_datasource_configure` 将表单绑定到原调用与所属 Session，用户完成配置后续接；取消或身份变化结束旧操作。`marivo_python` 在一次调用内等待所有声明的数据源就绪，取得 fresh snapshot，通过 stdin 和 `md.credential_scope` 注入，再交给 Harness Shell 前台执行。秘密值不进入 Agent 参数、argv 或环境，输出在 Host spill 前脱敏。
+Agent 在对话中使用 Marivo 公开 API 变更数据源定义；缺凭证时 Host 表单绑定原调用与所属 Session，保存后续接，取消或身份变化结束旧操作。`marivo_python` 在一次调用内等待所有声明的数据源就绪，取得 fresh snapshot，通过 stdin 和 `md.credential_scope` 注入，再交给 Harness Shell 前台执行。秘密值不进入 Agent 参数、argv 或环境，输出在 Host spill 前脱敏。
 
 纯文件分析使用 `datasources: []`，仍保留 Runtime/Workspace identity、取消与执行代码记录。
 需要保留 DataFrame 时显式使用 `mv.persist_dataframe`，再将完整引用交给 `marivo_report_write`；Host 只读取当前 Workspace 的固定结果，Reader 使用内嵌投影。每次调用是独立 Python 进程，临时表和内存状态不会跨调用保留；文件结果不会自动获得 Marivo Evidence 或 lineage。

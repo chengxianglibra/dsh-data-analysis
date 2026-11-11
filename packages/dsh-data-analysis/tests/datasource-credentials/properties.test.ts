@@ -217,12 +217,6 @@ test('operation failures, cancellation and credential deletion keep the datasour
     { status: 'failed', errors: [], expected: /操作未完成/ },
     { status: 'cancelled', errors: [], expected: /已取消/ },
     { status: 'succeeded', action: 'delete', errors: [], expected: /已删除/ },
-    {
-      status: 'failed',
-      errors: [],
-      result: { ok: false, failure: { code: 'connection-failed', message: 'connection refused' } },
-      expected: /connection refused/,
-    },
   ] as const) {
     const html = await renderManagement(t, view, {
       handle: { id: 'operation', scope: view.token, generation: 'fixture' },
@@ -240,8 +234,6 @@ test('operation failures, cancellation and credential deletion keep the datasour
       } as ClientOperation['operation'],
     })
     assert.match(html, scenario.expected)
-    assert.match(html, /aria-label="测试连接"/)
-    if ('result' in scenario) assert.match(html, /data-tone="error"/)
   }
 })
 
@@ -278,7 +270,7 @@ test('installed management UI renders typed properties as read-only text beside 
   assert.doesNotMatch(html, /harness-private-canary/)
 })
 
-test('credential-free datasources retain properties and connection testing', async (t) => {
+test('credential-free datasources retain properties', async (t) => {
   const f = fixture()
   t.after(() => f.service.close())
   Object.assign(f.description, {
@@ -290,6 +282,5 @@ test('credential-free datasources retain properties and connection testing', asy
   const html = await renderManagement(t, await context(f))
   assert.match(html, /<dd>duckdb<\/dd>/)
   assert.match(html, /:memory:/)
-  assert.match(translator('zh-CN')(html), /aria-label="测试连接"/)
   assert.deepEqual(f.store.calls, { resolve: 0, set: 0, unset: 0 })
 })

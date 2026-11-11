@@ -101,7 +101,6 @@ try {
       .map((tool) => tool.name)
       .sort()
   const expectedTools = [
-    'marivo_datasource_configure',
     'marivo_datasource_test',
     'marivo_help',
     'marivo_next_steps',

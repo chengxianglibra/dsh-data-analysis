@@ -212,7 +212,7 @@ test('one missing datasource holds the original Python call at zero launches unt
   })
   assert.equal(((await pending) as { exitCode: number }).exitCode, 9)
   assert.equal(p.launches.length, 1)
-  assert.equal(formTests, 1)
+  assert.equal(formTests, 0)
   const payload = JSON.parse(p.requests[0]!.stdin!)
   assert.deepEqual(Object.keys(payload.grants), ['warehouse', 'secondary'])
   assert.deepEqual(payload.values, {
@@ -560,29 +560,6 @@ test('preparation exceptions carry safe facts without starting Python', async (t
     assert.equal(error.execution.effectiveTimeoutMs, null)
     return true
   })
-  assert.equal(p.launches.length, 0)
-})
-
-test('credential admission failure retains datasource failure and reports not-started', async (t) => {
-  const f = fixture()
-  t.after(() => f.service.close())
-  const p = pythonTool(f)
-  f.service.prepareExecution = async () => ({
-    name: 'warehouse',
-    ok: false,
-    latency_ms: 1,
-    failure: {
-      code: 'connection-failed',
-      exception_type: 'ConnectionError',
-      backend_code: null,
-      backend_name: null,
-      message: 'connection refused',
-    },
-    repair: null,
-  })
-  const result = (await p.call()) as { status: string; execution: MarivoPythonExecutionSummary }
-  assert.equal(result.status, 'failed')
-  assertSummary(result.execution, 'preparing', 'not-started')
   assert.equal(p.launches.length, 0)
 })
 

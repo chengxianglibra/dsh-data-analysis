@@ -8,7 +8,7 @@ import { build } from 'esbuild'
 import { chromium } from 'playwright'
 import { object, snapshot } from '../semantic-browser/fixtures.ts'
 
-test('business surfaces preserve datasource submission, report filters, semantic reading and settings revisions', async () => {
+test('business surfaces preserve report filters, semantic reading and settings revisions', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-shadcn-business-'))
   const browser = await chromium.launch()
   try {
@@ -18,24 +18,20 @@ test('business surfaces preserve datasource submission, report filters, semantic
         contents: `import {createElement as h} from 'react';
 import {createRoot} from 'react-dom/client';
 import {ReportCopyProvider} from './src/client/i18n/context.tsx';
-import {CreateDatasource} from './src/client/credentials/create-datasource.tsx';
-import {credentialStyles} from './src/client/credentials/styles.ts';
 import {ReportCatalogView,catalogStyles} from './src/client/presentation/catalog.tsx';
 import {SemanticBrowserPanel} from './src/client/semantic-browser/panel.tsx';
 import {emptyView} from './src/client/semantic-browser/model.ts';
 import {PythonSettingsCard} from './src/client/settings/card.tsx';
 import {UIStyleSheet} from './src/client/ui/theme.ts';
 const store = value => {let current=value;const listeners=new Set();return {getSnapshot:()=>current,subscribe:listener=>{listeners.add(listener);return ()=>listeners.delete(listener)},update:fn=>{current=fn(current);listeners.forEach(fn=>fn())},patch(change){this.update(value=>({...value,...change}))}}};
-const schema={backends:[{name:'postgres',fields:[{name:'name',type:'string',required:true},{name:'host',type:'string',required:true},{name:'password',type:'credential'}]}]};
 window.saved={};
-const datasource={authoring:async()=>schema,saveConfiguration:async(_workspace,_schema,input,_original,_request,changes)=>{window.saved.datasource={fields:input.fields,credentialCount:Object.keys(changes).length};await new Promise(resolve=>{window.finishSave=resolve})}};
 const report=title=>({receipt:{reportId:title,title},source:{sessionId:'session',surface:title==='Tool result'?'tool':'tab'},publishedAt:'2026-11-03T00:00:00Z'});
 const reports=store({workspaceId:'workspace',query:'',surface:'tab',loading:false,catalog:{reports:[report('Revenue report'),report('Tool result')],unavailable:0}});
 const semantics=store({open:true,workspaceId:'workspace',views:{workspace:{...emptyView(),snapshot:${JSON.stringify(catalog)},selected:'metric:sales.revenue'}}});
 const semanticModel={...semantics,patch(change){semantics.update(state=>({...state,views:{workspace:{...state.views.workspace,...change}}}))},navigate(selected){this.patch({selected})},back(){this.patch({selected:''})},refresh:async()=>{},unavailable:()=>{}};
 const settings=store({status:'ready',value:{pythonTimeoutMs:180000},user:{},base:{},revision:7,writable:true});
 settings.mutate=async(ops,revision)=>{window.saved.settings={ops,revision};settings.patch({value:{pythonTimeoutMs:ops[0].value},user:{pythonTimeoutMs:ops[0].value},revision:8});return true};
-createRoot(document.getElementById('root')).render(h(ReportCopyProvider,{locale:'en-US'},h('main',{className:'mv-ui bg-background'},h(UIStyleSheet),h('style',null,credentialStyles+catalogStyles),h('section',{id:'datasource'},h(CreateDatasource,{model:datasource,workspaceId:'workspace',close:()=>{window.saved.closed=true}})),h('section',{id:'reports'},h(ReportCatalogView,{model:reports,reader:{showReport:(_workspace,id)=>{window.saved.report=id}},sessions:{session:{displayTitle:'Source session'}},onOpenSession:id=>{window.saved.session=id}})),h('section',{id:'semantics'},h(SemanticBrowserPanel,{model:semanticModel,workspaces:[{workspaceId:'workspace'}]})),h('ul',{id:'settings'},h(PythonSettingsCard,{scope:settings})))));`,
+createRoot(document.getElementById('root')).render(h(ReportCopyProvider,{locale:'en-US'},h('main',{className:'mv-ui bg-background'},h(UIStyleSheet),h('style',null,catalogStyles),h('section',{id:'reports'},h(ReportCatalogView,{model:reports,reader:{showReport:(_workspace,id)=>{window.saved.report=id}},sessions:{session:{displayTitle:'Source session'}},onOpenSession:id=>{window.saved.session=id}})),h('section',{id:'semantics'},h(SemanticBrowserPanel,{model:semanticModel,workspaces:[{workspaceId:'workspace'}]})),h('ul',{id:'settings'},h(PythonSettingsCard,{scope:settings})))));`,
         resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
       },
       outfile: path.join(directory, 'page.js'),
@@ -58,28 +54,6 @@ createRoot(document.getElementById('root')).render(h(ReportCopyProvider,{locale:
     })
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
     assert.equal(await page.title(), 'Business surfaces')
-    const datasource = page.locator('#datasource')
-    await datasource.getByLabel('name', { exact: true }).fill('warehouse')
-    await datasource.getByLabel('host', { exact: true }).fill('localhost')
-    const password = datasource.locator('input[type=password]')
-    await password.fill('test-credential-value')
-    await datasource.getByRole('button', { name: 'Confirm new datasource' }).click()
-    await page.waitForFunction(() => Reflect.get(window, 'saved').datasource)
-    assert.equal(await password.inputValue(), '')
-    assert.equal(await password.isDisabled(), true)
-    assert.deepEqual(
-      await page.evaluate(() => {
-        const saved = Reflect.get(window, 'saved').datasource
-        return {
-          name: saved.fields.name,
-          host: saved.fields.host,
-          credentials: saved.credentialCount,
-        }
-      }),
-      { name: 'warehouse', host: 'localhost', credentials: 1 },
-    )
-    await page.evaluate(() => Reflect.get(window, 'finishSave')())
-    await page.waitForFunction(() => Reflect.get(window, 'saved').closed)
     const reports = page.locator('#reports')
     await reports.getByRole('button', { name: 'Revenue report', exact: true }).click()
     assert.equal(await page.evaluate(() => Reflect.get(window, 'saved').report), 'Revenue report')
@@ -117,7 +91,7 @@ createRoot(document.getElementById('root')).render(h(ReportCopyProvider,{locale:
       if (width === 420)
         await page.evaluate(() => document.body.setAttribute('data-ds-dark-theme', ''))
       await page.setViewportSize({ width, height: 900 })
-      for (const selector of ['#datasource', '#reports', '#semantics', '#settings']) {
+      for (const selector of ['#reports', '#semantics', '#settings']) {
         assert.equal(
           await page.locator(selector).evaluate((node) => node.scrollWidth <= node.clientWidth),
           true,

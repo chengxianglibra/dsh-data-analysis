@@ -109,7 +109,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 
 required 在凭据准入前调用内部项目准备适配：固定 canonical Workspace root，以 `lstat` 检查该目录本身的 `marivo.toml`，不继承父项目；符号链接和非普通文件明确拒绝。缺少时在按 root 协调的插件内锁中复查，再通过绑定 Runtime 的公开 CLI init 初始化，不使用 `--force`、不手写 manifest。CLI 创建脚手架与上游 Skill 链接；随后经同一 bound Environment 的公开 doctor 验证根目录 manifest 和 Runtime identity。Python 的初始化写入与用户代码遵循同次调用的 Harness Shell/sandbox policy、取消与超时限制。
 
-成功回执的 `project` 区分 `created` 与 `already-ready`。初始化中断或失败后检查实际 manifest，返回不确定状态与修复说明，不自动删除半成品或重复 init。锁只协调本插件请求，不承诺与外部编辑器或 CLI 的跨进程事务。交互式 datasource configure 同样是明确的项目准备入口，沿用其固定 authoring policy；test、安装、Help 和 binding 不因此创建项目。
+成功回执的 `project` 区分 `created` 与 `already-ready`。初始化中断或失败后检查实际 manifest，返回不确定状态与修复说明，不自动删除半成品或重复 init。锁只协调本插件请求，不承诺与外部编辑器或 CLI 的跨进程事务。test、安装、Help 和 binding 不因此创建项目。
 
 ## 隔离模型
 

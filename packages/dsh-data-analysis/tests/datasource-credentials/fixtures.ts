@@ -122,7 +122,7 @@ export async function context(f: ReturnType<typeof fixture>) {
 export async function operation(
   f: ReturnType<typeof fixture>,
   view: Awaited<ReturnType<typeof context>>,
-  action: 'update' | 'delete' | 'test' | 'submit' | 'diagnose',
+  action: 'save' | 'update' | 'delete' | 'submit',
   extra: {
     requestId?: string
     changes?: Record<string, string>

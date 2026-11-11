@@ -102,7 +102,6 @@ const noRuntime = async (): Promise<never> => {
 for (const fault of [
   'tool:marivo_help',
   'tool:marivo_datasource_test',
-  'tool:marivo_datasource_configure',
   'tool:marivo_python',
   'tool:marivo_report_write',
   'tool:marivo_next_steps',

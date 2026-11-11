@@ -77,12 +77,11 @@ async function refreshFixture(t: TestContext) {
         ok: true,
         value: {
           ...handle,
-          action: 'test',
+          action: 'save',
           status: 'succeeded',
           phase: 'settled',
           saved: [],
           errors: [],
-          result: tested(handle.scope === a.token ? a : b, 2000).lastTest!.result,
         } satisfies CredentialOperationView,
       }
     },
@@ -95,14 +94,7 @@ async function refreshFixture(t: TestContext) {
 }
 
 function tested(context: CredentialContextView, at: number): CredentialContextView {
-  return {
-    ...context,
-    lastTest: {
-      at,
-      stale: false,
-      result: { name: context.name, ok: true, latency_ms: 1, failure: null, repair: null },
-    },
-  }
+  return { ...context, properties: { ...context.properties, marker: at } }
 }
 
 for (const status of ['succeeded', 'failed', 'cancelled'] as const) {
@@ -113,17 +105,6 @@ for (const status of ['succeeded', 'failed', 'cancelled'] as const) {
     const storage = new Map<string, string>()
     let completed = false,
       gate = barrier()
-    const lastTest = {
-      at: 1234,
-      stale: false,
-      result: {
-        name: selected.name,
-        ok: status === 'succeeded',
-        latency_ms: 1,
-        failure: null,
-        repair: null,
-      },
-    }
     const model = new CredentialClientModel(
       {
         async call(_channel, endpoint, payload) {
@@ -132,10 +113,7 @@ for (const status of ['succeeded', 'failed', 'cancelled'] as const) {
               ok: true,
               value: {
                 generation,
-                datasources: [
-                  first,
-                  completed ? { ...selected, version: 'after', lastTest } : selected,
-                ],
+                datasources: [first, completed ? { ...selected, version: 'after' } : selected],
               },
             }
           if (endpoint === 'start') return { ok: true, value: {} }
@@ -146,12 +124,11 @@ for (const status of ['succeeded', 'failed', 'cancelled'] as const) {
             ok: true,
             value: {
               ...(payload as { id: string; scope: string }),
-              action: 'test',
+              action: 'save',
               status,
               phase: 'settled',
               saved: [],
               errors: [],
-              result: lastTest.result,
             } satisfies CredentialOperationView,
           }
         },
@@ -170,7 +147,7 @@ for (const status of ['succeeded', 'failed', 'cancelled'] as const) {
     model.show('workspace')
     await nextTurn()
     model.select(selected.token)
-    const pending = model.start(selected, 'test')
+    const pending = model.start(selected, 'save')
     assert.equal(model.getSnapshot().operations.length, 1)
     assert.equal(storage.size, 1)
     gate.release()
@@ -183,14 +160,10 @@ for (const status of ['succeeded', 'failed', 'cancelled'] as const) {
     assert.equal(state.outcomes[selected.token]?.overviewUpdated, true)
     assert.equal(state.selected, selected.token)
     assert.equal(state.datasources.find((item) => item.token === selected.token)?.version, 'after')
-    assert.deepEqual(
-      state.datasources.find((item) => item.token === selected.token)?.lastTest,
-      lastTest,
-    )
     assert.equal(storage.size, 0)
 
     gate = barrier()
-    const retry = model.start(state.datasources[1]!, 'test')
+    const retry = model.start(state.datasources[1]!, 'save')
     assert.equal(model.getSnapshot().outcomes[selected.token], undefined)
     assert.equal(model.getSnapshot().operations.length, 1)
     gate.release()
@@ -217,7 +190,7 @@ test('closing the panel keeps an in-flight query alive and discards its complete
         ok: true,
         value: {
           ...(payload as { id: string; scope: string }),
-          action: 'test',
+          action: 'save',
           status: 'succeeded',
           phase: 'settled',
           saved: [],
@@ -229,7 +202,7 @@ test('closing the panel keeps an in-flight query alive and discards its complete
   t.after(() => model.dispose())
   model.show('workspace')
   await nextTurn()
-  const pending = model.start(context, 'test')
+  const pending = model.start(context, 'save')
   await nextTurn()
   model.close()
   assert.equal(querySignal?.aborted, false)
@@ -258,7 +231,7 @@ test('an unrecoverable operation after a Workspace switch does not replace the n
   })
   t.after(() => model.dispose())
   await model.selectWorkspace('workspace')
-  const pending = model.start(context, 'test')
+  const pending = model.start(context, 'save')
   await model.selectWorkspace('other')
   const error = model.getSnapshot().error
   assert.match(translator('zh-CN')(error), /暂时无法读取凭证状态/)
@@ -284,7 +257,7 @@ test('background completion refreshes datasource results without clearing or cha
       version: state.datasources.find((context) => context.token === a.token)?.version,
     })
   })
-  const pending = model.start(b, 'test')
+  const pending = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
@@ -295,37 +268,37 @@ test('background completion refreshes datasource results without clearing or cha
   assert(snapshots.every((state) => state.version === a.version))
   model.select(b.token)
   assert.equal(
-    model.getSnapshot().datasources.find((context) => context.token === b.token)?.lastTest?.at,
+    model.getSnapshot().datasources.find((context) => context.token === b.token)?.properties.marker,
     2000,
   )
 })
 
 test('a newer operation waits until the preceding datasource overview is applied', async (t) => {
   const { a, b, generation, model, reads, operations } = await refreshFixture(t)
-  const first = model.start(b, 'test')
+  const first = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
   model.select(b.token)
-  const second = model.start(b, 'test')
+  const second = model.start(b, 'save')
   await nextTurn()
   reads[1]!.response.resolve({ generation, datasources: [a, tested(b, 1000)] })
   await first
   await nextTurn()
   assert.equal(model.getSnapshot().selected, b.token)
-  assert.equal(model.getSnapshot().datasources[1]?.lastTest?.at, 1000)
+  assert.equal(model.getSnapshot().datasources[1]?.properties.marker, 1000)
   assert.equal(model.getSnapshot().operations.length, 1)
   operations[1]!.finish()
   await nextTurn()
   reads[2]!.response.resolve({ generation, datasources: [a, tested(b, 2000)] })
   await second
-  assert.equal(model.getSnapshot().datasources[1]?.lastTest?.at, 2000)
+  assert.equal(model.getSnapshot().datasources[1]?.properties.marker, 2000)
 })
 
 test('concurrent completion overviews settle in request order without allowing a late older result', async (t) => {
   const { a, b, generation, model, reads, operations } = await refreshFixture(t)
-  const runA = model.start(a, 'test'),
-    runB = model.start(b, 'test')
+  const runA = model.start(a, 'save'),
+    runB = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
@@ -339,14 +312,14 @@ test('concurrent completion overviews settle in request order without allowing a
   await runA
   assert.equal(model.getSnapshot().selected, b.token)
   assert.deepEqual(
-    model.getSnapshot().datasources.map((context) => context.lastTest?.at),
+    model.getSnapshot().datasources.map((context) => context.properties.marker),
     [2000, 3000],
   )
 })
 
 test('Workspace switches reject late passive replies and returning overviews prune replaced context outcomes', async (t) => {
   const { a, b, generation, model, reads, operations } = await refreshFixture(t)
-  const pending = model.start(b, 'test')
+  const pending = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
@@ -367,7 +340,7 @@ test('Workspace switches reject late passive replies and returning overviews pru
 
 test('passive refresh rejects a changed Host generation and explicit overview clears old-generation outcomes', async (t) => {
   const { a, b, generation, model, reads, operations } = await refreshFixture(t)
-  const pending = model.start(b, 'test'),
+  const pending = model.start(b, 'save'),
     nextGeneration = randomUUID()
   await nextTurn()
   operations[0]!.finish()
@@ -375,7 +348,7 @@ test('passive refresh rejects a changed Host generation and explicit overview cl
   reads[1]!.response.resolve({ generation: nextGeneration, datasources: [a, tested(b, 2000)] })
   await pending
   assert.equal(model.getSnapshot().generation, generation)
-  assert.equal(model.getSnapshot().datasources[1]?.lastTest, undefined)
+  assert.equal(model.getSnapshot().datasources[1]?.properties.marker, undefined)
   assert(model.getSnapshot().outcomes[b.token])
   assert.equal(model.getSnapshot().outcomes[b.token]?.overviewUpdated, undefined)
   const refresh = model.selectWorkspace('workspace')
@@ -387,24 +360,24 @@ test('passive refresh rejects a changed Host generation and explicit overview cl
 
 test('a failed passive refresh leaves the operation result unconfirmed until a later authoritative overview', async (t) => {
   const { a, b, generation, model, reads, operations } = await refreshFixture(t)
-  const pending = model.start(b, 'test')
+  const pending = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
   reads[1]!.response.reject(new Error('offline'))
   await pending
   assert.equal(model.getSnapshot().outcomes[b.token]?.overviewUpdated, undefined)
-  assert.equal(model.getSnapshot().outcomes[b.token]?.operation?.result?.ok, true)
+  assert.equal(model.getSnapshot().outcomes[b.token]?.operation?.status, 'succeeded')
   const refresh = model.selectWorkspace('workspace')
   reads[2]!.response.resolve({ generation, datasources: [a, tested(b, 2000)] })
   await refresh
   assert.equal(model.getSnapshot().outcomes[b.token]?.overviewUpdated, true)
-  assert.equal(model.getSnapshot().datasources[1]?.lastTest?.at, 2000)
+  assert.equal(model.getSnapshot().datasources[1]?.properties.marker, 2000)
 })
 
 test('a consecutive credential action waits for the previous refresh and uses its current version', async (t) => {
   const { a, b, generation, model, reads, operations, starts } = await refreshFixture(t)
-  const first = model.start(b, 'test')
+  const first = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
@@ -429,7 +402,7 @@ test('a consecutive credential action waits for the previous refresh and uses it
 
 test('a consecutive action fails closed if the previous overview cannot be refreshed', async (t) => {
   const { b, model, reads, operations, starts } = await refreshFixture(t)
-  const first = model.start(b, 'test')
+  const first = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
@@ -448,7 +421,7 @@ test('a consecutive action fails closed if the previous overview cannot be refre
 
 test('a Host notification does not cancel the post-operation authoritative refresh', async (t) => {
   const { a, b, generation, model, reads, operations } = await refreshFixture(t)
-  const first = model.start(b, 'test')
+  const first = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
@@ -467,7 +440,7 @@ test('a Host notification does not cancel the post-operation authoritative refre
 
 test('a notification overview can recover an earlier failed post-operation refresh', async (t) => {
   const { a, b, generation, model, reads, operations } = await refreshFixture(t)
-  const first = model.start(b, 'test')
+  const first = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
@@ -496,18 +469,18 @@ test('a notification overview cannot restore an old Host generation after reconn
   await old
   await nextTurn()
   assert.equal(model.getSnapshot().generation, nextGeneration)
-  assert.equal(model.getSnapshot().datasources[0]?.lastTest, undefined)
+  assert.equal(model.getSnapshot().datasources[0]?.properties.marker, undefined)
 })
 
 test('a refresh superseded by another datasource cannot authorize a consecutive write', async (t) => {
   const { a, b, generation, model, reads, operations, starts } = await refreshFixture(t)
-  const first = model.start(b, 'test')
+  const first = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
   const changes = { DB_PASSWORD: 'sensitive-input' }
   const second = model.start(b, 'save', changes)
-  const other = model.start(a, 'test')
+  const other = model.start(a, 'save')
   await nextTurn()
   operations[1]!.finish()
   await nextTurn()
@@ -521,7 +494,7 @@ test('a refresh superseded by another datasource cannot authorize a consecutive 
 
 test('switching request during the overview refresh cannot redirect pending credentials', async (t) => {
   const { a, b, generation, model, reads, operations, starts } = await refreshFixture(t)
-  const first = model.start(b, 'test')
+  const first = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await nextTurn()
@@ -538,14 +511,14 @@ test('switching request during the overview refresh cannot redirect pending cred
 test('an overview begun before operation completion cannot confirm that later result', async (t) => {
   const { a, b, generation, model, reads, operations } = await refreshFixture(t)
   const refresh = model.selectWorkspace('workspace')
-  const pending = model.start(b, 'test')
+  const pending = model.start(b, 'save')
   await nextTurn()
   operations[0]!.finish()
   await pending
   reads[1]!.response.resolve({ generation, datasources: [a, b] })
   await refresh
   assert.equal(model.getSnapshot().outcomes[b.token]?.overviewUpdated, undefined)
-  assert.equal(model.getSnapshot().outcomes[b.token]?.operation?.result?.ok, true)
+  assert.equal(model.getSnapshot().outcomes[b.token]?.operation?.status, 'succeeded')
 })
 
 test('a failed prompt operation leaves the pending request available for correction and cancellation', async (t) => {
@@ -554,7 +527,7 @@ test('a failed prompt operation leaves the pending request available for correct
     id: randomUUID(),
     sessionId: 'session',
     context,
-    status: 'awaiting-decision',
+    status: 'awaiting-input',
   }
   const generation = randomUUID(),
     cancellations: unknown[] = []
@@ -598,7 +571,7 @@ test('a failed prompt operation leaves the pending request available for correct
             signal.addEventListener('abort', () => resolve(), { once: true }),
           )
         signal.throwIfAborted()
-        return { generation, cursor: '1', requests: [request], configurationRequests: [] }
+        return { generation, cursor: '1', requests: [request] }
       },
     }),
   )
@@ -608,7 +581,7 @@ test('a failed prompt operation leaves the pending request available for correct
   await model.start(context, 'submit')
   assert.deepEqual(model.getSnapshot().operations, [])
   assert.equal(model.getSnapshot().requestId, request.id)
-  assert.equal(model.getSnapshot().requests[0]?.status, 'awaiting-decision')
+  assert.equal(model.getSnapshot().requests[0]?.status, 'awaiting-input')
   assert.equal(model.getSnapshot().open, true)
   assert.equal(overviewCount, 0)
   await model.cancelRequest(request.id)
@@ -619,7 +592,7 @@ test('datasource Tab handoff preserves the selected datasource in the operation 
   const first = datasource('first'),
     selected = datasource('selected')
   const model = new CredentialClientModel({
-    call: async () => ({ ok: true, value: { generation: 'test', datasources: [first, selected] } }),
+    call: async () => ({ ok: true, value: { generation: 'save', datasources: [first, selected] } }),
   })
   t.after(() => model.dispose())
   model.show('workspace', selected.token)

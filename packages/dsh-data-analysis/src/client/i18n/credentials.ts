@@ -81,7 +81,7 @@ export const zh = {
     '保存配置和凭证后测试连接，成功后助手继续分析。测试失败可修正重试，已保存的内容不会回滚。',
   'marivo.credentials.test-the-connection-again-after-saving-name-and-engine':
     '保存后需要重新测试连接。名称和引擎保持不变。',
-  'marivo.credentials.saving-or-validating': '正在保存或验证…',
+  'marivo.credentials.saving-or-validating': '正在保存…',
   'marivo.credentials.save-and-test-then-continue': '保存并测试，成功后继续',
   'marivo.credentials.save-configuration': '保存配置',
   'marivo.credentials.confirm-new-datasource': '确认新增数据源',
@@ -162,9 +162,9 @@ export const zh = {
   'marivo.credentials.credential-reference-for-the-clickhouse-password':
     'ClickHouse 密码的凭证引用名。',
   'marivo.credentials.awaiting-input': '等待填写',
-  'marivo.credentials.saving-or-validating-77': '正在保存或验证',
+  'marivo.credentials.saving-or-validating-77': '正在保存',
   'marivo.credentials.connection-validation-failed-action-needed': '连接验证失败，等待处理',
-  'marivo.credentials.validated-original-call-continues': '验证完成，原调用继续',
+  'marivo.credentials.validated-original-call-continues': '凭证已配置，原调用继续',
   'marivo.credentials.handed-to-the-assistant-for-investigation': '已交给助手排查',
   'marivo.credentials.original-call-ended': '原调用已结束',
   'marivo.credentials.configuration-request-cancelled': '已取消配置请求',
@@ -204,11 +204,11 @@ export const zh = {
   'marivo.credentials.other-datasources-or-workspaces-may-share-these-credentials-and':
     '。这些凭证可能被其他数据源或 Workspace 共用，删除后也会影响它们。只读来源的凭证需在原来源处理。',
   'marivo.credentials.continue-the-current-task-after-successful-validation':
-    '验证成功后继续当前任务。',
+    '凭证保存后继续当前任务。',
   'marivo.credentials.start-the-task-again': '请重新发起任务。',
   'marivo.credentials.credentials': '凭证',
   'marivo.credentials.this-datasource-has-no-credential-references-you-can-test':
-    '该数据源没有凭证引用，可直接测试连接。',
+    '该数据源没有凭证引用。',
   'marivo.credentials.field': '字段：',
   'marivo.credentials.source': '· 来源：',
   'marivo.credentials.none': '无',
@@ -255,9 +255,9 @@ export const zh = {
   'marivo.credentials.select-a-datasource': '选择一个数据源',
   'marivo.credentials.return-to-the-session-and-retry': '请返回会话后重试。',
   'marivo.credentials.this-workspace-has-no-defined-datasources':
-    '该 Workspace 没有已定义的数据源。',
+    '该 Workspace 没有已定义的数据源，可通过对话添加。',
   'marivo.credentials.view-credential-configuration-and-the-latest-connection-test':
-    '查看凭证配置与最近一次连接测试。',
+    '查看数据源属性与凭证配置。',
   'marivo.credentials.configuration-request': '配置请求',
   'marivo.credentials.configure-a-datasource-to-continue': '配置数据源以继续',
   'marivo.credentials.cancel-configuration-request': '取消配置请求',
@@ -447,7 +447,7 @@ export const en = {
     'Save configuration and credentials, then test the connection. The assistant continues on success. On failure, correct and retry; saved changes are retained.',
   'marivo.credentials.test-the-connection-again-after-saving-name-and-engine':
     'Test the connection again after saving. Name and engine stay fixed.',
-  'marivo.credentials.saving-or-validating': 'Saving or validating…',
+  'marivo.credentials.saving-or-validating': 'Saving…',
   'marivo.credentials.save-and-test-then-continue': 'Save and test, then continue',
   'marivo.credentials.save-configuration': 'Save configuration',
   'marivo.credentials.confirm-new-datasource': 'Confirm new datasource',
@@ -535,10 +535,11 @@ export const en = {
   'marivo.credentials.credential-reference-for-the-clickhouse-password':
     'Credential reference for the ClickHouse password.',
   'marivo.credentials.awaiting-input': 'Awaiting input',
-  'marivo.credentials.saving-or-validating-77': 'Saving or validating',
+  'marivo.credentials.saving-or-validating-77': 'Saving',
   'marivo.credentials.connection-validation-failed-action-needed':
     'Connection validation failed; action needed',
-  'marivo.credentials.validated-original-call-continues': 'Validated; original call continues',
+  'marivo.credentials.validated-original-call-continues':
+    'Credentials configured; original call continues',
   'marivo.credentials.handed-to-the-assistant-for-investigation':
     'Handed to the assistant for investigation',
   'marivo.credentials.original-call-ended': 'Original call ended',
@@ -582,11 +583,11 @@ export const en = {
   'marivo.credentials.other-datasources-or-workspaces-may-share-these-credentials-and':
     '. Other datasources or Workspaces may share these credentials and will also be affected. Manage read-only credentials at their original source.',
   'marivo.credentials.continue-the-current-task-after-successful-validation':
-    'Continue the current task after successful validation.',
+    'Continue the current task after saving credentials.',
   'marivo.credentials.start-the-task-again': 'Start the task again.',
   'marivo.credentials.credentials': 'Credentials',
   'marivo.credentials.this-datasource-has-no-credential-references-you-can-test':
-    'This datasource has no credential references. You can test the connection directly.',
+    'This datasource has no credential references.',
   'marivo.credentials.field': 'Field:',
   'marivo.credentials.source': '· Source:',
   'marivo.credentials.none': 'None',
@@ -636,9 +637,9 @@ export const en = {
   'marivo.credentials.select-a-datasource': 'Select a datasource',
   'marivo.credentials.return-to-the-session-and-retry': 'Return to the session and retry.',
   'marivo.credentials.this-workspace-has-no-defined-datasources':
-    'This Workspace has no defined datasources.',
+    'This Workspace has no defined datasources. Ask the assistant to add one.',
   'marivo.credentials.view-credential-configuration-and-the-latest-connection-test':
-    'View credential configuration and the latest connection test.',
+    'View datasource properties and credential configuration.',
   'marivo.credentials.configuration-request': 'Configuration request',
   'marivo.credentials.configure-a-datasource-to-continue': 'Configure a datasource to continue',
   'marivo.credentials.cancel-configuration-request': 'Cancel configuration request',

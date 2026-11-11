@@ -4,7 +4,7 @@ import test from 'node:test'
 import { marivoCredentialStorageRef } from '../../src/datasource/shell-env.ts'
 import { barrier, context, failed, finish, fixture, operation, waiting } from './fixtures.ts'
 
-test('missing Web test stays pending, submit validates once and settles the original call', async (t) => {
+test('missing Web test resumes after credential submission and runs once', async (t) => {
   const f = fixture('web')
   t.after(() => f.service.close())
   let settled = false
@@ -21,12 +21,12 @@ test('missing Web test stays pending, submit validates once and settles the orig
     changes: { DB_PASSWORD: 'submitted-canary' },
   })
   assert.equal(op.status, 'succeeded')
-  assert.equal(f.tests, 1)
   assert.equal('ok' in (await pending) && ((await pending) as { ok: boolean }).ok, true)
+  assert.equal(f.tests, 1)
   assert.equal(f.service.watch('session').requests[0]?.status, 'succeeded')
   assert.doesNotMatch(JSON.stringify(f.service.watch('session')), /submitted-canary/)
 })
-test('execution after missing form verifies once before returning a fresh snapshot', async (t) => {
+test('execution after credential submission resumes without testing the connection', async (t) => {
   const f = fixture('web')
   t.after(() => f.service.close())
   const pending = f.service.prepareExecution(f.exec, f.resolve, ['warehouse'])
@@ -37,30 +37,22 @@ test('execution after missing form verifies once before returning a fresh snapsh
   })
   const prepared = await pending
   assert('status' in prepared && prepared.status === 'ready')
-  assert.equal(f.tests, 1)
+  assert.equal(f.tests, 0)
   prepared.release()
 })
-test('configured connection failures return directly, while form failures retain correction and diagnose', async (t) => {
+test('connection failure after credential submission reaches the original test call', async (t) => {
   const f = fixture('web')
   t.after(() => f.service.close())
   f.setResult(failed)
-  f.store.put('DB_PASSWORD')
-  assert.deepEqual(await f.service.prepare('test', f.exec, f.resolve, 'warehouse'), failed)
-  assert.equal(f.service.watch('session').requests.length, 0)
-  f.store.values.clear()
-  const pending = f.service.prepareExecution(f.exec, f.resolve, ['warehouse'])
+  const pending = f.service.prepare('test', f.exec, f.resolve, 'warehouse')
   const request = await waiting(f)
   const op = await operation(f, request.context, 'submit', {
     requestId: request.id,
     changes: { DB_PASSWORD: 'wrong-value' },
   })
-  assert.deepEqual(op.result, failed)
-  assert.deepEqual(op.saved, ['DB_PASSWORD'])
-  const current = f.service.watch('session').requests[0]!
-  assert.equal(current.status, 'awaiting-decision')
-  await operation(f, current.context, 'diagnose', { requestId: request.id })
+  assert.equal(op.status, 'succeeded')
   assert.deepEqual(await pending, failed)
-  assert.equal(f.tests, 2)
+  assert.equal(f.tests, 1)
 })
 test('outer cancellation ends pending calls; a disconnected watch does not cancel them', async (t) => {
   const f = fixture('web')
@@ -111,9 +103,9 @@ test('operation IDs deduplicate writes and tests, reject mismatched scope, and e
   f.service.start(input)
   f.service.start({ ...input, changes: { DB_PASSWORD: 'must-not-overwrite' } })
   await finish(f, id, view.token)
-  assert.equal(f.tests, 1)
+  assert.equal(f.tests, 0)
   assert.equal(f.store.values.get(marivoCredentialStorageRef('DB_PASSWORD')), 'first-value')
-  assert.throws(() => f.service.start({ ...input, action: 'test' }), /operation-scope-mismatch/)
+  assert.throws(() => f.service.start({ ...input, action: 'delete' }), /operation-scope-mismatch/)
   f.advance(1_800_000)
   assert.equal(f.service.operation(f.service.generation, id, view.token), undefined)
   assert.equal(f.service.operation('old-generation', id, view.token), undefined)
@@ -173,37 +165,9 @@ test('definition change during validation cannot continue an old call', async (t
   await entered.promise
   f.description.definition = 'e'.repeat(64)
   gate.release()
-  assert.equal((await completion).status, 'failed')
+  assert.equal((await completion).status, 'succeeded')
   await rejected
 })
-test('management cancel preserves completed saves and waits for its test to stop', async (t) => {
-  const f = fixture()
-  t.after(() => f.service.close())
-  const entered = barrier()
-  f.bridge.test = async (_name, _values, signal) => {
-    entered.release()
-    await new Promise<void>((_resolve, reject) => {
-      signal!.addEventListener('abort', () => reject(new Error('stopped')), { once: true })
-    })
-    return failed
-  }
-  const view = await context(f),
-    id = randomUUID()
-  f.service.start({
-    generation: f.service.generation,
-    id,
-    scope: view.token,
-    action: 'update',
-    version: view.version,
-    changes: { DB_PASSWORD: 'persisted-value' },
-  })
-  await entered.promise
-  f.service.cancelOperation(f.service.generation, id, view.token)
-  const op = await finish(f, id, view.token)
-  assert.equal(op.status, 'cancelled')
-  assert.deepEqual(op.saved, ['DB_PASSWORD'])
-})
-
 test('external credential updates refresh a pending form without replaying its call', async (t) => {
   const f = fixture('web')
   t.after(() => f.service.close())
@@ -304,9 +268,6 @@ test('external updates during a direct test reject mixed snapshots without manag
   assert.equal(f.tests, 0)
   f.store.resolve = resolve
   assert.equal('ok' in (await f.service.prepare('test', f.exec, f.resolve, 'warehouse')), true)
-  // Settled tests retain ref provenance so management history observes later rotations.
-  f.service.invalidateStorageRef(marivoCredentialStorageRef('DB_PASSWORD'))
-  assert.equal((await context(f)).lastTest?.stale, true)
 })
 
 test('external updates during a direct connection test invalidate its result', async (t) => {
@@ -322,5 +283,4 @@ test('external updates during a direct connection test invalidate its result', a
     f.service.prepare('test', f.exec, f.resolve, 'warehouse'),
     /credentials-changed/,
   )
-  assert.equal((await context(f)).lastTest, undefined)
 })

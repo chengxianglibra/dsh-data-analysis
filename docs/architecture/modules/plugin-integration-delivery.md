@@ -57,7 +57,6 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 | Surface | 独有责任 | 删除条件 |
 | --- | --- | --- |
 | `marivo_help` | Native mode 的受控解释器与实时 Help transport | Harness/Marivo 提供等价原生 transport |
-| `marivo_datasource_configure` | 将数据源配置表单绑定到原调用并续接 | DSH 提供等价的领域配置续接 |
 | `marivo_datasource_test` | 缺失 DSH Credentials 的 Web 收集与显式 connection test | DSH 提供通用 credential-aware datasource lifecycle |
 | `marivo_python` | 一次调用内的全部 datasource 准入、fresh snapshot 与前台执行 | DSH 提供等价的执行准入与 Marivo resolver 注入 |
 | `marivo_report_write` | 引用/Lang 准入、不可变 JSON 与默认 tool/显式 tab 交付 | DSH 提供等价的完整快照交付 |

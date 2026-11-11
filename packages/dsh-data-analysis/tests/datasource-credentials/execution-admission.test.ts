@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { MarivoDatasourceDescription } from '../../src/datasource/bridge.ts'
 import { marivoCredentialStorageRef } from '../../src/datasource/shell-env.ts'
-import { barrier, context, fixture, operation, waiting } from './fixtures.ts'
+import { barrier, fixture, operation, waiting } from './fixtures.ts'
 
 function multiple(interaction: 'web' | 'none' = 'none') {
   const f = fixture(interaction)
@@ -94,8 +94,32 @@ test('all datasource inputs become ready before a single execution snapshot is r
   })
   await execution
   assert.equal(starts, 1)
-  assert.equal(f.store.calls.resolve, 3)
+  assert.equal(f.store.calls.resolve, 2)
   assert.doesNotMatch(JSON.stringify(f.service.watch('session')), /warehouse-canary|catalog-canary/)
+})
+
+test('partial credential submission keeps the original execution waiting', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  f.description.refs.push('DB_USER')
+  f.description.fields.user = 'DB_USER'
+  const pending = f.service.prepareExecution(f.exec, f.resolve, ['warehouse'])
+  const request = await waiting(f)
+  const partial = await operation(f, request.context, 'submit', {
+    requestId: request.id,
+    changes: { DB_PASSWORD: 'value' },
+  })
+  assert.equal(partial.status, 'failed')
+  assert.equal(f.service.watch('session').requests[0]?.status, 'awaiting-input')
+  const current = f.service.watch('session').requests[0]!
+  await operation(f, current.context, 'submit', {
+    requestId: request.id,
+    changes: { DB_USER: 'user' },
+  })
+  const prepared = await pending
+  assert('status' in prepared && prepared.status === 'ready')
+  assert.equal(f.tests, 0)
+  prepared.release()
 })
 
 test('a ready datasource rotated while another waits rejects the original execution', async (t) => {
@@ -112,7 +136,7 @@ test('a ready datasource rotated while another waits rejects the original execut
     changes: { CATALOG_PASSWORD: 'submitted' },
   })
   await rejected
-  assert.equal(f.store.calls.resolve, 1)
+  assert.equal(f.store.calls.resolve, 0)
 })
 
 test('datasources sharing a missing credential use one form and one final shared snapshot', async (t) => {
@@ -127,39 +151,10 @@ test('datasources sharing a missing credential use one form and one final shared
   const prepared = await execution
   assert('status' in prepared && prepared.status === 'ready')
   assert.equal(f.service.watch('session').requests.length, 1)
-  assert.equal(f.tests, 1)
-  assert.equal(f.store.calls.resolve, 2)
+  assert.equal(f.tests, 0)
+  assert.equal(f.store.calls.resolve, 1)
   assert.deepEqual(Object.keys(prepared.grants), ['warehouse', 'catalog'])
   prepared.release()
-})
-
-test('rotation after form test settlement cannot be absorbed by the execution continuation', async (t) => {
-  const f = fixture('web')
-  t.after(() => f.service.close())
-  let rotated = false
-  f.bridge.test = async (description) => {
-    let attempts = 0
-    const afterSettlement = () => {
-      if (f.service.watch('session').requests[0]?.status === 'succeeded') {
-        f.store.put('DB_PASSWORD', 'rotated-after-test')
-        f.service.invalidateStorageRef(marivoCredentialStorageRef('DB_PASSWORD'))
-        rotated = true
-      } else if (++attempts < 100) queueMicrotask(afterSettlement)
-    }
-    queueMicrotask(afterSettlement)
-    return { name: description.name, ok: true, latency_ms: 1, failure: null, repair: null }
-  }
-  const pending = f.service.prepareExecution(f.exec, f.resolve, ['warehouse'])
-  const rejected = assert.rejects(pending, /credentials-changed/)
-  const request = await waiting(f)
-  const result = await operation(f, request.context, 'submit', {
-    requestId: request.id,
-    changes: { DB_PASSWORD: 'submitted' },
-  })
-  await rejected
-  assert.equal(result.status, 'succeeded')
-  assert.equal(rotated, true)
-  assert.equal(f.store.calls.resolve, 1)
 })
 
 test('credential rotation during final snapshot resolution rejects mixed values', async (t) => {
@@ -236,36 +231,6 @@ test('cancellation ends a waiting execution and prevents its form from resuming 
     /call-ended/,
   )
   assert.equal(f.store.calls.set, 0)
-})
-
-test('management tests retain valid history and rotations mark it stale', async (t) => {
-  const f = fixture()
-  t.after(() => f.service.close())
-  f.store.put('DB_PASSWORD')
-  await f.service.prepare('test', f.exec, f.resolve, 'warehouse')
-  assert.equal((await context(f)).lastTest?.stale, false)
-  f.service.invalidateStorageRef(marivoCredentialStorageRef('DB_PASSWORD'))
-  assert.equal((await context(f)).lastTest?.stale, true)
-  const view = await context(f)
-  assert.equal((await operation(f, view, 'test')).status, 'succeeded')
-  assert.equal((await context(f)).lastTest?.stale, false)
-})
-
-test('history keeps credential versions after its management context expires', async (t) => {
-  const f = fixture()
-  t.after(() => f.service.close())
-  f.store.put('DB_PASSWORD')
-  await context(f)
-  f.advance(60_000)
-  await f.service.prepare('test', f.exec, f.resolve, 'warehouse')
-  // The overview context expires before the newer direct-test history does.
-  f.advance(1_740_000)
-  f.service.watch('session')
-  f.service.invalidateStorageRef(marivoCredentialStorageRef('DB_PASSWORD'))
-  const historical = await context(f)
-  assert.equal(historical.lastTest?.stale, true)
-  f.advance(60_000)
-  assert.equal((await context(f)).lastTest, undefined)
 })
 
 test('empty datasource execution has an empty scope and exact names are bounded', async (t) => {

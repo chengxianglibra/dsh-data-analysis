@@ -89,7 +89,8 @@ test('strict Gateway stream yields revisions only and cancellation leaves the wa
   const opening = await iterator.next()
   assert.deepEqual(Object.keys(opening.value as object).sort(), ['cursor', 'generation'])
   const next = iterator.next()
-  const task = f.service.configure(f.exec, f.resolve, { mode: 'create', reason: 'need orders' })
+  const task = f.service.prepare('test', f.exec, f.resolve, 'warehouse')
+  const rejected = assert.rejects(task, /call-ended/)
   const change = await next
   assert.notEqual(
     (change.value as CredentialRevision).cursor,
@@ -99,7 +100,7 @@ test('strict Gateway stream yields revisions only and cancellation leaves the wa
   const waiting = iterator.next()
   controller.abort()
   await assert.rejects(waiting)
-  assert.equal(f.service.watch('session').configurationRequests[0]?.endedAt, undefined)
+  assert.equal(f.service.watch('session').requests[0]?.endedAt, undefined)
   await assert.rejects(
     gateway.stream({
       peer,
@@ -109,7 +110,7 @@ test('strict Gateway stream yields revisions only and cancellation leaves the wa
     }),
   )
   f.controller.abort()
-  await task
+  await rejected
 })
 
 test('notification bursts coalesce immediate snapshots; superseded Session results never apply', async (t) => {
@@ -408,4 +409,58 @@ test('the native RemoteStream cannot apply a late snapshot while waiting offline
     await model.dispose()
     assert.equal(listeners.size, 0)
   }
+})
+
+test('a pending credential operation is associated with its session workspace', async (t) => {
+  const f = fixture('web')
+  t.after(() => f.service.close())
+  const view = (await f.service.overview('workspace', f.resolve, f.controller.signal))[0]!
+  const pendingView = { ...view, workspaceId: '' }
+  const gate = deferred<void>()
+  let captured: { id: string; scope: string } | undefined
+  const model = new CredentialClientModel({
+    async call(_channel, endpoint, payload) {
+      if (endpoint === 'overview')
+        return { ok: true, value: { generation: f.service.generation, datasources: [view] } }
+      if (endpoint === 'start') {
+        captured = payload as { id: string; scope: string }
+        await gate.promise
+        return { ok: true, value: {} }
+      }
+      if (endpoint === 'operation')
+        return {
+          ok: true,
+          value: {
+            ...captured,
+            action: 'submit',
+            status: 'succeeded',
+            phase: 'settled',
+            saved: [],
+            errors: [],
+          },
+        }
+      throw new Error('unexpected endpoint')
+    },
+  })
+  t.after(() => model.dispose())
+  await model.show('workspace')
+  model.openRequest('request-id')
+  const operation = model.start(
+    pendingView,
+    'submit',
+    { DB_PASSWORD: 'secret' },
+    undefined,
+    'workspace',
+  )
+  const visible = model
+    .getSnapshot()
+    .operations.filter((entry) => entry.workspaceId === 'workspace')
+  assert.equal(visible.length, 1)
+  assert.equal(visible[0]?.operation?.status, 'running')
+  assert.equal(
+    model.getSnapshot().operations.filter((entry) => entry.workspaceId === 'other').length,
+    0,
+  )
+  gate.resolve()
+  await operation
 })

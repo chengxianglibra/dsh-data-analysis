@@ -453,13 +453,6 @@ try {
     'true',
   )
   assert.equal(await page.locator('dialog.mc-dialog').count(), 0)
-  await datasourcePanel.getByRole('button', { name: '新增数据源', exact: true }).click()
-  await datasourcePanel.getByRole('combobox', { name: '引擎', exact: true }).selectOption('duckdb')
-  await datasourcePanel.getByLabel('name', { exact: true }).fill('tab_created')
-  await datasourcePanel.getByRole('button', { name: '确认新增数据源', exact: true }).click()
-  await datasourcePanel.getByRole('heading', { name: 'tab_created', exact: true }).waitFor()
-  await datasourcePanel.getByRole('button', { name: '测试连接', exact: true }).click()
-  await datasourcePanel.getByText('连接测试成功', { exact: true }).waitFor()
   const layout = await datasourcePanel.evaluate((panel) => {
     const title = panel.querySelector('.rt-heading')!.getBoundingClientRect()
     const refresh = panel.querySelector('[aria-label="刷新数据源"]')!.getBoundingClientRect()
@@ -477,9 +470,7 @@ try {
   })
   assert.deepEqual(layout, { aligned: true, above: true, selectedVisible: true, overflow: false })
   await page.screenshot({ path: path.join(outputRoot, 'datasource-directory.png'), fullPage: true })
-  record(
-    'datasource Tab owns top navigation, refresh icon, creation and connection test without a dialog',
-  )
+  record('datasource Tab owns top navigation and refresh without a dialog')
   await select('right-tabs-credentials')
   await run('credentials', 'credential-start')
   await page.locator('[data-rt-kind=datasources] .mc-request-status').waitFor()
@@ -820,9 +811,7 @@ try {
   )
   assert.equal(await page.getByRole('tab', { name: /^选择数据源 / }).count(), 0)
   await page.screenshot({ path: path.join(outputRoot, 'revoked-datasource.png'), fullPage: true })
-  record(
-    'Workspace revocation closes configuration without re-reading or reviving its datasource Tab',
-  )
+  record('Workspace revocation closes the datasource view without re-reading or reviving its Tab')
   assert.equal(await page.locator('[data-rt-kind=report] [data-analysis-record]').count(), 0)
   assert.equal(
     await page.evaluate(() => {
@@ -915,8 +904,6 @@ try {
             'right-tabs-cold',
             'right-tabs-credentials',
             'right-tabs-semantic',
-            'right-tabs-configure-create',
-            'right-tabs-configure-edit',
           ],
           model: 'deterministic-seam',
           scripted: true,
