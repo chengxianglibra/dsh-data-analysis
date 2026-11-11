@@ -46,8 +46,16 @@ const ctx={
   }}
  }
 };
-const {NextSteps,model}=installNextSteps(ctx), root=createRoot(document.getElementById('root'));
-const render=callId=>root.render(createElement(NextSteps,{sessionId:'s',turn:1,callId}));render();
+installNextSteps(ctx);
+const root=createRoot(document.getElementById('root'));
+const render=(turn=1,saved=true,ended=true)=>{
+ const data=new Map();
+ if(saved)data.set('marivo-presentation-delivery',{deliveries:[{delivery:{dshSessionId:'s',receipt:{workspaceId:'w'}}}]});
+ root.render(createElement('div',null,
+  createElement('p',null,ended?'The analysis is complete.':'The analysis is still running.'),
+  ended?createElement(turnTail,{sessionId:'s',turn:{turn,data}}):null));
+};
+render();
 window.fixture={
  stats:()=>({mounts,opens,submitted}),
  publish:extra=>channel({sessionId:'s',workspaceId:'w',turn:1,reportId:'r',buildId:'b',status:'available',items:[{label:'Compare regions',prompt:'Compare the saved regions.'}],...extra}),
@@ -62,9 +70,9 @@ window.fixture={
  hideWorkspace:()=>ctx.workspaces.list.set({phase:'ready',items:[]}),
  restoreWorkspace:()=>ctx.workspaces.list.set({phase:'ready',items:[{workspaceId:'w',path:'/workspace',sessionIds:['s']}]}),
  render,
- explicit:()=>{events.set({entries:[...events.getSnapshot().entries,{type:'event',event:{type:'tool/result',data:{turn:1,message:{isError:false,toolCallId:'explicit'},meta:{kind:'marivo.next-steps',sessionId:'s',turn:1,callId:'explicit'}}}}]});root.render(createElement(turnTail,{sessionId:'s',turn:{turn:1}}));},
- both:()=>{events.set({entries:[...events.getSnapshot().entries,{type:'event',event:{type:'tool/result',data:{turn:1,message:{isError:false,toolCallId:'explicit'},meta:{kind:'marivo.next-steps',sessionId:'s',turn:1,callId:'explicit'}}}}]});root.render(createElement('div',null,createElement(NextSteps,{sessionId:'s',turn:1}),createElement(turnTail,{sessionId:'s',turn:{turn:1}})));},
- advance:()=>{events.set({entries:[...events.getSnapshot().entries,{type:'event',event:{type:'turn/start',data:{turn:2}}}]});root.render(createElement(NextSteps,{sessionId:'s',turn:2}));session.set({...session.getSnapshot(),running:true});},
+ explicit:(saved=false)=>{events.set({entries:[...events.getSnapshot().entries,{type:'event',event:{type:'tool/result',data:{turn:1,message:{isError:false,toolCallId:'explicit'},meta:{kind:'marivo.next-steps',sessionId:'s',turn:1,callId:'explicit'}}}}]});render(1,saved);},
+ advance:()=>{events.set({entries:[...events.getSnapshot().entries,{type:'event',event:{type:'turn/start',data:{turn:2}}}]});render(2,true,false);session.set({...session.getSnapshot(),running:true});},
+ complete:()=>{render(2);session.set({...session.getSnapshot(),running:false});},
  close:async()=>{root.unmount();for(const dispose of effects.reverse())await dispose?.()}
 };`,
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -116,13 +124,20 @@ test('failed mount can retry; accepted notices keep the real stream healthy acro
   await page.evaluate('window.fixture.close()')
 })
 
-test('a notice arriving before its Turn remains visible when the event and session catch up', async () => {
+test('a notice arriving early appears below the final reply when its Turn completes', async () => {
   await start()
   await page.evaluate('window.fixture.publish({turn:2})')
   await page.waitForTimeout(30)
   assert.equal(await page.getByRole('button', { name: 'Compare regions' }).count(), 0)
   await page.evaluate('window.fixture.advance()')
-  await page.getByRole('button', { name: 'Compare regions' }).waitFor()
+  await page.getByText('The analysis is still running.').waitFor()
+  const button = page.getByRole('button', { name: 'Compare regions' })
+  assert.equal(await button.count(), 0)
+  await page.evaluate('window.fixture.complete()')
+  await button.waitFor()
+  const finalReply = await page.getByText('The analysis is complete.').boundingBox()
+  const recommendation = await button.boundingBox()
+  assert.ok(finalReply && recommendation && recommendation.y >= finalReply.y + finalReply.height)
   assert.equal(await page.locator('[data-next-steps-turn="2"]').count(), 1)
   await page.evaluate('window.fixture.close()')
 })
@@ -134,6 +149,7 @@ test('a delayed decline retires a pending recommendation for the same Turn', asy
   )
   await page.waitForTimeout(30)
   await page.evaluate('window.fixture.advance()')
+  await page.evaluate('window.fixture.complete()')
   await page.waitForTimeout(30)
   assert.equal(await page.getByRole('button', { name: 'Compare regions' }).count(), 0)
   await page.evaluate('window.fixture.publish({turn:2})')
@@ -155,7 +171,7 @@ test('an explicit Turn tail remains mounted while its Workspace owner loads', as
 
 test('a Turn with both report and explicit anchors shows one connection failure and keeps a saved notice', async () => {
   await start()
-  await page.evaluate('window.fixture.both(); window.fixture.terminal()')
+  await page.evaluate('window.fixture.explicit(true); window.fixture.terminal()')
   await page.locator('[data-next-steps-status="connection-failed"]').waitFor()
   assert.equal(await page.locator('[data-next-steps-status="connection-failed"]').count(), 1)
   await page.getByRole('button', { name: 'Retry connection' }).click()

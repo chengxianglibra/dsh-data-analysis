@@ -13,6 +13,7 @@ import { type NextStepsNotice, nextStepsNotice, nextStepsReceipt } from '../next
 import { hostCopy } from './i18n/host.tsx'
 import { NextStepsModel } from './next-steps-model.ts'
 import { mountNotifications } from './notifications.ts'
+import { PRESENTATION_TURN_DATA_KEY } from './presentation/delivery.ts'
 import { Button } from './ui/controls.tsx'
 import { UIStyleSheet } from './ui/theme.ts'
 
@@ -286,19 +287,19 @@ export function installNextSteps(ctx: Context) {
     }
     return undefined
   }
-  function NextSteps({
-    sessionId,
-    turn,
-    callId,
-  }: {
-    sessionId: string
-    turn: number
-    callId?: string
-  }) {
+  function NextSteps({ sessionId, turn: location }: PropsRuntime<'conversation.chat.turnTail'>) {
     useSyncExternalStore(model.subscribe, model.getSnapshot)
+    const { turn } = location
     const notice = model.value
-    if (!callId && nextStepsReceiptForTurn(sessionId, turn)) return null
     if (failed && owner?.sessionId === sessionId && currentTurn(owner) === turn) {
+      const workspaceId = owner.workspaceId
+      const hasSavedReport = location.data
+        .get(PRESENTATION_TURN_DATA_KEY)
+        ?.deliveries.some(
+          ({ delivery }) =>
+            delivery.dshSessionId === sessionId && delivery.receipt.workspaceId === workspaceId,
+        )
+      if (!hasSavedReport && !nextStepsReceiptForTurn(sessionId, turn)) return null
       return (
         <div
           className="mv-ui mv-next-steps"
@@ -322,7 +323,8 @@ export function installNextSteps(ctx: Context) {
       !notice ||
       notice.sessionId !== sessionId ||
       notice.turn !== turn ||
-      (notice.callId !== undefined && notice.callId !== callId)
+      (notice.callId !== undefined &&
+        notice.callId !== nextStepsReceiptForTurn(sessionId, turn)?.callId)
     )
       return null
     return (
@@ -368,13 +370,7 @@ export function installNextSteps(ctx: Context) {
         id: 'marivo-next-steps',
         locale: 'marivo.presentation',
       },
-      (props: PropsRuntime<'conversation.chat.turnTail'>) => {
-        const receipt = nextStepsReceiptForTurn(props.sessionId, props.turn.turn)
-        return receipt ? (
-          <NextSteps sessionId={props.sessionId} turn={props.turn.turn} callId={receipt.callId} />
-        ) : null
-      },
+      NextSteps,
     ),
   )
-  return { NextSteps, model }
 }

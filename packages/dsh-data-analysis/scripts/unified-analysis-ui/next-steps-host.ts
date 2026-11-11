@@ -44,11 +44,19 @@ export async function installProbe(ctx: Context, workspaceRoot: string, _outputR
       return { provider, id: model, name: model }
     }
     async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-      if (!plan || options.purpose === 'session-title' || plan.step > 1) {
+      if (!plan || options.purpose === 'session-title' || plan.step > 2) {
         yield { type: 'finish', reason: { kind: 'stop' } }
         return
       }
       const step = plan.step++
+      if (step === 2) {
+        const text = '收入变化分析已保存，可以在右侧查看。'
+        yield { type: 'block-start', index: 0, blockType: 'text' }
+        yield { type: 'text-delta', index: 0, text }
+        yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+        yield { type: 'finish', reason: { kind: 'stop' } }
+        return
+      }
       if (step === 1)
         await waitForNextStepsAdvance(options.signal, (value) => {
           release = value

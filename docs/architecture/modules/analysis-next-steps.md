@@ -32,7 +32,7 @@
 
 ## Chat 与原生提交
 
-自动保存后的按钮位于真实 Turn 的 Chat 结果节点内；显式已有报告请求位于 Harness 的 conversation.chat.turnTail，避免被工具执行详情折叠隐藏。通知的可选 callId 区分承载位置；同一 Turn 存在显式推荐 receipt 时，正文节点让位给 Turn 尾部，包括连接失败提示，以避免重复。工具 metadata 只保留定位身份，不含推荐正文，也不能从历史重建推荐。报告固定在右侧，关闭 Tab 不移动推荐；右侧 reader、目录、历史与离线 HTML 不包含推荐。正常态单排展示短标题和发送箭头；无合适任务时显示本地化的无建议文案，生成失败或最终遗漏显示暂不可用状态；正常 empty 不带生成重试入口，没有提示词详情、额外说明或输入控件。窄容器横向滚动，键盘焦点可将选项滚入视野。
+自动保存及显式针对已有报告的推荐都通过 Harness 的 `conversation.chat.turnTail` 在同一回合最终文本答复下方显示。没有文本答复时仍显示在回合尾部。显式推荐使用通知中的 `callId` 核对工具 receipt。当前回合有已保存报告或显式推荐 receipt 时，连接失败提示也使用同一位置。工具 metadata 只保留定位身份，不含推荐正文，也不能从历史重建推荐。报告固定在右侧，关闭 Tab 不移动推荐；右侧 reader、目录、历史与离线 HTML 不包含推荐。正常态单排展示短标题和发送箭头；无合适任务时显示本地化的无建议文案，生成失败或最终遗漏显示暂不可用状态；正常 empty 不带生成重试入口，没有提示词详情、额外说明或输入控件。窄容器横向滚动，键盘焦点可将选项滚入视野。
 
 点击前重新核对会话归属、Workspace、连接、Agent 空闲、无待提交消息，以及原生输入为 plain 且没有文字、引用、附件、command 或队列。草稿存在时禁用按钮，保留草稿。
 
@@ -42,6 +42,6 @@
 
 `tests/unified-analysis-ui/next-steps.test.ts` 覆盖 schema、临时 stream、一次消费、连续 Turn 创建与更新、同一步再次保存的最终版本归属、首次空列表零补齐与遗漏时的一次有界补齐、拒绝、模型失败、取消、新输入与迟到结果，以及真实 Harness 正常结束、嵌套执行、推荐后文件交付和最终答复、同名替换 writer 拒绝、准确 ref 版本校验。隔离 Web 入口为 `scripts/unified-analysis-ui/web.ts --next-steps`，使用打包生产插件和脚本模型验证实际 Native/PTC、Chat、右侧报告与原生输入。
 
-`next-steps-client.browser.test.ts` 直接覆盖客户端安装、真实 RemoteStream 两次中断、mount 失败重试、显式 Turn 尾部位置及消费后的失效。
+`next-steps-client.browser.test.ts` 覆盖客户端安装、真实 RemoteStream 两次中断、mount 失败重试、最终答复下方的推荐、显式推荐 receipt 及消费后的失效。
 
 脚本模型验证接线与交互，不证明真实模型推荐质量。完整检查、打包、浏览器与真实模型证据分别记录，不互相替代。

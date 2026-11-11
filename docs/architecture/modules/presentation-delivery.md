@@ -72,7 +72,7 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
 definition 和 sources 使用具体本地 schema 逐项校验；当前 Harness 只支持 boolean additionalProperties，无法在 PTC 中为动态 resources/resultMetadata 名称映射推导 entry 类型。Tool schema 明确披露顶层字段及来源结构，并用准确 description 标明 map entry 的列、coverage 和 Frame 元数据约束，不宣称 Host 已提供 typed map。
 
 includeCode 按 codeRef 去重返回 definition.sources，逐项标明 available 的 code.text、datasources、resultVariables，或 unavailable。未绑定来源的资源没有来源项。记录的空 datasource 数组只代表执行未声明 Marivo datasource，旧记录缺失时保持未知。读取核验当前 Workspace 的 Host 文件，不执行代码或业务查询；源码未内嵌报告，记录丢失不阻止读取固定快照。组件签名按展示 Skill 的生成 Catalog 参考取得，不例行回读成功保存。
-报告视图以 Session/Turn/首次 call 建立稳定身份，草稿后续调用通过 draftId 关联；Workspace 路径与连接 generation 共同限定读写归属。真实 Turn 的 Chat 节点保留轻量分析视图入口及推荐，正文仅在右侧 Tab 展示；原生 tool view 保留错误说明或已保存视图入口。
+报告视图以 Session/Turn/首次 call 建立稳定身份，草稿后续调用通过 draftId 关联；Workspace 路径与连接 generation 共同限定读写归属。真实 Turn 的 Chat 节点保留轻量分析视图入口，正文仅在右侧 Tab 展示；原生 tool view 保留错误说明或已保存视图入口。[下一步推荐](analysis-next-steps.md)位于 Chat 回合尾部。
 
 首次 Native 参数候选、已校验草稿修订和最终 Build 由同一报告视图更新。前台会话首次出现可展示候选时自动打开并选中原生 Tab；此操作会展开侧栏并切换当前 Tab。用户关闭或切换 Tab 后，后续更新不再次打开或抢焦点；可从 Chat 入口手动重开。草稿保存后同一 Tab 展示准确 Build。
 

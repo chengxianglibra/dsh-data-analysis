@@ -68,7 +68,7 @@ const labels = workspaceDirectories
 /** Default browser integration. Layout belongs to Harness; mutable content belongs to occurrences. */
 export function installRightTabs(ctx, { diagnostics = false } = {}) {
   installCopy(ctx)
-  const { NextSteps } = installNextSteps(ctx)
+  installNextSteps(ctx)
   const rpc = createPluginRpc(ctx.connection.rpc)
   const { refreshLocks, refreshStore, refreshReport } = createReportRefresh(ctx, rpc)
   const pages = new Map()
@@ -248,7 +248,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         { sessionId, workspaceId, recordId, ...selection },
         signal,
       ),
-    NextSteps,
   )
   const reportTabId = definitionId(reportKind)
   ctx.effect(() =>

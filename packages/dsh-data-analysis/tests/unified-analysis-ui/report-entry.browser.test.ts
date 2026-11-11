@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('report entry opens the right reader, retries failure and preserves recommendations', async () => {
+test('report entry opens the right reader, retries failure and explains expired drafts', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-report-entry-'))
   const browser = await chromium.launch()
   try {
@@ -30,7 +30,7 @@ let fail=true;
 const noop=async()=>undefined;
 const {ReportBody}=installAnalysisTool(ctx,{call:noop},()=>{},connection,views,
  view=>{if(fail)throw Error('open failed');views.openingFailed(view.id,false);right.render(h(ReportBody,{viewId:view.id,sessionId:'s'}))},
- ()=>{},noop,noop,noop,()=>h('span',{'data-recommendation':''},'Follow up'));
+ ()=>{},noop,noop,noop);
 const candidate={sessionId:'s',workspaceId:'w',generation,callId:'call',turn:1,phase:'preparing',
  preview:true,program:'',complete:false,resourcePatchInput:'omitted',title:'Revenue'};
 const view=views.observe(candidate,'/workspace');views.openingFailed(view.id,true);
@@ -86,7 +86,6 @@ render();`,
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
     await page.getByText('Revenue', { exact: true }).waitFor()
     assert.equal(await page.locator('#chat [data-analysis-placement]').count(), 0)
-    assert.equal(await page.locator('#chat [data-recommendation]').count(), 1)
     assert.equal(await page.getByRole('alert').count(), 1)
     await page.getByRole('button', { name: 'Open analysis view in sidebar' }).click()
     await page.getByRole('alert').waitFor()
@@ -112,7 +111,6 @@ render();`,
     await page.evaluate('window.fixture.resetForExpiry()')
     await page.evaluate('window.fixture.expire()')
     await page.locator('#chat [role="status"]').waitFor()
-    assert.equal(await page.locator('#chat [data-recommendation]').count(), 1)
     assert.deepEqual(errors, [])
   } finally {
     await browser.close()

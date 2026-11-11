@@ -2,14 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ConnectionGenerationState } from '@deepseek-ai/dsh-client-connection/client'
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
-import {
-  type ComponentType,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { analysisRecordId } from '../../presentation/contracts/analysis-document.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
 import type { SemanticRef } from '../../semantic-reference/contracts.ts'
@@ -58,7 +51,6 @@ export function installAnalysisTool(
     selection: Parameters<NonNullable<AnalysisResourceContext['askResource']>>[0],
     signal: AbortSignal,
   ) => Promise<undefined | (() => void)>,
-  NextSteps?: ComponentType<{ sessionId: string; turn: number }>,
 ) {
   const subscribe = (fn: () => void) => connection.subscribe(fn)
   const getGeneration = () => connection.getSnapshot()
@@ -278,7 +270,6 @@ export function installAnalysisTool(
               {t('marivo.presentation.ui-draft-expired')}
             </p>
           ))}
-          {NextSteps && <NextSteps sessionId={props.sessionId} turn={props.node.data.turn} />}
         </>
       )
     },
