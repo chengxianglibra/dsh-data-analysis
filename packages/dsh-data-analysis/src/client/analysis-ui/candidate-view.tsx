@@ -3,9 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   type AnalysisDocument,
   parseAnalysisRecordId,
-  parseSavedPresentation,
 } from '../../presentation/contracts/analysis-document.ts'
 import { parseReportHistory } from '../../presentation/contracts/catalog.ts'
+import { parseSavedDocumentBytes } from '../../presentation/contracts/saved-document.ts'
 import type { PresentationReceipt } from '../../presentation/contracts/types.ts'
 import type { PythonCodeRef, PythonExecutionDatasource } from '../../python-execution-contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
@@ -16,7 +16,28 @@ import { type AnalysisCandidate, candidateResources } from './candidate.ts'
 import { CandidateAnalysisSurface, SavedAnalysisSurface } from './lazy-surface.tsx'
 import { streamingAnalysisProgram } from './streaming-program.ts'
 
+export function isIncompatibleReport(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message === 'report-document-incompatible' ||
+      error.message === 'report-version-unsupported')
+  )
+}
+
 function responseValue(response: unknown): unknown {
+  if (
+    response &&
+    typeof response === 'object' &&
+    'ok' in response &&
+    response.ok === false &&
+    'error' in response &&
+    response.error &&
+    typeof response.error === 'object' &&
+    'message' in response.error &&
+    (response.error.message === 'report-document-incompatible' ||
+      response.error.message === 'report-version-unsupported')
+  )
+    throw new Error(response.error.message)
   if (
     !response ||
     typeof response !== 'object' ||
@@ -44,9 +65,7 @@ export async function readSavedAnalysis(
     ),
     receipt,
   )
-  const document = parseSavedPresentation(
-    JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
-  )
+  const document = parseSavedDocumentBytes(bytes)
   if (
     document.workspaceId !== receipt.workspaceId ||
     document.reportId !== receipt.reportId ||
@@ -132,11 +151,11 @@ export function CandidateView({
     document: AnalysisDocument
     generation: ConnectionGeneration
   }>()
-  const [failed, setFailed] = useState(false)
+  const [failure, setFailure] = useState<'incompatible' | 'read' | undefined>()
   const { basedOnRecordId, sessionId, workspaceId, generation } = candidate
   useEffect(() => {
     setBase(undefined)
-    setFailed(false)
+    setFailure(undefined)
     if (!basedOnRecordId) return
     const abort = new AbortController()
     void (async () => {
@@ -156,8 +175,8 @@ export function CandidateView({
       if (!receipt) throw new Error('report-build-not-found')
       const document = await readSavedAnalysis(rpc, sessionId, receipt, abort.signal)
       if (!abort.signal.aborted) setBase({ recordId: basedOnRecordId, document, generation })
-    })().catch(() => {
-      if (!abort.signal.aborted) setFailed(true)
+    })().catch((error: unknown) => {
+      if (!abort.signal.aborted) setFailure(isIncompatibleReport(error) ? 'incompatible' : 'read')
     })
     return () => abort.abort()
   }, [basedOnRecordId, sessionId, workspaceId, generation, rpc])
@@ -194,15 +213,17 @@ export function CandidateView({
     >
       <UIStyleSheet />
       <Alert
-        role={terminal || failed ? 'alert' : 'status'}
-        variant={terminal || failed ? 'destructive' : 'default'}
+        role={terminal || failure ? 'alert' : 'status'}
+        variant={terminal || failure ? 'destructive' : 'default'}
       >
         <AlertDescription>
           {t(
             terminal
               ? 'marivo.presentation.ui-failed'
-              : failed
-                ? 'marivo.presentation.ui-read-failed'
+              : failure
+                ? failure === 'incompatible'
+                  ? 'marivo.presentation.incompatible-report'
+                  : 'marivo.presentation.ui-read-failed'
                 : !candidate.surface
                   ? 'marivo.presentation.ui-preparing'
                   : candidate.phase === 'start'

@@ -59,7 +59,7 @@ metric 要求完整单行快照，table 的 `columns` 使用互异的快照列 I
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
 模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。`report-ref-invalid` 提示复用成功回执；明确需要恢复当前 Turn 草稿时可通过 `marivo_report_read({draft:true})` 取回上下文并确认目标，不自动纠正引用或选择最新版本。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。
 
-新保存使用严格 `dsh.analysis-ui/v2`，required/not-needed/unknown 为必填 contentReview；reader 保留严格 v1 只读数据支持，缺失复核状态不推定已复核。旧 Build 文件不迁移或改写。
+新保存使用严格 `dsh.analysis-ui/v2`，required/not-needed/unknown 为必填 contentReview；reader 支持读取严格 v1，缺失复核状态不推定已复核。v1 可作为新版本的基础，保存新版本使用 v2；旧 Build 文件不迁移或改写。
 
 更新读取准确 saved ref，用固定 `mergeStatements` 合并完整命名语句，再校验完整程序与资源计划
 （[analysis-program.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-program.ts)）。

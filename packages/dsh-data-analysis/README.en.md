@@ -122,7 +122,7 @@ Initial previews, revisions and final saving update the same analysis view. Subt
 Analysis views support tables, complete single values, Native generation previews, and updates to an exact saved version.
 Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.
 Frame views support charts selected from their structure. Analysis views do not provide global filters, in-page editing or object-storage publishing.
-View history requires current v4 pointers and the current Catalog build; earlier Catalog builds have no compatibility reader. Current v2/v3 pointers (including earlier saved views) and Frame v1 are no longer readable or updatable. Files stay on disk; capture a current snapshot and create a new analysis view to continue.
+View history requires current v4 pointers, but the saved Catalog build need not match the current one. The current reader validates report contents and reports unsupported content as an error. Successful reading does not guarantee that component defaults or rendering semantics match the original version. Current v2/v3 pointers (including earlier saved views) and Frame v1 are no longer readable or updatable. Files stay on disk; capture a current snapshot and create a new analysis view to continue.
 
 ## Analysis timeout
 

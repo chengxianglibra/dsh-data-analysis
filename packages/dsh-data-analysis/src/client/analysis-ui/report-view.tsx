@@ -10,7 +10,7 @@ import { useCopy } from '../i18n/context.tsx'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { candidateResources } from './candidate.ts'
-import { readSavedAnalysis } from './candidate-view.tsx'
+import { isIncompatibleReport, readSavedAnalysis } from './candidate-view.tsx'
 import type { AnalysisResourceContext } from './context.tsx'
 import { ReportAnalysisSurface } from './lazy-surface.tsx'
 import { ReportReading } from './reading-state.tsx'
@@ -31,7 +31,7 @@ export function ReportView({
   actions?: Omit<AnalysisResourceContext, 'readResource'>
 }) {
   const t = useCopy()
-  const [failedKey, setFailedKey] = useState<string>()
+  const [readFailure, setReadFailure] = useState<{ key: string; incompatible: boolean }>()
   const {
     candidate,
     draft,
@@ -151,8 +151,9 @@ export function ReportView({
       }
       if (document && !abort.signal.aborted)
         views.document(id, { generation, workspacePath }, target, document)
-    })().catch(() => {
-      if (!abort.signal.aborted) setFailedKey(target)
+    })().catch((error: unknown) => {
+      if (!abort.signal.aborted)
+        setReadFailure({ key: target, incompatible: isIncompatibleReport(error) })
     })
     return () => abort.abort()
     // Only a content identity change starts IO; placement and reading updates never do.
@@ -236,7 +237,7 @@ export function ReportView({
       (!candidate || (terminal && !draft)),
   )
   const failed = candidate?.phase === 'failed' || stream?.status === 'failed'
-  const readFailed = Boolean(target && failedKey === target)
+  const readFailed = Boolean(target && readFailure?.key === target)
   const progress =
     published || failed || readFailed || settled
       ? undefined
@@ -256,7 +257,9 @@ export function ReportView({
           <AlertDescription>
             {t(
               readFailed
-                ? 'marivo.presentation.ui-read-failed'
+                ? readFailure?.incompatible
+                  ? 'marivo.presentation.incompatible-report'
+                  : 'marivo.presentation.ui-read-failed'
                 : 'marivo.presentation.ui-update-failed',
             )}
           </AlertDescription>

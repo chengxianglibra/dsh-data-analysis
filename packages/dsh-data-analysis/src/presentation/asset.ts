@@ -1,5 +1,5 @@
-import { parseSavedPresentation } from './contracts/analysis-document.ts'
 import type { PresentationReceipt } from './contracts/index.ts'
+import { parseSavedDocumentBytes } from './contracts/saved-document.ts'
 import { presentationAssetPath, presentationSha256, readPresentationAsset } from './files.ts'
 
 /** Read a fixed, receipt-verified snapshot; never access analysis or current. */
@@ -26,9 +26,7 @@ export async function readReceiptAsset(
     presentationSha256(bytes) !== receipt.files.document.sha256
   )
     throw new Error('asset-digest-mismatch')
-  const document = parseSavedPresentation(
-    JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
-  )
+  const document = parseSavedDocumentBytes(bytes)
   if (
     document.workspaceId !== workspaceId ||
     document.reportId !== receipt.reportId ||

@@ -20,6 +20,7 @@ import ToolRuntime, { type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import { visibleReports } from '../../src/client/presentation/catalog-model.ts'
 import { PresentationDeliveryModel } from '../../src/client/presentation/delivery-model.ts'
+import { analysisCatalogBuild } from '../../src/presentation/contracts/analysis-catalog.ts'
 import {
   analysisRecordId,
   parseAnalysisDocument,
@@ -962,7 +963,7 @@ test('Dataset chart programs save, reopen and update embedded data after capture
   assert.deepEqual((await readReceiptDocument(f.root, updated.receipt)).resources, saved.resources)
 })
 
-test('only the current Catalog reads Frame and Dataset reports', async (t) => {
+test('reports from other Catalog builds reopen when their content is compatible', async (t) => {
   const f = await fixture(t)
   const previous = '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053'
   const predecessor = 'c42feb51cff7113f2de9d48dd61992672a4dc0b13b832b73aef72de7e0b56d0f'
@@ -971,8 +972,61 @@ test('only the current Catalog reads Frame and Dataset reports', async (t) => {
       resourcePatch: { put: { [resource]: f.resources[resource] } },
     })
     const saved = await readReceiptDocument(f.root, delivery.receipt)
-    assert.equal(parseAnalysisDocument(saved).program, saved.program)
-    for (const build of [predecessor, previous, 'unknown'])
-      assert.throws(() => parseAnalysisDocument({ ...saved, catalog: { ...saved.catalog, build } }))
+    for (const build of [predecessor, previous, 'unknown']) {
+      const older = { ...saved, catalog: { ...saved.catalog, build } }
+      assert.equal(parseAnalysisDocument(older).catalog.build, build)
+      assert.throws(
+        () => parseAnalysisDocument({ ...older, program: 'root = UnknownComponent();' }),
+        /analysis-program-invalid/,
+      )
+      assert.throws(() =>
+        parseAnalysisDocument({ ...older, catalog: { ...older.catalog, id: 'unknown' } }),
+      )
+    }
   }
+})
+
+test('saved reports from another Catalog build reopen and can be updated', async (t) => {
+  const f = await fixture(t)
+  const original = await f.present({ resourcePatch: { put: { data: f.resources.data } } })
+  const saved = await readReceiptDocument(f.root, original.receipt)
+  const buildId = randomUUID()
+  const older = {
+    ...saved,
+    buildId,
+    recordId: analysisRecordId(saved.reportId, buildId),
+    catalog: { ...saved.catalog, build: 'previous-catalog' },
+  }
+  await publishPresentation(f.root, older, saved.buildId, async () => {}, undefined, {
+    kind: 'agent',
+    sessionId: 'session',
+    surface: 'tool',
+  })
+  const model = new PresentationDeliveryModel({
+    async call(_channel, endpoint, payload, signal) {
+      return {
+        ok: true,
+        value:
+          endpoint === 'files/read'
+            ? await f.service.read(payload, signal)
+            : endpoint === 'reports/history'
+              ? await f.service.catalog(endpoint, payload, signal)
+              : await f.service.report(payload, signal),
+      }
+    },
+  })
+  t.after(() => model.dispose())
+  await model.showBuild('workspace', older.reportId, older.buildId)
+  assert.equal(model.getSnapshot().error, undefined)
+  assert.equal(model.getSnapshot().analysisDocument?.catalog.build, 'previous-catalog')
+  assert.equal(model.getSnapshot().analysisDocument?.program, older.program)
+  const updated = await f.present({ basedOnRecordId: older.recordId, title: 'Updated report' })
+  const updatedDocument = await readReceiptDocument(f.root, updated.receipt)
+  assert.equal(updatedDocument.title, 'Updated report')
+  assert.equal(updatedDocument.program, older.program)
+  assert.equal(updatedDocument.catalog.build, analysisCatalogBuild)
+  assert.equal(
+    (await readAnalysisRecord(f.root, 'workspace', older.reportId, buildId)).catalog.build,
+    'previous-catalog',
+  )
 })

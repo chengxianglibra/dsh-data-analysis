@@ -402,6 +402,47 @@ test('production RPC classifies missing files and unavailable Workspaces without
   await stopUnavailable()
 })
 
+test('production RPC distinguishes an incompatible saved program from a missing file', async (t) => {
+  const f = await fixture(t)
+  const receipt = await commitPresentation(f.root, f.built, async () => {})
+  // Simulate an older admitted component that the current reader no longer supports.
+  const bytes = Buffer.from(
+    JSON.stringify({ ...f.built.document, program: 'root = RemovedComponent();' }),
+  )
+  await writeFile(receipt.files.document.path, bytes)
+  const savedReceipt = {
+    ...receipt,
+    files: {
+      document: {
+        ...receipt.files.document,
+        bytes: bytes.length,
+        sha256: presentationSha256(bytes),
+      },
+    },
+  }
+  const { connection, channels } = createConnectionFixture()
+  const stop = registerMarivoPresentationRpc(
+    connection,
+    new MarivoPresentationFileService(() => ({ id: 'workspace', path: f.root })),
+  )
+  t.after(() => stop())
+  const read = () =>
+    channels.get('/marivo-presentation')!(
+      'files/read',
+      { sessionId: 'session', receipt: savedReceipt, asset: 'presentation.json' },
+      new AbortController().signal,
+    )
+  const incompatible = await read()
+  assert.equal(incompatible.ok, false)
+  if (incompatible.ok) throw new Error('Expected incompatible report')
+  assert.equal(incompatible.error.message, 'report-document-incompatible')
+  await rm(savedReceipt.files.document.path)
+  const missing = await read()
+  assert.equal(missing.ok, false)
+  if (missing.ok) throw new Error('Expected missing report')
+  assert.equal(missing.error.message, 'asset-missing')
+})
+
 test('component RPC reports admitted availability and mismatch errors', async () => {
   const { connection, channels } = createConnectionFixture()
   const service = new MarivoPresentationFileService(() => undefined)

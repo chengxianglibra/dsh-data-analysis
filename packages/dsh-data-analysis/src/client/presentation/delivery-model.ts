@@ -1,9 +1,6 @@
 import { sha256 } from '@noble/hashes/sha2.js'
 import { bytesToHex } from '@noble/hashes/utils.js'
-import {
-  type AnalysisDocument,
-  parseSavedPresentation,
-} from '../../presentation/contracts/analysis-document.ts'
+import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
 import {
   parseReportHistory,
   type ReportHistory,
@@ -14,6 +11,7 @@ import {
   type PresentationReceipt,
   parsePresentationReceipt,
 } from '../../presentation/contracts/index.ts'
+import { parseSavedDocumentBytes } from '../../presentation/contracts/saved-document.ts'
 import {
   MARIVO_PRESENTATION_RPC_CHANNEL,
   type PresentationDelivery,
@@ -128,6 +126,7 @@ const errorCopy: Readonly<Record<string, string>> = {
   'invalid-report-history':
     'marivo.presentation.invalid-analysis-snapshot-content-it-cannot-be-opened',
   'report-version-unsupported': 'marivo.presentation.unsupported-report',
+  'report-document-incompatible': 'marivo.presentation.incompatible-report',
   'report-locale-invalid': 'marivo.presentation.unsupported-report',
 }
 
@@ -243,9 +242,7 @@ export class PresentationDeliveryModel {
       ),
       receipt,
     )
-    const document = parseSavedPresentation(
-      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
-    )
+    const document = parseSavedDocumentBytes(bytes)
     if (
       document.workspaceId !== receipt.workspaceId ||
       document.reportId !== receipt.reportId ||

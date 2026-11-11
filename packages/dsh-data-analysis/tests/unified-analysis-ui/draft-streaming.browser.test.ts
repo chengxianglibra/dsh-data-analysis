@@ -26,6 +26,7 @@ declare global {
       replaceResources(): void
       lateResources(): void
       lateResourceView(): void
+      openFailedReport(code: string): void
     }
   }
 }
@@ -98,13 +99,14 @@ import {draftReportRef,savedReportRef} from './src/presentation/contracts/report
 const documentValue = ${JSON.stringify(document)};
 const views=new ReportViews(), generation={}, draftId=${JSON.stringify(draftId)};
 const currentDraftRef=()=>draftReportRef({workspaceId:'workspace',sessionId:'session',turn:1,draftId,revision:documentValue.buildId});
-let surface='tool',args,callId='first',savedMode=false,hostKey=0,readGate,release;
+let surface='tool',args,callId='first',savedMode=false,hostKey=0,readGate,release,readError;
 const root=createRoot(document.getElementById('root'));
 const receipt=${JSON.stringify(receipt)},file=${JSON.stringify(file)};
-const rpc={call:async(_channel,endpoint)=>{await readGate; return {ok:true,value:endpoint==='reports/history'?{workspaceId:documentValue.workspaceId,reportId:documentValue.reportId,currentBuildId:documentValue.buildId,versions:[{receipt,publishedAt:'2026-11-09T00:00:00.000Z',source:{kind:'agent',sessionId:'session',surface}}]}:endpoint==='files/read'?file:documentValue}}};
+const rpc={call:async(_channel,endpoint)=>{await readGate; if(endpoint==='files/read'&&readError)return {ok:false,error:{code:'internal',message:readError,details:{}}}; return {ok:true,value:endpoint==='reports/history'?{workspaceId:documentValue.workspaceId,reportId:documentValue.reportId,currentBuildId:documentValue.buildId,versions:[{receipt,publishedAt:'2026-11-09T00:00:00.000Z',source:{kind:'agent',sessionId:'session',surface}}]}:endpoint==='files/read'?file:documentValue}}};
 function App(){useSyncExternalStore(views.subscribe,views.getSnapshot);const view=views.forTurn('session',1).at(-1);return view ? h('div',{key:hostKey,'data-surface':surface},h(ReportView,{view,views,rpc})):null;}
 function observe(){views.observe(analysisCandidate({phase:'preparing',args,callId,name:'marivo_report_write',turn:1,step:1,time:1,subCalls:[]},'session','workspace',generation),'/workspace');}
 window.draftTest={
+openFailedReport(code){views.revoke('session');readError=code;hostKey++;views.accept({kind:'marivo.presentation.delivery',schemaVersion:2,dshSessionId:'session',turn:1,surface:'tool',receipt},'failed-open',generation,'/workspace');root.render(h(App));},
 holdReads(){readGate=new Promise(resolve=>{release=resolve});},
 releaseReads(){release?.();readGate=undefined;},
 settle(){views.settle('session');},
@@ -288,6 +290,23 @@ root.render(h(App));`,
     assert.equal(await settled!.evaluate((node) => node.isConnected), true)
     assert.equal(await page.getByRole('alert').count(), 0)
     assert.equal(await page.locator('.au-report-motion').count(), 0)
+    await page.evaluate(() => window.draftTest.openFailedReport('report-document-incompatible'))
+    await page
+      .getByRole('alert')
+      .filter({ hasText: /incompatible/i })
+      .waitFor()
+    await page.evaluate(() => window.draftTest.openFailedReport('asset-missing'))
+    await page
+      .getByRole('alert')
+      .filter({ hasText: /cannot read/i })
+      .waitFor()
+    assert.equal(
+      await page
+        .getByRole('alert')
+        .filter({ hasText: /incompatible/i })
+        .count(),
+      0,
+    )
     assert.deepEqual(errors, [])
   } finally {
     await browser.close()

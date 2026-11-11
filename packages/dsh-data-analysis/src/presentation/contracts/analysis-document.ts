@@ -1,7 +1,7 @@
 import { type ElementNode, parseExpression, split, tokenize } from '@openuidev/lang-core'
 import { z } from 'zod'
 import type { AnalysisResultSummary } from '../result-summary.ts'
-import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
+import { analysisCatalogId } from './analysis-catalog.ts'
 import { analysisStatements, parseAnalysisProgram } from './analysis-program.ts'
 import { datasetDisplaySchema, resolveDatasetView } from './dataset-view.ts'
 import { frameDisplayIssue } from './frame-display.ts'
@@ -86,7 +86,7 @@ const documentFields = z.strictObject({
   generatedAt: z.string().datetime({ offset: true }),
   catalog: z.strictObject({
     id: z.literal(analysisCatalogId),
-    build: z.string().refine((build) => build === analysisCatalogBuild),
+    build: z.string(),
   }),
   program: z.string().min(1).max(PRESENTATION_BUDGETS.text),
   resources: z.record(id, resource),

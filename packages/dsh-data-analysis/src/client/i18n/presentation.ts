@@ -177,6 +177,7 @@ export const zh = {
   'marivo.presentation.ui-failed': '此次分析视图更新失败。',
   'marivo.presentation.ui-update-failed': '此次分析视图更新未完成，已保留此前内容。',
   'marivo.presentation.ui-read-failed': '无法读取此版本的已保存快照。',
+  'marivo.presentation.incompatible-report': '此分析视图的内容无效或与当前阅读器不兼容，无法打开。',
   'marivo.presentation.agent-update': 'Agent 更新 · ',
   'marivo.presentation.source-session-unavailable': '来源会话不可用',
   'marivo.presentation.search-by-title': '按标题搜索',
@@ -440,6 +441,8 @@ export const en = {
   'marivo.presentation.ui-update-failed':
     'This analysis view update failed. Previous content is still available.',
   'marivo.presentation.ui-read-failed': 'Cannot read this saved snapshot version.',
+  'marivo.presentation.incompatible-report':
+    'This analysis view is invalid or incompatible with the current reader and cannot be opened.',
   'marivo.presentation.agent-update': 'Agent update · ',
   'marivo.presentation.source-session-unavailable': 'Source session unavailable',
   'marivo.presentation.search-by-title': 'Search by title',

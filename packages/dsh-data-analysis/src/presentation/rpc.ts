@@ -571,7 +571,7 @@ export function registerMarivoPresentationRpc(
             : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
               ? 'asset-missing'
               : error instanceof Error &&
-                  /^(report-version-unsupported|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-not-current|report-history-full|report-catalog-too-large|analysis-draft-unavailable|code-not-bound|code-unavailable|point-unavailable|point-mismatch|dataset-unavailable|dataset-mismatch|frame-unavailable|component-unavailable|component-mismatch|component-too-large)$/.test(
+                  /^(report-version-unsupported|report-document-incompatible|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-not-current|report-history-full|report-catalog-too-large|analysis-draft-unavailable|code-not-bound|code-unavailable|point-unavailable|point-mismatch|dataset-unavailable|dataset-mismatch|frame-unavailable|component-unavailable|component-mismatch|component-too-large)$/.test(
                     error.message,
                   )
                 ? error.message
