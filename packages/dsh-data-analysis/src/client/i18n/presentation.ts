@@ -1,5 +1,13 @@
 /** Plugin-owned copy; keys are stable identifiers, never business labels. */
 export const zh = {
+  'marivo.presentation.ui-filter-resource': '作用资源：{p0}',
+  'marivo.presentation.ui-filter-summary': '生效的筛选条件',
+  'marivo.presentation.ui-filter-all': '全部',
+  'marivo.presentation.ui-filter-clear': '清除',
+  'marivo.presentation.ui-filter-reset': '恢复默认',
+  'marivo.presentation.ui-filter-no-options': '暂无候选项',
+  'marivo.presentation.ui-filter-matched': '匹配 {p0} / 已捕获 {p1} 行',
+  'marivo.presentation.ui-filter-empty': '没有匹配的行',
   'marivo.presentation.ui-content-review-required': '数据已变更，静态叙述待核对。',
   'marivo.presentation.ui-content-review-unknown': '此版本未记录正文复核状态。',
   'marivo.presentation.ui-next-steps-connection-failed':
@@ -224,6 +232,14 @@ export const zh = {
   'marivo.presentation.page-only-summary': '第 {p0} / {p1} 页',
 } as const
 export const en = {
+  'marivo.presentation.ui-filter-resource': 'Resource: {p0}',
+  'marivo.presentation.ui-filter-summary': 'Active filter conditions',
+  'marivo.presentation.ui-filter-all': 'All',
+  'marivo.presentation.ui-filter-clear': 'Clear',
+  'marivo.presentation.ui-filter-reset': 'Restore defaults',
+  'marivo.presentation.ui-filter-no-options': 'No options available',
+  'marivo.presentation.ui-filter-matched': 'Matched {p0} / {p1} captured rows',
+  'marivo.presentation.ui-filter-empty': 'No matching rows',
   'marivo.presentation.ui-content-review-required': 'Data changed. Static narrative needs review.',
   'marivo.presentation.ui-content-review-unknown':
     'Narrative review status was not recorded for this version.',

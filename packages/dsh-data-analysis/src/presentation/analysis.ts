@@ -361,7 +361,9 @@ export async function createAnalysisDocument(
   } catch (error) {
     if (
       error instanceof Error &&
-      /^(analysis-view-|analysis-columns-|analysis-metric-|analysis-label-)/.test(error.message)
+      /^(analysis-view-|analysis-columns-|analysis-metric-|analysis-label-|analysis-filter-)/.test(
+        error.message,
+      )
     ) {
       const name =
         error instanceof AnalysisViewError

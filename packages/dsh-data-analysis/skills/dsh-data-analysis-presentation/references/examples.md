@@ -124,3 +124,12 @@ root = Stack([bars, table]);
 bars = DatasetView("by_category", {chart:"bar", encoding:{axis:"category", values:["value"]}});
 table = DatasetView("by_category", {chart:"table", columns:["category", "value"]});
 ```
+
+需要读者在同一快照内选择类别时，可声明筛选并显式绑定两个视图。这里类别和值列以及默认值须来自实际已核验快照；结果正文不会随选择重新计算。
+
+```openui
+root = Stack([categoryFilter, bars, table]);
+categoryFilter = SnapshotFilter("category", "by_category", {kind:"column", name:"category"}, "类别", "multiple", []);
+bars = DatasetView("by_category", {chart:"bar", encoding:{axis:"category", values:["value"]}}, {}, ["category"]);
+table = DatasetView("by_category", {chart:"table", columns:["category", "value"]}, {}, ["category"]);
+```

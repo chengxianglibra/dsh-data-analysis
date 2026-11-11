@@ -3,9 +3,14 @@ import type { TypedDataset } from '../../../presentation/contracts/types.ts'
 import type { ChartModel } from './model.ts'
 
 /** Discrete axis slots follow first appearance in the saved rows, including dates. */
-export function datasetChartModel(data: TypedDataset, axes: string[]): ChartModel {
+export function datasetChartModel(
+  data: TypedDataset,
+  axes: string[],
+  visibleRowIndices?: readonly number[],
+): ChartModel {
   return {
     data,
+    visibleRowIndices,
     frameStyle: true,
     axes: [...new Set(axes)].map((id) => {
       const index = data.columns.findIndex((c) => c.id === id)

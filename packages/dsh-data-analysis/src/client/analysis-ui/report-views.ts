@@ -3,13 +3,19 @@ import type { AnalysisDocument } from '../../presentation/contracts/analysis-doc
 import type { ResourceStreamResponse } from '../../presentation/contracts/resource-stream.ts'
 import type { DraftDelivery, PresentationDelivery } from '../../presentation/receipt.ts'
 import type { AnalysisCandidate } from './candidate.ts'
+import type { SnapshotFilterStore } from './snapshot-filter-controls.tsx'
 
 export interface ReportReadingState {
+  filters?: { key: string; store: SnapshotFilterStore }
   tabs: Map<string, string>
   accordions: Map<string, string>
   tables: Map<
     string,
-    { page: number; sort?: { columnId: string; direction: 'ascending' | 'descending' } }
+    {
+      page: number
+      sort?: { columnId: string; direction: 'ascending' | 'descending' }
+      filterSelectionKey?: string
+    }
   >
   scroll: Map<string, number>
 }

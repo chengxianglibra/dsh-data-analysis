@@ -91,3 +91,90 @@ createRoot(document.getElementById('root')).render(<App/>);
   await history.getByRole('button', { name: 'Close version history' }).click()
   assert.equal(await history.count(), 0)
 })
+
+test('switching history opens each saved Build with its own default filter', async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'marivo-history-filter-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const { datasetSnapshot } = await import('../unified-analysis-ui/dataset-fixtures.ts')
+  const snapshot = datasetSnapshot([
+    ['A', '10'],
+    ['B', '20'],
+    ['A', '30'],
+  ])
+  await build({
+    stdin: {
+      resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
+      loader: 'tsx',
+      contents: `import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {CopyProvider} from './src/client/i18n/context.tsx';
+import {translator} from './src/client/i18n/copy.ts';
+import {ReportHistoryPanel} from './src/client/presentation/catalog.tsx';
+import {AnalysisSurface} from './src/client/analysis-ui/surface.tsx';
+const resource={kind:'snapshot',snapshot:${JSON.stringify(snapshot)},declaration:{kind:'dataset-snapshot',snapshotRef:'ref'},binding:{workspaceId:'workspace'}};
+const versions=[{receipt:{buildId:'b1',title:'Current'},publishedAt:'2026-11-03T00:00:00Z',source:{sessionId:'s'}},{receipt:{buildId:'b0',title:'Earlier'},publishedAt:'2026-11-02T00:00:00Z',source:{sessionId:'s'}}];
+const makeDocument=(id,defaultValue)=>({title:id,locale:'en-US',recordId:'marivo-ui:r:'+id,contentReview:'not-needed',resources:{result:resource},program:'root = Stack([f,v]);\\nf = SnapshotFilter("category", "result", {kind:"column", name:"category"}, "Category", "multiple", ["'+defaultValue+'"]);\\nv = DatasetView("result", {chart:"table"}, {}, ["category"]);'});
+const documents={b1:makeDocument('b1','A'),b0:makeDocument('b0','B')};
+function App(){const [selected,setSelected]=React.useState('b1');return <CopyProvider t={translator('en-US')}><ReportHistoryPanel state={{history:{currentBuildId:'b1',versions},resolvedReceipt:{buildId:selected}}} model={{selectVersion:setSelected}} sessions={{s:{displayTitle:'Analysis'}}} onOpenSession={()=>{}} onClose={()=>{}}/><AnalysisSurface key={selected} document={documents[selected]}/></CopyProvider>}
+createRoot(document.getElementById('root')).render(<App/>);`,
+    },
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    outfile: path.join(directory, 'main.js'),
+    loader: {
+      '.module.css': 'local-css',
+      '.woff2': 'dataurl',
+      '.woff': 'dataurl',
+      '.ttf': 'dataurl',
+    },
+    define: { 'process.env.NODE_ENV': '"production"' },
+    logLevel: 'silent',
+  })
+  const server = createServer(async (request, response) => {
+    if (request.url === '/main.js') {
+      response.setHeader('Content-Type', 'text/javascript')
+      response.end(await readFile(path.join(directory, 'main.js')))
+    } else {
+      response.setHeader('Content-Type', 'text/html')
+      response.end('<!doctype html><div id="root"></div><script src="/main.js"></script>')
+    }
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  t.after(
+    () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
+  )
+  const address = server.address()
+  assert(address && typeof address === 'object')
+  const browser = await chromium.launch({ headless: true })
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto(`http://127.0.0.1:${address.port}`)
+  await page.getByRole('checkbox', { name: 'A' }).check()
+  await page.getByRole('checkbox', { name: 'B' }).check()
+  assert.equal(await page.locator('tbody tr').count(), 3)
+  await page.getByRole('button', { name: /Earlier/ }).click()
+  assert.equal(await page.getByRole('checkbox', { name: 'A' }).isChecked(), false)
+  assert.equal(await page.getByRole('checkbox', { name: 'B' }).isChecked(), true)
+  assert.deepEqual(
+    await page
+      .locator('tbody tr')
+      .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
+    ['1'],
+  )
+  await page.getByRole('button', { name: /Current/ }).click()
+  assert.equal(await page.getByRole('checkbox', { name: 'A' }).isChecked(), true)
+  assert.equal(await page.getByRole('checkbox', { name: 'B' }).isChecked(), false)
+  assert.deepEqual(
+    await page
+      .locator('tbody tr')
+      .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
+    ['0', '2'],
+  )
+  assert.deepEqual(errors, [])
+})

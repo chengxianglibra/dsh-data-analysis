@@ -49,6 +49,8 @@ export function DataTable({
   frozen = 0,
   selectionFields,
   reference = false,
+  visibleRowIndices,
+  filterSelectionKey,
 }: {
   snapshot: Snapshot
   columns?: string[]
@@ -56,6 +58,8 @@ export function DataTable({
   frozen?: number
   selectionFields?: readonly string[]
   reference?: boolean
+  visibleRowIndices?: readonly number[]
+  filterSelectionKey?: string
 }) {
   const t = useCopy()
   const selection = useFrameSelection()
@@ -101,6 +105,8 @@ export function DataTable({
       >
         <DatasetTable
           data={data}
+          visibleRowIndices={visibleRowIndices}
+          filterSelectionKey={filterSelectionKey}
           columns={visible}
           caption=""
           scrollDescription={scrollable ? hintId : undefined}

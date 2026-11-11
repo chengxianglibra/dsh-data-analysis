@@ -48,7 +48,13 @@ export function TimeChart(props: MainViewProps<'line' | 'area' | 'bar' | 'interv
   const t = useCopy()
   return (
     <SharedTimeChart
-      model={frameChartModel(t, props.snapshot, props.classification, props.view.broadcast)}
+      model={frameChartModel(
+        t,
+        props.snapshot,
+        props.classification,
+        props.view.broadcast,
+        props.visibleRowIndices,
+      )}
       view={props.view}
       height={props.height}
     />
@@ -60,7 +66,13 @@ export function HBarChart(props: MainViewProps<'hbar'>) {
   return (
     <>
       <SharedHBarChart
-        model={frameChartModel(t, props.snapshot, props.classification, props.view.broadcast)}
+        model={frameChartModel(
+          t,
+          props.snapshot,
+          props.classification,
+          props.view.broadcast,
+          props.visibleRowIndices,
+        )}
         view={props.view}
         height={props.height}
       />
@@ -79,7 +91,7 @@ export function Heatmap(props: MainViewProps<'heatmap'>) {
   const t = useCopy()
   return (
     <SharedHeatmap
-      model={frameChartModel(t, props.snapshot, props.classification)}
+      model={frameChartModel(t, props.snapshot, props.classification, [], props.visibleRowIndices)}
       view={props.view}
       height={props.height}
     />

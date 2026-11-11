@@ -20,12 +20,14 @@ export function frameChartModel(
   s: Snapshot,
   c: FrameClassification,
   broadcast: string[] = [],
+  visibleRowIndices?: readonly number[],
 ): ChartModel {
   const rows = rowsOf(s)
   const highlight = s.frameDisplay?.highlight
   const highlightedAxis = highlight ? axisOf(s, highlight.axis) : undefined
   return {
     data: s.data,
+    visibleRowIndices,
     frameStyle: true,
     ...(s.frameDisplay?.rowLimit ? { rowLimit: s.frameDisplay.rowLimit } : {}),
     ...(highlight && highlightedAxis

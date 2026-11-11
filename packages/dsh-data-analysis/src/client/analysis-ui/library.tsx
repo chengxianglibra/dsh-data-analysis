@@ -8,6 +8,7 @@ import {
   datasetViewSchema,
 } from '../../presentation/contracts/dataset-view.ts'
 import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
+import { snapshotFilterSchema } from '../../presentation/contracts/snapshot-filter.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { Markdown } from '../presentation/markdown.tsx'
 import { Tabs } from '../ui/tabs.tsx'
@@ -16,16 +17,19 @@ import { DashboardAccordion, DashboardTextCallout } from './dashboard-components
 import { AnalysisDataView } from './data-view.tsx'
 import { Card, DashboardGrid as Grid, DashboardGridItem as GridItem, Stack } from './layout.tsx'
 import { ReadingComponent, useReportReading } from './reading-state.tsx'
+import { SnapshotFilterControl } from './snapshot-filter-controls.tsx'
 
 const frameProps = z.object({
   ref: z.string().min(1),
   view: frameViewSchema.optional(),
   display: frameDisplaySchema.optional(),
+  filters: z.array(z.string()).optional(),
 })
 const datasetProps = z.object({
   ref: z.string().min(1),
   view: datasetViewSchema.optional(),
   display: datasetDisplaySchema.optional(),
+  filters: z.array(z.string()).optional(),
 })
 
 type AnalysisTabItem = ElementNode & {
@@ -96,6 +100,7 @@ function ResourceView({
         resourceName={props.ref}
         view={props.view}
         display={props.display}
+        filters={props.filters}
         configuration={pending ? 'pending' : valid.success ? undefined : 'invalid'}
       />
     </ReadingComponent.Provider>
@@ -119,6 +124,13 @@ export const DatasetView = defineComponent({
   component: ({ props, statementId }) => (
     <ResourceView kind="dataset" props={props} statementId={statementId} />
   ),
+})
+export const SnapshotFilter = defineComponent({
+  name: 'SnapshotFilter',
+  description:
+    'Select saved category values for explicitly bound views of the same snapshot; no recalculation.',
+  props: snapshotFilterSchema,
+  component: ({ props }) => <SnapshotFilterControl declaration={props} />,
 })
 function ResourceImage({
   src,
@@ -203,6 +215,7 @@ const content = z.union([
     .map((name) => official[name]!.ref),
   AnalysisFrameView.ref,
   DatasetView.ref,
+  SnapshotFilter.ref,
   DashboardGrid.ref,
 ])
 
@@ -252,7 +265,7 @@ const StackLayout = defineComponent({
 // definitions. Its root/id are not configurable by extend in 1.0.1.
 const subsetBase = openuiLibrary.extend({
   components: {
-    add: [AnalysisFrameView, DatasetView, DashboardGrid, DashboardGridItemBase],
+    add: [AnalysisFrameView, DatasetView, SnapshotFilter, DashboardGrid, DashboardGridItemBase],
     remove: Object.keys(openuiLibrary.components).filter(
       (name) => !officialNames.some((item) => item === name),
     ),

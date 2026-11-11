@@ -36,6 +36,8 @@ business 固定 unknown。
 空结果保留列定义；截断数据不能用于推导全量总计、KPI 或排名，metric 视图要求 complete 的单行快照。
 插件无法恢复上游已经丢失的精度。
 
+固定快照筛选读取 Dataset 列或 Frame ordinary 单键轴的保存值，支持 string、boolean、精确 int64 和允许的 null。匹配产生原始行索引，不改写行、coverage 或 Frame 元数据；捕获范围仍按原快照解释，匹配行数不代表重新计算的业务指标。
+
 ### 预算与错误
 
 | 项目 | 上限 |

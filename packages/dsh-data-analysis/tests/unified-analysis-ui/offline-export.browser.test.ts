@@ -153,3 +153,96 @@ test('exported report opens offline, renders data and charts, and keeps local in
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('offline filters begin at saved defaults and operate on the complete embedded snapshot', async () => {
+  const snapshot = datasetSnapshot([
+    ['A', '10'],
+    ['B', '20'],
+    ['A', '30'],
+  ])
+  const document = parseAnalysisDocument({
+    schemaVersion: ANALYSIS_UI_FORMAT,
+    contentReview: 'not-needed',
+    workspaceId: 'workspace',
+    reportId: 'report',
+    buildId: 'build',
+    recordId: analysisRecordId('report', 'build'),
+    title: 'Offline filter',
+    locale: 'en-US',
+    generatedAt: '2026-11-05T00:00:00Z',
+    catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+    program:
+      'root = Stack([f, v]);\nf = SnapshotFilter("category", "result", {kind:"column", name:"category"}, "Category", "multiple", ["A"]);\nv = DatasetView("result", {chart:"table"}, {}, ["category"]);',
+    resources: {
+      result: {
+        kind: 'snapshot',
+        declaration: { kind: 'dataset-snapshot', snapshotRef: 'ref' },
+        snapshot,
+        binding: {
+          workspaceId: 'workspace',
+          sessionId: 'session',
+          callId: 'call',
+          codeRef: {
+            executionId: '12345678-1234-4123-8123-123456789abc',
+            sha256: 'a'.repeat(64),
+          },
+        },
+      },
+    },
+  })
+  const directory = await mkdtemp(path.join(tmpdir(), 'dsh-offline-filter-'))
+  const browser = await chromium.launch()
+  try {
+    const html = exportAnalysisHtml(document)
+    const reportPath = path.join(directory, 'report.html')
+    await writeFile(reportPath, html)
+    const context = await browser.newContext({ offline: true })
+    const page = await context.newPage()
+    const remoteRequests: string[] = []
+    const errors: string[] = []
+    page.on('request', (request) => {
+      if (/^https?:/i.test(request.url())) remoteRequests.push(request.url())
+    })
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto(pathToFileURL(reportPath).href)
+    await page.getByRole('checkbox', { name: 'A' }).waitFor()
+    assert.deepEqual(
+      await page
+        .locator('tbody tr')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
+      ['0', '2'],
+    )
+    await page.getByRole('checkbox', { name: 'B' }).check()
+    assert.deepEqual(
+      await page
+        .locator('tbody tr')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
+      ['0', '1', '2'],
+    )
+    await page.getByRole('button', { name: 'Clear', exact: true }).click()
+    assert.equal(await page.getByRole('checkbox', { name: 'A' }).isChecked(), false)
+    await page.getByRole('button', { name: 'Restore defaults' }).click()
+    assert.deepEqual(
+      await page
+        .locator('tbody tr')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
+      ['0', '2'],
+    )
+    await page.getByRole('checkbox', { name: 'B' }).check()
+    await page.reload()
+    await page.getByRole('checkbox', { name: 'A' }).waitFor()
+    assert.equal(await page.getByRole('checkbox', { name: 'B' }).isChecked(), false)
+    assert.deepEqual(
+      await page
+        .locator('tbody tr')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
+      ['0', '2'],
+    )
+    assert.deepEqual(remoteRequests, [])
+    assert.deepEqual(errors, [])
+    await context.close()
+  } finally {
+    await browser.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})

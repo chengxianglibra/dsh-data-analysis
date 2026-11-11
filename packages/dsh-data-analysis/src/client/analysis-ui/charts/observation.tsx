@@ -135,7 +135,17 @@ function TimeChartPlot({
   const { ticks, tickOf } = ticksOf(s, axis)
   const height = requestedHeight ?? (ticks.length === 1 ? 160 : 260)
   const seriesAxis = axisOf(s, view.series)
-  const groups = seriesAxis ? groupRows(s, [seriesAxis]) : [{ key: '', label: '', rows: rowsOf(s) }]
+  const visible = s.visibleRowIndices ? new Set(s.visibleRowIndices) : undefined
+  const groups = seriesAxis
+    ? groupRows(
+        s,
+        [seriesAxis],
+        s.data.rows.map((_, i) => i),
+      ).map((group) => ({
+        ...group,
+        rows: visible ? group.rows.filter((row) => visible.has(row)) : group.rows,
+      }))
+    : [{ key: '', label: '', rows: rowsOf(s) }]
   const series = groups.flatMap((group, gi) =>
     view.values.map((name, vi) => ({
       key: `s${gi}_${vi}`,

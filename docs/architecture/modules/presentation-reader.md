@@ -117,11 +117,17 @@ Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原�
 
 组件引用绑定相同会话与固定 Build，并校验保存 program 中匹配的组件类型、资源和原始视图配置；发送准确 saved ref、资源名、匹配的组件配置与保存的 Marivo resultRef，不展开数据行、完整报告 program 或语义元数据。同一配置可在多个位置复用，引用不声称唯一页面位置。持久资源直接携带原声明的 `marivo.frame_ref/v2` 或 `marivo.dataframe_ref/v2`，Agent 通过绑定 Runtime/project 的 Marivo 公开 API 读取并核验准确固定结果；`marivo_report_read` 继续只读取报告组织、声明和结构。旧快照没有完整结果引用时明确返回 resultRef=null，不拼造引用或自动重新分析。数据点同时携带可用的 resultRef。
 
-候选预览不提供入口；输入不可用时插入失败并显示状态。reader 不提供全局筛选、动态指标、页面内编辑或撤销/重做；已保存版本可在报告 tab 中导出离线 HTML，见[导出契约](report-publishing.md)。
+候选预览不提供入口；输入不可用时插入失败并显示状态。reader 不提供跨资源筛选、动态指标、页面内编辑或撤销/重做；已保存版本可在报告 tab 中导出离线 HTML，见[导出契约](report-publishing.md)。
 
 引用提交采用 `<marivo-selection>` 包裹的 `dsh-data-analysis-selection/v2` JSON，标签与输入框共用生成规则，数据内容中的分隔字符经 Unicode escape。插件使用 Harness 的 `uiConversation.userText` rule 和 `conversation.user.text.node` renderer 将发送回显、正式消息、队列和历史重载中的合法引用显示为同一标签 chip；模型收到原始引用 JSON。未闭合、无效或未知版本保留原文，普通消息不受影响。此规则只负责展示，不执行数据读取或赋予引用访问权限。
 
 展示层直接读取 Frame 已有列中的指标、总计和差值。饼图按完整快照中各类别的保存值分配扇区，并在图例显示各扇区占圆的百分比。会被读成全体的视图在未捕获完整的快照上回退为表格或在保存时拒绝。
+
+### 固定快照筛选
+
+`SnapshotFilter` 以保存原值提供单选或多选，同一控件内为 OR、视图绑定的多个控件之间为 AND。只有同资源的普通 Dataset 表格、line/area/bar 和 Frame observation 表格及普通图表支持绑定；auto 在原始快照上解析。未绑定的视图、静态正文和 KPI 保持原值，筛选不发起 Host 请求或重新计算。表格、图表和数据详情消费相同原始行索引；排序、分页和点引用保留保存行身份，图表保留系列顺序与缺口。改变筛选条件时表格回到第一页，零匹配期间也保留有效排序。
+
+筛选状态归属阅读实例和固定 Build：同一实例在 Chat 和侧栏之间移动时保留；独立重开、切换 Build 或离线打开从各自默认值开始。候选及草稿控件禁用，仅显示默认投影。候选替换未就绪时，已可读的组件保留上次的快照、视图和筛选投影，首次加载的组件显示局部等待。本地选择不写入历史或导出文件。严格 Catalog build 校验保持不变，不承诺跨 Catalog 的旧报告迁移。
 
 ## 来源与范围详情
 

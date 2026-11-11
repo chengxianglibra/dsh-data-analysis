@@ -1,13 +1,18 @@
-import type { ElementNode } from '@openuidev/lang-core'
+import { type ElementNode, parseExpression, split, tokenize } from '@openuidev/lang-core'
 import { z } from 'zod'
 import { analysisCatalogBuild, analysisCatalogId } from './analysis-catalog.ts'
-import { parseAnalysisProgram } from './analysis-program.ts'
+import { analysisStatements, parseAnalysisProgram } from './analysis-program.ts'
 import { datasetDisplaySchema, resolveDatasetView } from './dataset-view.ts'
 import { validateFrameDisplay } from './frame-display.ts'
 import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
 import { analysisResourceDeclaration, pythonCodeRef } from './resource-declaration.ts'
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
+import {
+  resolveSnapshotFilter,
+  snapshotFilterSchema,
+  snapshotFilterViewIssue,
+} from './snapshot-filter.ts'
 
 export type { AnalysisResourceDeclaration } from './resource-declaration.ts'
 export { analysisResourceDeclaration } from './resource-declaration.ts'
@@ -191,7 +196,8 @@ export function validateAnalysisResources(
   program: string,
   resources: AnalysisDocument['resources'],
 ) {
-  for (const node of analysisElements(parseAnalysisProgram(program))) {
+  const nodes = analysisElements(parseAnalysisProgram(program))
+  for (const node of nodes) {
     if (node.typeName === 'Image') {
       if (typeof node.props.src !== 'string' || resources[node.props.src]?.kind !== 'image')
         throw new Error('analysis-image-resource-invalid')
@@ -238,6 +244,138 @@ export function validateAnalysisResources(
           : `analysis-view-${resolved.code.replace(/^view-/, '')}`
     throw viewError(code, node, resolved.path, resolved.candidates)
   }
+  validateSnapshotFilters(program, nodes, resources)
+}
+
+function validateSnapshotFilters(
+  program: string,
+  nodes: ElementNode[],
+  resources: AnalysisDocument['resources'],
+): void {
+  const declarations = new Map<string, { node: ElementNode; statement: string; ref: string }>()
+  const reachable = new Set<string>()
+  function fail(node: ElementNode, code: string, path: string, hint: string): never {
+    throw new AnalysisViewError(
+      code,
+      `${node.statementId ?? node.typeName}/${path}`,
+      hint,
+      String(node.props.ref ?? ''),
+    )
+  }
+  for (const node of nodes) {
+    if (node.typeName !== 'SnapshotFilter') continue
+    if (!node.statementId)
+      fail(
+        node,
+        'analysis-filter-named-required',
+        'filterId',
+        'Declare the filter in a named statement.',
+      )
+    const statement = node.statementId!
+    reachable.add(statement)
+    const parsed = snapshotFilterSchema.safeParse(node.props)
+    if (!parsed.success)
+      fail(node, 'analysis-filter-invalid', 'filterId', 'Use a valid filter declaration.')
+    const declaration = parsed.data!
+    const previous = declarations.get(declaration.filterId)
+    if (previous && previous.statement !== statement)
+      fail(node, 'analysis-filter-id-duplicate', 'filterId', 'Use one declaration per filter ID.')
+    if (previous) continue
+    const resource = resources[declaration.ref]
+    if (resource?.kind !== 'snapshot')
+      fail(node, 'analysis-filter-resource-invalid', 'ref', 'Use a saved snapshot resource.')
+    try {
+      resolveSnapshotFilter(resource.snapshot, declaration)
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'analysis-filter-invalid'
+      fail(
+        node,
+        code,
+        code === 'analysis-filter-default-invalid' ? 'defaultValues' : 'field',
+        'Use a supported field and existing exact default values.',
+      )
+    }
+    declarations.set(declaration.filterId, { node, statement, ref: declaration.ref })
+  }
+  const statements = split(tokenize(analysisStatements(program)))
+  const statementCounts = new Map<string, number>()
+  for (const statement of statements)
+    statementCounts.set(statement.id, (statementCounts.get(statement.id) ?? 0) + 1)
+  for (const statement of statements) {
+    const expression = parseExpression(statement.tokens)
+    if (
+      expression.k === 'Comp' &&
+      expression.name === 'SnapshotFilter' &&
+      (statementCounts.get(statement.id) ?? 0) > 1
+    )
+      throw new AnalysisViewError(
+        'analysis-filter-declaration-duplicate',
+        `${statement.id}/filterId`,
+        'Declare the filter statement only once.',
+        '',
+      )
+    if (
+      expression.k === 'Comp' &&
+      expression.name === 'SnapshotFilter' &&
+      !reachable.has(statement.id)
+    )
+      throw new AnalysisViewError(
+        'analysis-filter-unreachable',
+        `${statement.id}/filterId`,
+        'Reference this filter from the root.',
+        '',
+      )
+  }
+  const consumed = new Set<string>()
+  for (const node of nodes) {
+    if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
+    const filters = node.props.filters
+    if (filters === undefined) continue
+    if (
+      !Array.isArray(filters) ||
+      filters.some((id) => typeof id !== 'string') ||
+      new Set(filters).size !== filters.length
+    )
+      fail(node, 'analysis-filter-reference-invalid', 'filters', 'Use distinct filter IDs.')
+    if (!filters.length) continue
+    for (const id of filters) {
+      const filter = declarations.get(id)
+      if (!filter)
+        fail(
+          node,
+          'analysis-filter-reference-invalid',
+          'filters',
+          'Reference a reachable filter declaration.',
+        )
+      if (filter.ref !== node.props.ref)
+        fail(
+          node,
+          'analysis-filter-resource-mismatch',
+          'filters',
+          'Filter and view must use the same resource.',
+        )
+      consumed.add(id)
+    }
+    const resource = resources[String(node.props.ref)]
+    if (resource?.kind !== 'snapshot')
+      fail(node, 'analysis-filter-resource-invalid', 'filters', 'Use a saved snapshot resource.')
+    const view = frameViewSchema.optional().parse(node.props.view ?? undefined)
+    const { snapshot } = resource
+    const resolution =
+      snapshot.kind === 'dataset'
+        ? resolveDatasetView(snapshot, view)
+        : resolveFrameView(snapshot, view)
+    const issue = snapshotFilterViewIssue(snapshot, resolution)
+    if (issue) fail(node, 'analysis-filter-view-unsupported', 'filters', issue)
+  }
+  for (const [id, filter] of declarations)
+    if (!consumed.has(id))
+      fail(
+        filter.node,
+        'analysis-filter-unused',
+        'filterId',
+        'Bind this filter to a supported view.',
+      )
 }
 export function parseAnalysisDocument(value: unknown): AnalysisDocument {
   if (new TextEncoder().encode(JSON.stringify(value)).length > PRESENTATION_BUDGETS.documentBytes)

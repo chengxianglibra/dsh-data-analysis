@@ -5,7 +5,7 @@
 ## Card
 
 ```text
-Card(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[], variant?: "card" | "sunk" | "clear", direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
+Card(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[], variant?: "card" | "sunk" | "clear", direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
 ```
 
 ## TextContent
@@ -29,7 +29,7 @@ Image(alt: string, src?: string)
 ## Stack
 
 ```text
-Stack(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[], direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
+Stack(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[], direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
 ```
 
 ## Tabs
@@ -41,7 +41,7 @@ Tabs(items: TabItem[])
 ## TabItem
 
 ```text
-TabItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[])
+TabItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[])
 ```
 
 ## Accordion
@@ -53,19 +53,25 @@ Accordion(items: AccordionItem[])
 ## AccordionItem
 
 ```text
-AccordionItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[])
+AccordionItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[])
 ```
 
 ## AnalysisFrameView
 
 ```text
-AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", style?: "stacked", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, density?: "full" | "compact", dataTable?: "collapsed" | "visible", rowLimit?: number, title?: string, subtitle?: string, formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[], comparisonLabels?: {alias?: string, current: string, baseline: string}[], highlight?: {axis: string, key: (string | number | boolean)[]}, decompositionTotals?: {current: string, baseline: string, currentLabel: string, baselineLabel: string}, recordPreview?: {coordinates: string[], values: string[], limit: number, label: string}})
+AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", style?: "stacked", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, density?: "full" | "compact", dataTable?: "collapsed" | "visible", rowLimit?: number, title?: string, subtitle?: string, formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[], comparisonLabels?: {alias?: string, current: string, baseline: string}[], highlight?: {axis: string, key: (string | number | boolean)[]}, decompositionTotals?: {current: string, baseline: string, currentLabel: string, baselineLabel: string}, recordPreview?: {coordinates: string[], values: string[], limit: number, label: string}}, filters?: string[])
 ```
 
 ## DatasetView
 
 ```text
-DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number})
+DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number}, filters?: string[])
+```
+
+## SnapshotFilter
+
+```text
+SnapshotFilter(filterId: string, ref: string, field: {kind: "column", name: string} | {kind: "axis", name: string}, label: string, mode?: "single" | "multiple", defaultValues?: (string | boolean | null)[])
 ```
 
 ## DashboardGrid
@@ -77,7 +83,7 @@ DashboardGrid(items: DashboardGridItem[], columns?: 1 | 2 | 3 | 4, gap?: "s" | "
 ## DashboardGridItem
 
 ```text
-DashboardGridItem(content: (Card | TextContent | TextCallout | Image | Stack | Tabs | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[], span?: 1 | 2 | 3 | 4)
+DashboardGridItem(content: (Card | TextContent | TextCallout | Image | Stack | Tabs | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[], span?: 1 | 2 | 3 | 4)
 ```
 
 Image.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 必须为完整单行结果，Dataset 图表要求完整快照。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。

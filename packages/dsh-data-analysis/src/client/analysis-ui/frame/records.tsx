@@ -28,11 +28,13 @@ export function RecordsPreview({
   classification,
   preview,
   height,
+  visibleRowIndices,
 }: {
   snapshot: Snapshot
   classification: FrameClassification
   preview: RecordsPreviewSpec
   height?: number
+  visibleRowIndices?: readonly number[]
 }) {
   const t = useCopy()
   const selection = useFrameSelection()
@@ -47,9 +49,11 @@ export function RecordsPreview({
     values.some((column) => !column)
   )
     return null
-  const visibleRows = s.data.rows.slice(0, preview.limit)
+  const indices = visibleRowIndices ?? s.data.rows.map((_, index) => index)
+  const visibleRows = indices.slice(0, preview.limit)
   const occurrences = new Map<string, number>()
-  const rows = visibleRows.map((row, rowIndex) => {
+  const rows = visibleRows.map((rowIndex) => {
+    const row = s.data.rows[rowIndex]
     const identity = JSON.stringify(row)
     const occurrence = occurrences.get(identity) ?? 0
     occurrences.set(identity, occurrence + 1)
@@ -131,11 +135,11 @@ export function RecordsPreview({
           </Table>
         </div>
       )}
-      {visibleRows.length < s.data.rows.length && (
+      {visibleRows.length < indices.length && (
         <p className="fv-records-more">
           {t('marivo.presentation.ui-frame-records-preview', {
             shown: visibleRows.length.toLocaleString(t.locale),
-            total: s.data.rows.length.toLocaleString(t.locale),
+            total: indices.length.toLocaleString(t.locale),
           })}
         </p>
       )}

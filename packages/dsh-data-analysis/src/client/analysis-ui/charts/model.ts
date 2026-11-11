@@ -34,6 +34,7 @@ export interface ChartModel {
   frameStyle?: boolean
   highlight?: { axis: string; key: string }
   rowLimit?: number
+  visibleRowIndices?: readonly number[]
 }
 export type ChartView =
   | {
@@ -50,7 +51,7 @@ export interface ChartProps<K extends ChartView['chart']> {
   view: ChartView & { chart: K }
   height?: number
 }
-type ChartData = Pick<ChartModel, 'data'>
+type ChartData = Pick<ChartModel, 'data' | 'visibleRowIndices'>
 
 export function columnOf(s: ChartData, name: string) {
   const index = s.data.columns.findIndex((c) => c.id === name)
@@ -96,13 +97,14 @@ export function displayed(s: ChartModel, value: Cell, column?: DatasetColumn): s
 export function valueAt(s: ChartData, row: number, name: string) {
   return numberOf(cellOf(s, row, name), columnOf(s, name)?.column)
 }
-export const rowsOf = (s: ChartData) => s.data.rows.map((_, i) => i)
+export const rowsOf = (s: ChartData) =>
+  s.visibleRowIndices ? [...s.visibleRowIndices] : s.data.rows.map((_, i) => i)
 export const valueName = (s: ChartModel, name: string) => s.valueLabels[name] ?? name
 export const axisOf = (s: ChartModel, ref?: string) =>
   s.axes.find((a) => a.id === ref) ?? s.axes.find((a) => a.name === ref)
-export function groupRows(s: ChartModel, axes: ChartAxis[]) {
+export function groupRows(s: ChartModel, axes: ChartAxis[], rows: readonly number[] = rowsOf(s)) {
   const groups = new Map<string, ChartGroup>()
-  for (const row of rowsOf(s)) {
+  for (const row of rows) {
     const key = JSON.stringify(axes.map((a) => a.keys[row]))
     const group = groups.get(key)
     if (group) group.rows.push(row)
@@ -115,7 +117,11 @@ export function ticksOf(s: ChartModel, axis: ChartAxis) {
     const { ticks, indices } = axis.ticks
     return { ticks, tickOf: (row: number) => indices[row] ?? -1 }
   }
-  const groups = groupRows(s, [axis])
+  const groups = groupRows(
+    s,
+    [axis],
+    s.data.rows.map((_, i) => i),
+  )
   const indices = new Map<number, number>()
   groups.forEach((g, i) => {
     for (const row of g.rows) indices.set(row, i)

@@ -65,6 +65,10 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       if (ref.schema === 'marivo.frame_ref/v2')
         Object.assign(raw.source, { sessionId: ref.session_id, artifactId: ref.artifact_id })
       const snapshot = parseAnalysisSnapshot(raw)
+      if (ref.schema === 'marivo.dataframe_ref/v2' && ref.result_id.endsWith('3'))
+        snapshot.data.rows = snapshot.data.rows.map((row) =>
+          row.map((cell) => (cell === 'A' ? 'changed' : cell)),
+        )
       if ((ref.schema === 'marivo.frame_ref/v2' ? ref.artifact_id : ref.result_id).endsWith('2')) {
         snapshot.data.rows = snapshot.data.rows.map((row) =>
           row.map((cell, index) =>
@@ -147,6 +151,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     workspace,
     exec,
     tool,
+    drafts,
     present,
     read,
     saveCode,
@@ -446,4 +451,44 @@ test('missing scripts remain explicit while saved resources stay readable and re
     f.exec,
   )
   assert.equal(f.reads, 1)
+})
+
+test('refresh with a missing default member leaves the last draft, current build and history intact', async (t) => {
+  const f = await fixture(t)
+  const delivery = await f.present({
+    resourcePatch: { put: { data: f.declarations().data } },
+    program:
+      'root = Stack([f, DatasetView("data", {chart: "table"}, {}, ["region"])]);\nf = SnapshotFilter("region", "data", {kind: "column", name: "category"}, "Region", "single", ["A"]);',
+  })
+  const base = await readReceiptDocument(f.root, delivery.receipt)
+  const preview = await f.tool.execute(
+    {
+      stage: 'preview',
+      ref: (await f.read({ recordId: base.recordId })).ref,
+      mode: 'refresh-data',
+    },
+    f.exec,
+  )
+  assert(
+    preview && typeof preview === 'object' && 'ref' in preview && typeof preview.ref === 'string',
+  )
+  const priorDraft = f.drafts.get('session')
+  const priorHistory = await readReportHistory(f.root, 'workspace', base.reportId)
+  const changed = f.declarations(undefined, '3').data
+  for (const stage of ['preview', 'save'] as const) {
+    await assert.rejects(
+      f.tool.execute(
+        { stage, ref: preview.ref, resourcePatch: { put: { data: changed } } },
+        f.exec,
+      ),
+      (error: unknown) =>
+        error instanceof Error && /analysis-filter-default-invalid/.test(error.message),
+    )
+    assert.equal(f.drafts.get('session'), priorDraft)
+    assert.deepEqual(await readReportHistory(f.root, 'workspace', base.reportId), priorHistory)
+    assert.equal(
+      (await resolvePresentation(f.root, 'workspace', base.reportId)).buildId,
+      base.buildId,
+    )
+  }
 })

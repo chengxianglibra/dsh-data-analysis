@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { resolveDatasetView } from '../../presentation/contracts/dataset-view.ts'
 import { validateFrameDisplay } from '../../presentation/contracts/frame-display.ts'
 import {
@@ -12,6 +12,7 @@ import {
   type DatasetSnapshot,
   isFrameSnapshotV2,
 } from '../../presentation/contracts/snapshot.ts'
+import { snapshotFilterViewIssue } from '../../presentation/contracts/snapshot-filter.ts'
 import type { TypedDataset } from '../../presentation/contracts/types.ts'
 import type { PythonExecutionDatasource } from '../../python-execution-contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
@@ -33,6 +34,7 @@ import { CoverageIcon, Dialog, FrameIconButton } from './frame/icons.tsx'
 import { AnalysisFrame } from './frame/view.tsx'
 import { useReportReading } from './reading-state.tsx'
 import { ResourceAskButton } from './resource-ask-button.tsx'
+import { SnapshotFilterSummary, useSnapshotFilters } from './snapshot-filter-controls.tsx'
 
 export interface AnalysisViewProps {
   ref?: string
@@ -56,11 +58,15 @@ function DatasetDisplayTable({
   columns,
   height,
   caption,
+  visibleRowIndices,
+  filterSelectionKey,
 }: {
   data: TypedDataset
   columns?: string[]
   height?: number
   caption: string
+  visibleRowIndices?: readonly number[]
+  filterSelectionKey?: string
 }) {
   const t = useCopy()
   const selection = useChartSelection()
@@ -86,6 +92,8 @@ function DatasetDisplayTable({
       <div ref={ref} style={{ maxHeight: height ?? 520, overflow: 'auto' }}>
         <DatasetTable
           data={data}
+          visibleRowIndices={visibleRowIndices}
+          filterSelectionKey={filterSelectionKey}
           columns={columns}
           caption={caption}
           scrollDescription={scrollable ? hintId : undefined}
@@ -107,11 +115,13 @@ export function AnalysisDataView({
   kind,
   component,
   configuration,
+  filters,
 }: Omit<AnalysisViewProps, 'ref'> & {
   resourceName?: string
   kind: AnalysisSnapshot['kind']
   component?: ComponentIdentity
   configuration?: 'pending' | 'invalid'
+  filters?: readonly string[]
 }) {
   const t = useCopy()
   const { readResource, candidate, isStreaming, removedResourceNames } = useAnalysisResources()
@@ -119,6 +129,7 @@ export function AnalysisDataView({
   const removed = Boolean(resourceName && removedResourceNames?.includes(resourceName))
   const snapshot =
     resource?.kind === 'snapshot' && resource.snapshot.kind === kind ? resource.snapshot : undefined
+  const filterState = useSnapshotFilters(filters ?? [], resourceName)
   const resolution =
     snapshot && !configuration
       ? isFrameSnapshotV2(snapshot)
@@ -128,26 +139,35 @@ export function AnalysisDataView({
   const valid =
     snapshot &&
     resolution?.ok &&
+    filterState.ready &&
+    (!filters?.length || !snapshotFilterViewIssue(snapshot, resolution)) &&
     (!isFrameSnapshotV2(snapshot) || !validateFrameDisplay(snapshot, resolution.view, display))
   const ready =
     valid && resource?.kind === 'snapshot'
-      ? { resource, resourceName, view, display, component }
+      ? {
+          resource,
+          resourceName,
+          view,
+          display,
+          component,
+          filterSummary: filterState.summary,
+          filterSelectionKey: filterState.selectionKey,
+          visibleRowIndices: filterState.visibleRows(resource.snapshot.data.rows.length),
+        }
       : undefined
   const reading = useReportReading()
   const previous = useRef<{ reading: typeof reading; value: NonNullable<typeof ready> }>()
+  const retained = previous.current?.reading === reading ? previous.current?.value : undefined
+  const removedRetained = removedResourceNames?.includes(retained?.resourceName ?? '')
   useLayoutEffect(() => {
     if (ready) previous.current = { reading, value: ready }
-    else if (!candidate || removed) previous.current = undefined
+    else if (!candidate || removed || removedRetained) previous.current = undefined
   })
   // Retain the exact prior snapshot AND configuration while a replacement arrives.
   // Explicit removal and saved-reader failures never resurrect old content.
-  const visible =
-    ready ??
-    (candidate && !removed && previous.current && previous.current.reading === reading
-      ? previous.current.value
-      : undefined)
+  const visible = ready ?? (candidate && !removed && !removedRetained ? retained : undefined)
   if (!visible) {
-    if (candidate && isStreaming && !removed)
+    if (candidate && (isStreaming || !filterState.ready) && !removed)
       return (
         <div role="status" aria-label={t('marivo.presentation.ui-resource-pending')}>
           <Skeleton className="h-24 w-full" />
@@ -159,6 +179,11 @@ export function AnalysisDataView({
       </Alert>
     )
   }
+  const filterProps = {
+    filterSummary: <SnapshotFilterSummary filters={visible.filterSummary} />,
+    filterSelectionKey: visible.filterSelectionKey,
+    visibleRowIndices: visible.visibleRowIndices,
+  }
   if (isFrameSnapshotV2(visible.resource.snapshot))
     return (
       <AnalysisFrame
@@ -168,6 +193,7 @@ export function AnalysisDataView({
         display={visible.display}
         resourceName={visible.resourceName}
         codeRef={visible.resource.binding.codeRef}
+        {...filterProps}
       />
     )
   return (
@@ -178,6 +204,7 @@ export function AnalysisDataView({
       binding={visible.resource.binding}
       view={visible.view}
       height={visible.display?.height}
+      {...filterProps}
     />
   )
 }
@@ -190,6 +217,9 @@ function DatasetDataView({
   binding,
   view,
   height,
+  visibleRowIndices,
+  filterSelectionKey,
+  filterSummary,
 }: {
   resourceName?: string
   component?: ComponentIdentity
@@ -201,6 +231,9 @@ function DatasetDataView({
   }
   view?: FrameView
   height?: number
+  visibleRowIndices?: readonly number[]
+  filterSelectionKey?: string
+  filterSummary?: ReactNode
 }) {
   const t = useCopy()
   const [dataOpen, setDataOpen] = useState(false)
@@ -213,10 +246,19 @@ function DatasetDataView({
     resource: string
     row: number
     field: string
+    filterRevision: number
   }>()
   const [askStatus, setAskStatus] = useState<'pending' | 'failed'>()
   const focusAfterAsk = useFocusAfterAsk()
   const revision = useRef(0)
+  const filterRevision = useRef(0)
+  const filterIdentity = filterSelectionKey ?? visibleRowIndices?.join(',')
+  const previousFilter = useRef(filterIdentity)
+  if (previousFilter.current !== filterIdentity) {
+    previousFilter.current = filterIdentity
+    revision.current++
+    filterRevision.current++
+  }
   const identity = useRef({ snapshot, resourceName })
   if (identity.current.snapshot !== snapshot || identity.current.resourceName !== resourceName) {
     revision.current++
@@ -240,7 +282,11 @@ function DatasetDataView({
     getBoundingClientRect: () => new DOMRect(position.current.x, position.current.y, 0, 0),
   })
   const activeSelection =
-    !candidate && selected?.snapshot === snapshot && selected.resource === resourceName
+    !candidate &&
+    selected?.snapshot === snapshot &&
+    selected.resource === resourceName &&
+    selected.filterRevision === filterRevision.current &&
+    (!visibleRowIndices || visibleRowIndices.includes(selected.row))
       ? selected
       : undefined
   useEffect(
@@ -286,7 +332,7 @@ function DatasetDataView({
       !candidate && askDataset && resourceName
         ? {
             select(row: number, field: string) {
-              if (askStatus === 'pending') return
+              if (askStatus === 'pending' && activeSelection) return
               const index = snapshot.data.columns.findIndex((column) => column.id === field)
               if (
                 !Number.isInteger(row) ||
@@ -303,11 +349,17 @@ function DatasetDataView({
                 originRef.current?.closest('[role="dialog"], [data-dataset-scope]') ?? null
               revision.current++
               setAskStatus(undefined)
-              setSelected({ snapshot, resource: resourceName, row, field })
+              setSelected({
+                snapshot,
+                resource: resourceName,
+                row,
+                field,
+                filterRevision: filterRevision.current,
+              })
             },
           }
         : undefined,
-    [askDataset, candidate, resourceName, snapshot, askStatus],
+    [askDataset, candidate, resourceName, snapshot, askStatus, activeSelection],
   )
   const codeRef = binding.codeRef
   const codeKey = codeRef ? JSON.stringify([codeRef.executionId, codeRef.sha256]) : undefined
@@ -366,8 +418,9 @@ function DatasetDataView({
             ? [chart.x, chart.y]
             : [chart.axis, ...(chart.series ? [chart.series] : [])]
           : [],
+        visibleRowIndices,
       ),
-    [snapshot, chart],
+    [snapshot, chart, visibleRowIndices],
   )
   if (!resolution.ok)
     return (
@@ -555,6 +608,7 @@ function DatasetDataView({
           }
         />
         <CardContent className="space-y-4 min-w-0">
+          {filterSummary}
           {!snapshot.coverage.complete && (
             <p className="au-result-status" role="status">
               {t('marivo.presentation.ui-capture-range', {
@@ -563,12 +617,24 @@ function DatasetDataView({
               })}
             </p>
           )}
+          {visibleRowIndices && (
+            <p className="au-result-status" role="status">
+              {t('marivo.presentation.ui-filter-matched', {
+                p0: visibleRowIndices.length,
+                p1: data.rows.length,
+              })}
+            </p>
+          )}
+          {visibleRowIndices?.length === 0 && (
+            <p role="status">{t('marivo.presentation.ui-filter-empty')}</p>
+          )}
           {chart ? (
-            chart.chart === 'heatmap' ? (
+            visibleRowIndices?.length !== 0 &&
+            (chart.chart === 'heatmap' ? (
               <Heatmap model={model} view={chart} height={height} />
             ) : (
               <TimeChart model={model} view={chart} height={height} />
-            )
+            ))
           ) : metric ? (
             <MetricGroup
               items={[
@@ -601,6 +667,8 @@ function DatasetDataView({
               columns={columns}
               height={height}
               caption={resourceName ?? ''}
+              visibleRowIndices={visibleRowIndices}
+              filterSelectionKey={filterSelectionKey}
             />
           )}
           <DataActions>
@@ -635,7 +703,12 @@ function DatasetDataView({
             onAfterClose={focusAfterAsk.finish}
           >
             <div className="fv-data-reference">
-              <DatasetDisplayTable data={data} caption={resourceName ?? ''} />
+              <DatasetDisplayTable
+                data={data}
+                caption={resourceName ?? ''}
+                visibleRowIndices={visibleRowIndices}
+                filterSelectionKey={filterSelectionKey}
+              />
             </div>
             {pointMenu}
           </Dialog>

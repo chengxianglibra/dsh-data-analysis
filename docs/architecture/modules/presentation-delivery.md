@@ -47,6 +47,8 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
 metric 要求完整的单行快照，table 的 `columns` 必须是快照中的唯一列，图形 encoding 只引用公开值名与轴名；
 Dataset 图表编码引用列 ID，要求完整快照、数值列和唯一坐标组合；不推断分析语义。
+
+`SnapshotFilter` 须为可达的具名声明，数据视图通过 `filters` 显式绑定同一快照。完整文档准入校验字段、候选默认值、唯一 ID、消费关系与支持的原始视图；刷新后默认成员消失或视图不再受支持时拒绝新版本，保留最后成功的草稿和正式版本。筛选选择只属于阅读状态，不进入更新请求或保存数据。
 不满足时返回带语句路径的结构化错误（如 `analysis-view-role-missing`），不保存。校验器通过既有 candidates 提供当前参数的有界合法候选，工具统一转达；候选不保证整份配置均合法。Frame 的显式 axis 使用轴 name，不使用列 ID 或 token。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。

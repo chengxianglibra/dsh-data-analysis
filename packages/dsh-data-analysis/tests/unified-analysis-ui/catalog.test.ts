@@ -24,6 +24,7 @@ test('generated Host schema matches the installed Client library without importi
     'DashboardGridItem',
     'DatasetView',
     'Image',
+    'SnapshotFilter',
     'Stack',
     'TabItem',
     'Tabs',
@@ -39,6 +40,10 @@ test('generated Host schema matches the installed Client library without importi
     assert.equal(parseAnalysisProgram(`root = ${name}("resource");`).typeName, name)
     assert.match(analysisCatalogSpec.components[name]!.signature, /ref: string, view\?/)
   }
+  assert.match(
+    analysisCatalogSpec.components.SnapshotFilter!.signature,
+    /defaultValues\?: \(string \| boolean \| null\)\[\]/,
+  )
   assert.equal(parseAnalysisProgram(program).typeName, 'Stack')
   for (const source of [
     'root = AnalysisFrameView("frame", {chart: "line"});',

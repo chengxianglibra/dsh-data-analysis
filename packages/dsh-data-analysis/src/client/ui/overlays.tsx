@@ -33,6 +33,7 @@ function StandaloneDialogShell({
   children,
 }: OverlayShellProps) {
   const previous = useRef<HTMLElement | null>(null)
+  const content = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     if (open && document.activeElement instanceof HTMLElement)
       previous.current = document.activeElement
@@ -45,11 +46,23 @@ function StandaloneDialogShell({
       }}
     >
       <DialogContent
+        ref={content}
         className={cn('mv-ui p-0 sm:max-w-3xl', className)}
         showCloseButton={false}
         aria-describedby={undefined}
         onCloseAutoFocus={(event) => {
           event.preventDefault()
+          const active = document.activeElement
+          // The exit animation can finish after the user has already focused another
+          // control. Do not move focus away from that newer interaction.
+          if (
+            active &&
+            active !== document.body &&
+            active !== document.documentElement &&
+            active !== previous.current &&
+            !content.current?.contains(active)
+          )
+            return
           if (!onAfterClose?.()) previous.current?.focus()
         }}
       >

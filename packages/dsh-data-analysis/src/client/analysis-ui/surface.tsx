@@ -15,6 +15,7 @@ import { FRAME_STYLES } from './frame/styles.ts'
 import { LAYOUT_STYLES } from './layout.tsx'
 import { analysisLibrary } from './library.tsx'
 import { ReportMotion, type ReportProgress } from './report-motion.tsx'
+import { SnapshotFilterProvider } from './snapshot-filter-provider.tsx'
 import { pendingAnalysisStatement, readableAnalysisPrefix } from './streaming-program.ts'
 
 const styles = `
@@ -40,6 +41,7 @@ const styles = `
 .au-text pre{overflow:auto}
 .au-surface .pr-table-scroll{max-width:100%;overflow:auto}
 .au-result-content{display:flex;flex-direction:column;gap:1rem;min-width:0}
+.au-filter{min-width:0;max-width:100%;border:1px solid var(--border);border-radius:var(--radius-lg);padding:.75rem;display:grid;gap:.5rem}.au-filter legend{font-weight:600;padding:0 .25rem}.au-filter-resource{color:var(--muted-foreground);font-size:.875rem;overflow-wrap:anywhere}.au-filter-options{display:grid;gap:.35rem;max-height:12rem;overflow:auto}.au-filter-options label{display:flex;align-items:baseline;gap:.5rem;min-width:0;overflow-wrap:anywhere}.au-filter-actions{display:flex;gap:.5rem;flex-wrap:wrap}
 `
 /** Shared static renderer. Adapters supply saved resources; components never perform Host IO. */
 export function AnalysisSurface({
@@ -156,40 +158,49 @@ export function AnalysisRenderer({
       askResource,
     ],
   )
+  const renderedProgram = candidate && isStreaming ? readableAnalysisPrefix(program) : program
   return (
     <ReportCopyProvider locale={locale}>
       <AnalysisResources.Provider value={resources} key={viewId ?? recordId}>
-        <article
-          className="mv-ui pr-reader au-surface bg-background"
-          lang={locale}
-          aria-label={title}
-          data-analysis-record={recordId}
+        <SnapshotFilterProvider
+          program={renderedProgram}
+          readResource={resources.readResource}
+          recordId={recordId}
+          candidate={candidate}
+          pendingStatementId={resources.pendingStatementId}
         >
-          <style>{PRESENTATION_STYLES}</style>
-          <UIStyleSheet />
-          <style>{styles}</style>
-          <style>{LAYOUT_STYLES}</style>
-          <style>{DASHBOARD_COMPONENT_STYLES}</style>
-          <style>{FRAME_STYLES}</style>
-          <div className="au-surface-content">
-            {progress && (
-              <div className="au-surface-header">
-                <ReportMotion phase={progress} />
+          <article
+            className="mv-ui pr-reader au-surface bg-background"
+            lang={locale}
+            aria-label={title}
+            data-analysis-record={recordId}
+          >
+            <style>{PRESENTATION_STYLES}</style>
+            <UIStyleSheet />
+            <style>{styles}</style>
+            <style>{LAYOUT_STYLES}</style>
+            <style>{DASHBOARD_COMPONENT_STYLES}</style>
+            <style>{FRAME_STYLES}</style>
+            <div className="au-surface-content">
+              {progress && (
+                <div className="au-surface-header">
+                  <ReportMotion phase={progress} />
+                </div>
+              )}
+              {contentReview && contentReview !== 'not-needed' && (
+                <ContentReviewNotice status={contentReview} />
+              )}
+              <div className="au-surface-body">
+                <Renderer
+                  library={analysisLibrary}
+                  response={renderedProgram}
+                  isStreaming={isStreaming}
+                  publishObservability={false}
+                />
               </div>
-            )}
-            {contentReview && contentReview !== 'not-needed' && (
-              <ContentReviewNotice status={contentReview} />
-            )}
-            <div className="au-surface-body">
-              <Renderer
-                library={analysisLibrary}
-                response={candidate && isStreaming ? readableAnalysisPrefix(program) : program}
-                isStreaming={isStreaming}
-                publishObservability={false}
-              />
             </div>
-          </div>
-        </article>
+          </article>
+        </SnapshotFilterProvider>
       </AnalysisResources.Provider>
     </ReportCopyProvider>
   )

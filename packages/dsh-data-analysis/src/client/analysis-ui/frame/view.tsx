@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { validateFrameDisplay } from '../../../presentation/contracts/frame-display.ts'
 import {
   type FrameClassification,
@@ -75,6 +75,9 @@ export interface FrameShellProps {
   display?: FrameDisplay
   resourceName?: string
   codeRef?: PythonCodeRef
+  visibleRowIndices?: readonly number[]
+  filterSelectionKey?: string
+  filterSummary?: ReactNode
 }
 
 /** Saved v2 Frame: resolution is the only source of class, shape and chosen view. */
@@ -183,14 +186,18 @@ export function MainView({
   classification,
   view,
   height,
+  visibleRowIndices,
+  filterSelectionKey,
 }: {
   snapshot: Snapshot
   classification: FrameClassification
   view: ResolvedFrameView
   height?: number
+  visibleRowIndices?: readonly number[]
+  filterSelectionKey?: string
 }) {
   const t = useCopy()
-  const common = { snapshot, classification, height }
+  const common = { snapshot, classification, height, visibleRowIndices }
   switch (view.chart) {
     case 'table':
       return snapshot.frameDisplay?.recordPreview ? (
@@ -199,6 +206,7 @@ export function MainView({
           classification={classification}
           preview={snapshot.frameDisplay.recordPreview}
           height={height}
+          visibleRowIndices={visibleRowIndices}
         />
       ) : view.layout === 'comparison' ? (
         <ComparisonTable snapshot={snapshot} classification={classification} />
@@ -208,6 +216,8 @@ export function MainView({
           columns={view.columns}
           height={height}
           frozen={keyColumns(snapshot, classification)}
+          visibleRowIndices={visibleRowIndices}
+          filterSelectionKey={filterSelectionKey}
         />
       )
     case 'members':
@@ -410,6 +420,9 @@ export function FrameShell({
   display,
   resourceName,
   codeRef,
+  visibleRowIndices,
+  filterSelectionKey,
+  filterSummary,
 }: FrameShellProps) {
   const s = useMemo<Snapshot>(
     () => (display ? { ...snapshot, frameDisplay: display } : snapshot),
@@ -424,10 +437,23 @@ export function FrameShell({
   const inlineData = display?.dataTable === 'visible'
   const [dataState, setDataState] = useState({ inline: inlineData, open: inlineData })
   const dataOpen = dataState.inline === inlineData ? dataState.open : inlineData
-  const [selection, setSelection] = useState<{ snapshot: Snapshot; row: number; field: string }>()
+  const [selection, setSelection] = useState<{
+    snapshot: Snapshot
+    row: number
+    field: string
+    filterRevision: number
+  }>()
   const [status, setStatus] = useState<'pending' | 'failed'>()
   const focusAfterAsk = useFocusAfterAsk()
   const requestRevision = useRef(0)
+  const filterRevision = useRef(0)
+  const filterIdentity = filterSelectionKey ?? visibleRowIndices?.join(',')
+  const previousFilter = useRef(filterIdentity)
+  if (previousFilter.current !== filterIdentity) {
+    previousFilter.current = filterIdentity
+    requestRevision.current++
+    filterRevision.current++
+  }
   const identity = useRef({ snapshot: s, resourceName })
   if (identity.current.snapshot !== s || identity.current.resourceName !== resourceName) {
     requestRevision.current++
@@ -444,7 +470,13 @@ export function FrameShell({
     },
     [],
   )
-  const selected = !candidate && selection?.snapshot === s ? selection : undefined
+  const selected =
+    !candidate &&
+    selection?.snapshot === s &&
+    selection.filterRevision === filterRevision.current &&
+    (!visibleRowIndices || visibleRowIndices.includes(selection.row))
+      ? selection
+      : undefined
   const menuRef = useRef<HTMLDivElement>(null)
   const originRef = useRef<HTMLElement | SVGElement | null>(null)
   const originScopeRef = useRef<Element | null>(null)
@@ -496,7 +528,7 @@ export function FrameShell({
       !candidate && askPoint && resourceName
         ? {
             select(row: number, field: string) {
-              if (status === 'pending') return
+              if (status === 'pending' && selected) return
               const index = s.data.columns.findIndex((column) => column.id === field)
               if (!Number.isInteger(row) || row < 0 || row >= s.data.rows.length || index < 0)
                 return
@@ -508,11 +540,11 @@ export function FrameShell({
                 originRef.current?.closest('[role="dialog"], [data-frame-scope]') ?? null
               requestRevision.current++
               setStatus(undefined)
-              setSelection({ snapshot: s, row, field })
+              setSelection({ snapshot: s, row, field, filterRevision: filterRevision.current })
             },
           }
         : undefined,
-    [askPoint, candidate, resourceName, s, status],
+    [askPoint, candidate, resourceName, s, status, selected],
   )
   const compactDensity = display?.density === 'compact'
   const name = display?.title ?? title(t, s, c, view, resourceName)
@@ -632,7 +664,13 @@ export function FrameShell({
         <ComparisonDetail snapshot={referenceSnapshot} />
       )
     ) : (
-      <DataTable snapshot={referenceSnapshot} frozen={keyColumns(s, c)} reference />
+      <DataTable
+        snapshot={referenceSnapshot}
+        frozen={keyColumns(s, c)}
+        reference
+        visibleRowIndices={visibleRowIndices}
+        filterSelectionKey={filterSelectionKey}
+      />
     )
   return (
     <FrameSelectionContext.Provider value={selectable}>
@@ -692,6 +730,7 @@ export function FrameShell({
             .join(' · ') || undefined}
         </ResultHeader>
         <CardContent className="space-y-4 min-w-0">
+          {filterSummary}
           {decomposition?.restricted && (
             <p className="au-result-status" role="status">
               {t('marivo.presentation.ui-frame-restricted-scope')}
@@ -705,6 +744,17 @@ export function FrameShell({
               })}
             </p>
           )}
+          {visibleRowIndices && (
+            <p className="au-result-status" role="status">
+              {t('marivo.presentation.ui-filter-matched', {
+                p0: visibleRowIndices.length,
+                p1: s.data.rows.length,
+              })}
+            </p>
+          )}
+          {visibleRowIndices?.length === 0 && (
+            <p role="status">{t('marivo.presentation.ui-filter-empty')}</p>
+          )}
           {numbers.length > 0 && <Numbers items={numbers} snapshot={s} />}
           {view.chart === 'comparison' ? (
             <ComparisonView
@@ -717,8 +767,16 @@ export function FrameShell({
               control={!compactDensity}
             />
           ) : (
-            showMain && (
-              <MainView snapshot={s} classification={c} view={view} height={display?.height} />
+            showMain &&
+            (view.chart === 'table' || visibleRowIndices?.length !== 0) && (
+              <MainView
+                snapshot={s}
+                classification={c}
+                view={view}
+                height={display?.height}
+                visibleRowIndices={visibleRowIndices}
+                filterSelectionKey={filterSelectionKey}
+              />
             )
           )}
           {!(showData && !inlineData && dataOpen) && pointMenu}

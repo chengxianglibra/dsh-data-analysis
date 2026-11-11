@@ -9,4 +9,5 @@ export interface MainViewProps<K extends ResolvedFrameView['chart']> {
   classification: FrameClassification
   view: View<K>
   height?: number
+  visibleRowIndices?: readonly number[]
 }

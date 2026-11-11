@@ -40,6 +40,8 @@ export function DatasetTable({
   hideCompleteScope = false,
   hideRowCount = false,
   hideExactTitle = false,
+  visibleRowIndices,
+  filterSelectionKey,
 }: {
   data: TypedDataset
   columns?: string[]
@@ -58,21 +60,40 @@ export function DatasetTable({
   hideRowCount?: boolean
   /** Frame views use the same readable representation throughout. */
   hideExactTitle?: boolean
+  /** Original saved row indices to display; undefined keeps the entire snapshot. */
+  visibleRowIndices?: readonly number[]
+  filterSelectionKey?: string
 }) {
   const t = useCopy()
 
   const reading = useReportReading()
   const component = useReadingComponent()
   const key = `${component}:${caption}`
+  const filterKey = filterSelectionKey ?? visibleRowIndices?.join(',')
+  const stored = reading?.tables.get(key)
   const [sort, updateSort] = useState<TableSort | undefined>(() => reading?.tables.get(key)?.sort)
-  const [page, updatePage] = useState(() => reading?.tables.get(key)?.page ?? 0)
+  const [page, updatePage] = useState(() =>
+    stored && stored.filterSelectionKey !== filterKey ? 0 : (stored?.page ?? 0),
+  )
+  const previousFilter = useRef(stored ? stored.filterSelectionKey : filterKey)
+  const filterChanged = previousFilter.current !== filterKey
+  useLayoutEffect(() => {
+    if (previousFilter.current === filterKey) return
+    previousFilter.current = filterKey
+    updatePage(0)
+    reading?.tables.set(key, { page: 0, sort, filterSelectionKey: filterKey })
+  }, [filterKey, key, reading, sort])
   const setSort = (value: TableSort) => {
     updateSort(value)
-    reading?.tables.set(key, { page: 0, sort: value })
+    reading?.tables.set(key, { page: 0, sort: value, filterSelectionKey: filterKey })
   }
   const setPage = (value: number) => {
     updatePage(value)
-    reading?.tables.set(key, { page: value, sort: reading.tables.get(key)?.sort ?? sort })
+    reading?.tables.set(key, {
+      page: value,
+      sort: reading.tables.get(key)?.sort ?? sort,
+      filterSelectionKey: filterKey,
+    })
   }
   const scroll = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
@@ -85,12 +106,14 @@ export function DatasetTable({
       .map((column) => column.id),
   )
   const activeSort = data.columns.some((column) => column.id === sort?.columnId) ? sort : undefined
-  const sorted = useMemo(
-    () => sortedRowIndices(t.locale, data, activeSort),
-    [data, activeSort, t.locale],
-  )
+  const sorted = useMemo(() => {
+    const rows = sortedRowIndices(t.locale, data, activeSort)
+    if (!visibleRowIndices) return rows
+    const visible = new Set(visibleRowIndices)
+    return rows.filter((row) => visible.has(row))
+  }, [data, activeSort, t.locale, visibleRowIndices])
   const pages = Math.max(1, Math.ceil(sorted.length / TABLE_PAGE_SIZE))
-  const activePage = Math.min(page, pages - 1)
+  const activePage = filterChanged ? 0 : Math.min(page, pages - 1)
   const shown = sorted.slice(activePage * TABLE_PAGE_SIZE, (activePage + 1) * TABLE_PAGE_SIZE)
   return (
     <div className="pr-table">
