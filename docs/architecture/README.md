@@ -8,7 +8,7 @@
 | --- | --- |
 | DeepSeek Harness | Agent 编排、Session/Turn、Tool/Skill 生命周期、Credentials、profile、Workspace、附件、输入框和原生 Tab |
 | Marivo | 分析语义、Catalog、固定结果、Frame 审计、source_reads 与分析 Session |
-| 本插件 | Runtime/Workspace binding、受控执行与凭据注入、实时 Help 披露、语义引用及只读投影、报告保存与呈现、打包验证 |
+| 本插件 | Runtime/Workspace binding、受控执行与凭据注入、实时 Help 披露、语义引用及只读投影、分析视图保存与呈现、打包验证 |
 
 插件使用公开实时接口，不复制 Marivo schema、API registry 或领域推理，不改变 Harness 原生生命周期。分析与展示保存是独立操作；展示保存成功不能证明分析正确。固定 Build 已保存版本可导出为离线 HTML；对象存储发布不受支持。
 
@@ -24,13 +24,13 @@
 | Agent 接入 | [文件分析 Skill](modules/file-analysis-skill.md) | 原生附件路径、pandas/DuckDB 与结果交付 |
 | 语义交互 | [语义对象引用输入](modules/semantic-reference-input.md) | Catalog 检索、原子引用、提交核验与热度 |
 | 语义交互 | [只读语义浏览器](modules/semantic-browser.md) | Catalog 快照、公开定义与声明关系 |
-| 报告 | [展示 Skill](modules/presentation-skill.md) | 自定义报告和看板的 Lang 组合与叙事检查 |
-| 报告 | [展示数据投影](modules/presentation-projection.md) | 有界快照、Frame 读取、固定 DataFrame 读取与数值预算 |
-| 报告 | [展示交付](modules/presentation-delivery.md) | Report/Build、原子保存、语句 patch、current、receipt 与 RPC |
-| 报告 | [分析文档 reader](modules/presentation-reader.md) | 共享 AnalysisSurface、报告目录与版本历史 |
+| 分析视图 | [展示 Skill](modules/presentation-skill.md) | 展示时机、OpenUI Lang 编排与聊天收尾 |
+| 分析视图 | [展示数据投影](modules/presentation-projection.md) | 有界快照、Frame 读取、固定 DataFrame 读取与数值预算 |
+| 分析视图 | [展示交付](modules/presentation-delivery.md) | Report/Build、原子保存、语句 patch、current、receipt 与 RPC |
+| 分析视图 | [分析视图阅读器](modules/presentation-reader.md) | 共享 AnalysisSurface、目录与版本历史 |
 | 分析交互 | [下一步推荐](modules/analysis-next-steps.md) | 当前 Chat 临时推荐按钮、收尾与原生输入提交 |
 | 前端 | [插件私有 UI 组件](modules/custom-ui-components.md) | 主题角色、控件、结果外壳、容器布局与 Host 弹层接入 |
-| 报告 | [报告 HTML 导出与发布](modules/report-publishing.md) | 固定版本离线导出；对象存储发布不可用 |
+| 分析视图 | [分析视图离线导出](modules/report-publishing.md) | 固定版本离线导出；对象存储发布不可用 |
 | 插件交付 | [公开接口与破坏性迁移](modules/public-surface.md) | 模型协议、稳定扩展入口与逐项导出迁移 |
 | 插件交付 | [插件集成与交付](modules/plugin-integration-delivery.md) | 安装回滚、资源关闭、Host 接缝、兼容与分发 |
 
@@ -38,7 +38,7 @@
 `docs/testing/` 中的验证指南和验收记录是本地工作材料，不纳入版本控制。
 
 统一分析 UI 通过 `marivo_report_write` 保存 `dsh.analysis-ui/v2` 文档。Frame 和 DataFrame 都通过 Marivo 公开持久引用，在绑定 Python Runtime 中直接读取；不启动 HTTP 服务。快照内嵌不可变 Build，AnalysisSurface
-统一在右侧 Tab 呈现候选、草稿与正式版本，Chat 保留报告入口。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
+统一在右侧 Tab 呈现候选、草稿与正式版本，Chat 保留分析视图入口。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
 并可在 Catalog 范围内显式指定图形。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。旧格式报告不进入报告目录；
 新格式支持离线 HTML 导出，不提供对象存储发布或页面编辑。详细契约见本目录中的投影、交付与 reader 模块文档。
 
@@ -100,16 +100,16 @@ Agent 按计算依赖执行完整 Python 脚本，通过持久 Frame、DataFrame
 
 已保存报告的数据刷新通过 mode=refresh-data 强制保留程序、组件组成与资源名，每批替换原子校验；数据替换后的静态正文复核状态随 Build 保存。明确的页面编辑才能改变布局或正文；静态文字和 auto 视图的刷新边界见[展示 Skill](modules/presentation-skill.md)。
 
-新报告正文固定在右侧 Tab，前台会话首次产生可展示候选时自动打开并选中；预览、修订和保存更新同一视图。Chat 保留报告入口，关闭 Tab 后可手动重开，同一报告后续更新不自动重开；历史回放和后台会话不自动导航。目录与历史入口也在右侧打开。
+新分析视图正文固定在右侧 Tab，前台会话首次产生可展示候选时自动打开并选中；预览、修订和保存更新同一视图。Chat 保留分析视图入口，关闭 Tab 后可手动重开，同一视图的后续更新不自动重开；历史回放和后台会话不自动导航。目录与历史入口也在右侧打开。
 Native 的公开 PartialArguments 提供真实 program 前缀；
 候选只展示安全内容、占位与已授权基版本快照，无业务读取或正式保存。报告候选绑定准确调用，成功后转为固定 Build，
 失败或取消保留旧版本。PTC 依实际 dispatch 和结果交付，历史回放不抢焦点，Headless 只确认保存事实。
 
-报告目录与版本历史只读取 current v4 指针及支持的固定 Build 记录；current v2/v3 不再读取或更新，文件不删除、不迁移。旧格式（Presentation Document v3）文件保留在磁盘但不再列出，
+分析视图目录与版本历史只读取 current v4 指针及支持的固定 Build 记录；current v2/v3 不再读取或更新，文件不删除、不迁移。旧格式（Presentation Document v3）文件保留在磁盘但不再列出，
 打开旧地址显示不支持的报告错误，不回退到旧 Reader。Frame v2 的 AnalysisFrameView 按 Frame 结构选择观察、成员、比较、
 分解、对齐、相关或份额视图，也接受 Catalog 声明的 line、area、bar、pie、heatmap、comparison 和 decomposition 视图；
 DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。Frame 和 Dataset 均支持选择已保存图点或支持的单元格后“就此提问”。
-两种数据视图使用 shadcn/ui 结果外壳与 Recharts 图形，领域层保留事实解释与原始行字段绑定；OpenUI Lang / Renderer 负责报告编排，
+两种数据视图使用 shadcn/ui 结果外壳与 Recharts 图形，领域层保留事实解释与原始行字段绑定；OpenUI Lang / Renderer 负责分析视图编排，
 报告组件的私有布局、主题和交互由[插件 UI 基础层](modules/custom-ui-components.md)统一承载。
 全局筛选、页面编辑、对象存储发布及旧报告 cell 的“加入提问”接口均不提供。
 

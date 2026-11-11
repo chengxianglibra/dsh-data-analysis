@@ -3,8 +3,7 @@
 [简体中文](README.md) | English
 
 Analyze data with natural language in [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
-Explore and reuse business metric definitions, then save findings as exact analysis views, reports,
-and dashboards. Semantic analysis is powered by [Marivo](https://github.com/chengxianglibra/marivo).
+Explore and reuse business metric definitions, then save findings as analysis views with charts and exact data. Semantic analysis is powered by [Marivo](https://github.com/chengxianglibra/marivo).
 
 This is an independently maintained community plugin. It is not an official DeepSeek product.
 
@@ -13,7 +12,7 @@ This is an independently maintained community plugin. It is not an official Deep
 | What you want to do | What the plugin offers |
 | --- | --- |
 | Answer business questions | Analyze metric trends, compare periods or business segments, and explore reasons for changes using natural language |
-| Analyze local files | Upload files or use files in your workspace to analyze data and create analysis views and reports |
+| Analyze local files | Upload files or use files in your workspace to analyze data and create analysis views |
 | Connect to data | Configure data sources, manage credentials, and test connections; DuckDB, Trino, and ClickHouse are supported by default |
 | Keep definitions consistent | Work with the assistant to define and reuse metrics and dimensions, and explore their relationships |
 | Specify what to analyze | Search for and reference existing semantic objects with `@` in the chat input |
@@ -56,7 +55,7 @@ npx @deepseek-ai/dsh web
 ```
 
 In the Web interface, select a Workspace, create a session, and send a message.
-Data Sources (数据源), Semantic Layer (语义层), and Reports (报告) appear beside the session title and open in tabs on the right.
+Data Sources (数据源), Semantic Layer (语义层), and Analysis views (分析视图) appear beside the session title and open in tabs on the right.
 The examples below use the Web interface; Chinese labels are included to help you locate the controls.
 
 ## How to use
@@ -99,32 +98,31 @@ and inspect their definitions and relationships. Open objects separately to comp
 Type `@` in the chat input to search for and select objects in the current workspace.
 For a multiword search, use `@"monthly revenue"`. Ask questions about the selected objects to keep the analysis aligned with your business definitions.
 
-### 4. Read analysis views and reports
+### 4. Read analysis views
 
-New results, reports and dashboards appear in a right-hand tab, with an entry in their Chat turn.
+When a chart or interaction helps you understand trends, compare results, or check data, the assistant creates an analysis view. It appears in a right-hand tab with an entry in Chat.
 
 For AnalysisFrame, explicitly call `persist()` and pass `saved.ref.to_dict()` as an `analysis-frame` resource. The plugin reads it through the bound Python Runtime without an HTTP service. For DataFrame, pass `mv.persist_dataframe(table).to_dict()` as a `dataframe` resource; its captured project must match the current Workspace.
 
-To inspect the execution script associated with a result, select reference variables with `marivo_python.resultVariables` and pass `results[name].resource` directly to the report tool; the plugin associates kind and codeRef. stdout remains arbitrary text. codeRef only proves that this execution exported the reference; it does not guarantee original production or a script that can recompute the result. For an authorized data update, the assistant first reviews the bound script, datasource declarations and output variables, then explicitly generates fresh results and replaces resources under the same names with `mode:"refresh-data"`, preserving the layout, body and column labels through atomic batch validation. Static numbers are not rewritten automatically; each Build retains its content review status.
+To inspect the execution script associated with a result, select reference variables with `marivo_python.resultVariables` and pass `results[name].resource` directly to the analysis view tool; the plugin associates kind and codeRef. stdout remains arbitrary text. codeRef only proves that this execution exported the reference; it does not guarantee original production or a script that can recompute the result. For an authorized data update, the assistant first reviews the bound script, datasource declarations and output variables, then explicitly generates fresh results and replaces resources under the same names with `mode:"refresh-data"`, preserving the layout, body and column labels through atomic batch validation. Static numbers are not rewritten automatically; each Build retains its content review status.
 
-Present an existing Frame or captured DataFrame without repeating the analysis. `DatasetView` supports tables, single values and explicit column mappings for line, area, bar and heatmap charts. Charts require complete snapshots; they do not aggregate data or infer analysis semantics. Use Reports (报告) to reopen saved results and versions.
+Present an existing Frame or captured DataFrame without repeating the analysis. `DatasetView` supports tables, single values and explicit column mappings for line, area, bar and heatmap charts. Charts require complete snapshots; they do not aggregate data or infer analysis semantics. Use Analysis views (分析视图) to reopen saved results and versions.
 
-Analysis reports and dashboards use `marivo_report_write` to combine conclusions, explanations, limitations, and data in one document,
-preferring `AnalysisFrameView` for Frame data. After saving, read the report and choose a suggested follow-up in Chat. Your requested output format takes precedence.
+Analysis views use `marivo_report_write` to present conclusions, charts, exact values, and limitations, preferring `AnalysisFrameView` for Frame data. You can request a report or dashboard layout, text only, or a file. After saving the view, Chat typically gives a brief summary of the main finding and any material limitation.
 
 - **Inspect data**: Sort exact values, browse local pages, and ask about a data point or the whole result. Previews disclose their range and cannot become complete single-value metrics.
 - **Check sources**: Frame views show structure and source identity. DataFrame views bring together the captured range, execution script and declared datasources.
 - **Ask a follow-up**: Select a chart point or supported cell in a DataFrame or Frame and add it to the question draft.
-- **Read the report**: The first report preview in the foreground session opens and selects a right-hand tab. Reopen it from Chat after closing it; later updates do not repeatedly open the tab. Catalog and history entries also open on the right.
+- **Read the view**: The first preview in the foreground session opens and selects a right-hand tab. Reopen it from Chat after closing it; later updates do not repeatedly open the tab. Catalog and history entries also open on the right.
 - **Suggested next steps**: After analysis, Chat offers a row of temporary follow-up buttons. Clicking uses the native Harness composer to submit the question; existing drafts are preserved. Suggestions stay in Chat and disappear on reload, reconnection or session switch.
-- **Export offline**: Download the displayed version as a single HTML file from the report tab. It includes the saved snapshots and supports offline viewing and local interactions; review its data before sharing.
+- **Export offline**: Download the displayed version as a single HTML file from the analysis view tab. It includes the saved snapshots and supports offline viewing and local interactions; review its data before sharing.
 
-Initial previews, revisions and final saving update one report region. Subtle chart motion indicates generation and updates, then stops after saving; reduced motion preferences use a static indicator. The report workflow shows a draft early, prepares each data component independently, updates the same draft as each result becomes ready, and saves one version at completion. Native generation also displays program candidates. Failures and cancellation preserve the last successful content. When refreshing a saved report, the assistant retains its layout, components and body while replacing component data sources. Static text is not rewritten automatically, and auto views may still adapt to the new data shape.
+Initial previews, revisions and final saving update the same analysis view. Subtle chart motion indicates generation and updates, then stops after saving; reduced motion preferences use a static indicator. When analysis is ongoing, the assistant shows a draft early, updates it as results become ready, and saves one version at completion. Native generation also displays program candidates. Failures and cancellation preserve the last successful content. When refreshing a saved view, the assistant retains its layout, components and body while replacing component data sources. Static text is preserved, and the layout within an auto chart may adapt to the data. Refresh rejects changes to the chart type.
 
-The unified analysis UI supports tables, complete single values, Native generation previews, and updates to an exact saved version.
+Analysis views support tables, complete single values, Native generation previews, and updates to an exact saved version.
 Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.
 Frame views support charts selected from their structure. Analysis views do not provide global filters, in-page editing or object-storage publishing.
-Report history requires current v4 pointers and the current Catalog build; earlier Catalog builds have no compatibility reader. Current v2/v3 pointers (including earlier analysis UI saves) and Frame v1 are no longer readable or updatable. Files stay on disk; capture a current snapshot and create a new report to continue.
+View history requires current v4 pointers and the current Catalog build; earlier Catalog builds have no compatibility reader. Current v2/v3 pointers (including earlier saved views) and Frame v1 are no longer readable or updatable. Files stay on disk; capture a current snapshot and create a new analysis view to continue.
 
 ## Analysis timeout
 
@@ -136,4 +134,4 @@ The actual execution limit is still subject to Harness execution policies.
 
 This project is licensed under the [MIT License](LICENSE).
 
-This is a breaking protocol update. Reports use `marivo_report_read` / `marivo_report_write` and one version `ref`; every write requires an explicit stage. Previous names and inputs are rejected. The package root exposes installation and configuration; extensions use the versioned integration entry.
+This is a breaking protocol update. Analysis views use `marivo_report_read` / `marivo_report_write` and one version `ref`; every write requires an explicit stage. Previous names and inputs are rejected. The package root exposes installation and configuration; extensions use the versioned integration entry.

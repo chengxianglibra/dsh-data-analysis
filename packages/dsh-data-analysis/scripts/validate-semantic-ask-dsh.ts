@@ -226,7 +226,7 @@ try {
   record('claimed command draft accepts details and actual @ with identical references')
   await page.evaluate((id) => (window as any).__rtHost.input(id).setDraft(''), id)
   await page.evaluate(() => (window as any).__rtHost.clear())
-  assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 0)
+  assert.equal(await page.getByRole('button', { name: '打开分析视图', exact: true }).count(), 0)
   record('without a foreground Session, the removed footer report shortcut is absent')
   const recreated = await page.evaluate(() =>
     (window as any).__s4Rpc('/presentation-s4-validation', 'prototype', {

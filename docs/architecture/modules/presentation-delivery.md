@@ -2,24 +2,25 @@
 
 ## 责任与入口
 
-`marivo_report_write` 将已有结果预览为草稿，或保存为不可变的分析 UI 版本（`dsh.analysis-ui/v2`），新生成的报告固定在右侧 Tab 呈现，Chat 保留打开入口。Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实；Harness 拥有 Session/Turn、
-Workspace 成员关系和事件存储；插件拥有快照读取、文件完整提交、receipt、交付事件与报告目录。
+分析视图是右侧 Tab 中的整页分析结果，可包含一个或多个数据视图和说明。内部使用 `AnalysisDocument` 保存 OpenUI Lang program、元数据和资源。报告与看板是用户可要求的编排方式。`marivo_report_write` 预览草稿或保存不可变版本（`dsh.analysis-ui/v2`），Chat 保留打开入口。
+
+Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 Session/Turn、Workspace 成员关系和事件存储。插件拥有快照读取、文件完整提交、receipt、交付事件与分析视图目录。
 
 实现位于 `src/presentation/{tool,analysis,reports,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
 `bridges.ts` 和 `client.tsx`。快照来源见[展示投影](presentation-projection.md)，阅读呈现见[共享 reader](presentation-reader.md)，
-自定义报告和看板的编写指导见[展示 Skill](presentation-skill.md)。
+触发、编排与最终回复规则见[展示 Skill](presentation-skill.md)。
 
-## 统一分析 UI 写入与增量契约
+## 分析视图写入与增量契约
 
-`marivo_report_write` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。每次必须显式提供 `stage:"preview" | "save"`；省略时在访问 Workspace 前拒绝。新建报告省略 `ref`，编辑已有报告传准确 saved ref，续接草稿传最新 draft ref。`mode` 首次缺省为 edit；refresh-data 必须从 saved ref 开始。草稿继承首次模式，不允许后续切换。`onto` 只允许与 preview、draft ref 以及审阅后的当前 saved ref 一起使用。模型不再传内部 recordId、draftId 或 revision。
+`marivo_report_write` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。每次必须显式提供 `stage:"preview" | "save"`；省略时在访问 Workspace 前拒绝。新建分析视图省略 `ref`，编辑已有视图传准确 saved ref，续接草稿传最新 draft ref。`mode` 首次缺省为 edit；refresh-data 必须从 saved ref 开始。草稿继承首次模式，不允许后续切换。`onto` 只允许与 preview、draft ref 以及审阅后的当前 saved ref 一起使用。模型不再传内部 recordId、draftId 或 revision。
 
-报告工作流要求显式选择 stage：数据准备前尽早 preview，固定结果就绪后及时更新同一草稿，不等全部计算完成，最终 save 一次；相同固定结果可以供多个视图复用。计算按 Harness 能力、依赖和资源预算安排，同一草稿的 preview/save 串行执行。初始程序可只有标题、范围和问题文字，省略 resourcePatch。该工作流由 Prompt/Skill/工具说明引导，工具仍支持普通单结果直接保存，不把文案规则声明为服务端强约束。
+分析视图工作流要求显式选择 stage：数据准备前尽早 preview，固定结果就绪后及时更新同一草稿，不等全部计算完成，最终 save 一次；相同固定结果可以供多个视图复用。计算按 Harness 能力、依赖和资源预算安排，同一草稿的 preview/save 串行执行。初始程序可只有标题、范围和问题文字，省略 resourcePatch。该工作流由 Prompt/Skill/工具说明引导，工具仍支持普通单结果直接保存，不把文案规则声明为服务端强约束。
 
 `resourcePatch.put` 按资源名新增或替换声明，`resourcePatch.remove` 显式删除；未提及的资源继承基版本。省略 patch 或提供空 patch 不删除资源；同名 put/remove、重复删除、删除不存在的资源均拒绝。程序和资源变更按最终文档一起校验，失败保留最后成功草稿。旧调用参数 `resources` 不再接受；已保存 Build 内的 resources 保留原义。
 
 - 创建自定义页面时提供完整 OpenUI Lang。只有一个资源时可省略 `program`，Frame、DataFrame 和图片分别使用 `AnalysisFrameView`、`DatasetView` 和 `Image`。
 - 不接收 rows、`draft_path` 或旧的 `report_id`／`expected_build_id` 更新参数。
-- Tool 不公开 `surface` 输入；新生成报告正文固定在右侧 Tab。v2 回执与历史仍保留必填 surface 供旧记录解析，新调用固定写入 `tool`，不表示原生 tool view，也不记录读者的导航操作。
+- Tool 不公开 `surface` 输入；新生成的分析视图正文固定在右侧 Tab。v2 回执与历史仍保留必填 surface 供旧记录解析，新调用固定写入 `tool`，不表示原生 tool view，也不记录读者的导航操作。
 - 成功回执表示对应的草稿更新或正式保存完成，不证明浏览器已打开或渲染；调用不等待浏览器检查或用户确认。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
   Native 候选不依赖字段顺序。ref/onto 已完整且有效，或整个参数对象关闭并证明相应字段省略后，才允许应用 program、resourcePatch、title 和 locale；身份未决时保持最后成功内容。
 
@@ -71,18 +72,18 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
 definition 和 sources 使用具体本地 schema 逐项校验；当前 Harness 只支持 boolean additionalProperties，无法在 PTC 中为动态 resources/resultMetadata 名称映射推导 entry 类型。Tool schema 明确披露顶层字段及来源结构，并用准确 description 标明 map entry 的列、coverage 和 Frame 元数据约束，不宣称 Host 已提供 typed map。
 
 includeCode 按 codeRef 去重返回 definition.sources，逐项标明 available 的 code.text、datasources、resultVariables，或 unavailable。未绑定来源的资源没有来源项。记录的空 datasource 数组只代表执行未声明 Marivo datasource，旧记录缺失时保持未知。读取核验当前 Workspace 的 Host 文件，不执行代码或业务查询；源码未内嵌报告，记录丢失不阻止读取固定快照。组件签名按展示 Skill 的生成 Catalog 参考取得，不例行回读成功保存。
-报告视图以 Session/Turn/首次 call 建立稳定身份，草稿后续调用通过 draftId 关联；Workspace 路径与连接 generation 共同限定读写归属。真实 Turn 的 Chat 节点保留轻量报告入口及推荐，正文仅在右侧 Tab 展示；原生 tool view 保留错误说明或已保存报告入口。
+报告视图以 Session/Turn/首次 call 建立稳定身份，草稿后续调用通过 draftId 关联；Workspace 路径与连接 generation 共同限定读写归属。真实 Turn 的 Chat 节点保留轻量分析视图入口及推荐，正文仅在右侧 Tab 展示；原生 tool view 保留错误说明或已保存视图入口。
 
 首次 Native 参数候选、已校验草稿修订和最终 Build 由同一报告视图更新。前台会话首次出现可展示候选时自动打开并选中原生 Tab；此操作会展开侧栏并切换当前 Tab。用户关闭或切换 Tab 后，后续更新不再次打开或抢焦点；可从 Chat 入口手动重开。草稿保存后同一 Tab 展示准确 Build。
 
-Tab 与报告视图身份由客户端和原生地址管理，不写入报告内容、草稿、receipt 或 Workspace 文件。为避免抢焦点，非活动的 live Tab 在用户再次选中时才转换为准确 Build 地址；转换前刷新依赖会话投影重建，若历史不完整而无法确定身份，需从 Chat 的已保存入口或报告目录重开。历史回放与后台会话不自动打开 Tab；已保存报告按准确 Build 地址读取，草稿不承诺跨 Host 重启恢复，失效时明确提示。报告目录、历史和工具结果入口打开右侧 Tab。失败保留最后成功文档；Workspace 失效或连接重置撤销旧归属，迟到读取不能恢复它。
+Tab 与报告视图身份由客户端和原生地址管理，不写入报告内容、草稿、receipt 或 Workspace 文件。为避免抢焦点，非活动的 live Tab 在用户再次选中时才转换为准确 Build 地址；转换前刷新依赖会话投影重建，若历史不完整而无法确定身份，需从 Chat 的已保存入口或分析视图目录重开。历史回放与后台会话不自动打开 Tab；已保存报告按准确 Build 地址读取，草稿不承诺跨 Host 重启恢复，失效时明确提示。分析视图目录、历史和工具结果入口打开右侧 Tab。失败保留最后成功文档；Workspace 失效或连接重置撤销旧归属，迟到读取不能恢复它。
 
-已保存版本可在报告 tab 中下载离线 HTML；对象存储发布与 Reader 内编辑不受支持，见[报告 HTML 导出](report-publishing.md)。
+已保存版本可在分析视图 Tab 中下载离线 HTML；对象存储发布与 Reader 内编辑不受支持，见[分析视图 HTML 导出](report-publishing.md)。
 
-## 报告草稿与正式保存
+## 分析视图草稿与正式保存
 
 - `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 saved ref 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，Native 与 Code Mode 原始结果均直接返回 `stage` 和准确 draft ref。
-- 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序，resourcePatch 只更新指定资源。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、报告目录或历史，Turn 结束后释放。
+- 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序，resourcePatch 只更新指定资源。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、分析视图目录或历史，Turn 结束后释放。
 - Native 和 PTC 的预览通知携带草稿身份与 surface。浏览器通过 Session 绑定的 `draft/read` 读取确切修订；Chat 入口与右侧 Tab 引用同一报告状态，后续 preview 更新同一处内容，不逐次追加结果卡片。
 - `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本；同次可携带最后一批 program、resourcePatch 或元数据修改。若正式基版本已变化，保存失败并保留当前草稿。成功后，当前阅读位置的草稿在正式文档读取完成后原位切换到正式结果；读取间隙继续显示已有内容，历史只增加本次保存的一个版本。
 - save 原始结果直接返回 `stage` 和准确 saved ref，并含 mode/contentReview/changed/reused/unchangedAliases 及结构化 resultMetadata。Host-owned deliveryJson 保留可重放完整投递身份；当前 Harness 缺少 execute 返回模型 canonical value 之外的持久 metadata 接缝，不能声称该字段已移出模型。
@@ -109,7 +110,7 @@ receipt 保存 Workspace/report/build 身份、标题、摘要及已保存 JSON 
 每项必须包含有效 publishedAt、Agent Session 和 surface，不包含旧历史缺失标记。
 current v2/v3 均不再接受，包含此前新格式报告的旧指针；不自动迁移或修改磁盘文件。
 
-磁盘上已有的旧格式报告（Presentation Document v3 及更早）不删除、不迁移；报告目录不再列出它们，
+磁盘上已有的旧格式报告（Presentation Document v3 及更早）不删除、不迁移；分析视图目录不再列出它们，
 打开旧报告地址时显示“不支持的报告”错误。需要相同内容时从实际结果重新 present。
 
 ## Native、PTC 与 headless
@@ -158,11 +159,11 @@ current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 
 不依赖安全上下文的 `crypto.subtle`，内网 HTTP／代理访问执行相同校验。关闭、Workspace 失效或连接重置取消旧请求，
 迟到响应不能恢复旧内容。
 
-## Workspace 报告列表与历史查看
+## Workspace 分析视图目录与历史
 
-默认 client 从 Workspace 会话头部的「报告」入口打开当前 Workspace 的原生目录 Tab。列表按 Report ID 去重，
-只显示「报告标题」「生成对话」「更新时间」三列；搜索框随输入筛选标题，列表按成功保存时间降序，
-同时间以 Report ID 稳定排序。统一列出所有已保存报告，不按生成时的 surface 分类或过滤；
+默认 client 从 Workspace 会话头部的「分析视图」入口打开当前 Workspace 的原生目录 Tab。列表按 Report ID 去重，
+只显示「分析视图标题」「生成对话」「更新时间」三列；搜索框随输入筛选标题，列表按成功保存时间降序，
+同时间以 Report ID 稳定排序。统一列出所有已保存的分析视图，不按生成时的 surface 分类或过滤；
 发布历史中的 `source.surface` 保留旧格式兼容，不决定当前阅读位置。列表包含支持的 `dsh.analysis-ui/v1` 和 v2 记录，旧格式报告被隐藏。
 
 来源会话使用发布时记录的 Harness Session ID，通过 Host 当前会话列表解析标题和导航；不可用时明确披露，不猜测来源。

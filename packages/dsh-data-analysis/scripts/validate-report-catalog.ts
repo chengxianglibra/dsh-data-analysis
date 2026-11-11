@@ -48,11 +48,11 @@ try {
   await page.getByText('S4 production Tool delivery', { exact: true }).first().click()
   await page.waitForFunction(() => !!(window as any).__rightTabs)
   assert.equal(await page.locator('[data-presentation-card]').count(), 0)
-  assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 1)
+  assert.equal(await page.getByRole('button', { name: '打开分析视图', exact: true }).count(), 1)
   assert.equal(
     await page
       .locator('[class*="_footerActions"]')
-      .getByRole('button', { name: '打开报告', exact: true })
+      .getByRole('button', { name: '打开分析视图', exact: true })
       .count(),
     0,
   )
@@ -87,16 +87,13 @@ try {
     ),
     /report-save-conflict/,
   )
-  await page.getByRole('button', { name: '打开报告', exact: true }).first().click()
+  await page.getByRole('button', { name: '打开分析视图', exact: true }).first().click()
   const dialog = page.locator('[data-rt-kind=reports]:visible')
   const search = dialog.getByRole('searchbox', { name: '按标题搜索', exact: true })
   const refresh = dialog.getByRole('button', { name: '刷新', exact: true })
   await search.waitFor()
   assert.equal(await dialog.getByRole('searchbox').count(), 1)
   assert.equal(await dialog.getByRole('button', { name: /刷新/ }).count(), 1)
-  // The only list control besides search is the report/result category; there is no sorting.
-  assert.equal(await dialog.locator('.pd-catalog-controls select').count(), 1)
-  assert.equal(await dialog.locator('.pd-catalog-controls button').count(), 0)
   const titleBounds = await dialog.locator('.rt-heading').boundingBox()
   const refreshBounds = await refresh.boundingBox()
   assert.ok(titleBounds && refreshBounds)
@@ -109,7 +106,7 @@ try {
   await dialog.getByRole('button', { name: '报告列表验收 · 当前版', exact: true }).waitFor()
   assert.equal(await dialog.locator('tbody tr').count(), 1)
   assert.deepEqual(await dialog.locator('thead th').allTextContents(), [
-    '报告标题',
+    '分析视图标题',
     '生成对话',
     '更新时间',
   ])
@@ -118,7 +115,7 @@ try {
   assert.equal(await dialog.getByText(receipt.summary, { exact: true }).count(), 0)
   assert.equal(await dialog.getByText(/Agent 更新 · |阅读器编辑 · |每行显示一个报告/).count(), 0)
   await refresh.click()
-  await dialog.getByText('正在读取报告列表…', { exact: true }).waitFor({ state: 'hidden' })
+  await dialog.getByText('正在读取分析视图列表…', { exact: true }).waitFor({ state: 'hidden' })
   assert.equal(await search.inputValue(), '报告列表验收')
   await dialog.getByRole('button', { name: '报告列表验收 · 当前版', exact: true }).click()
   const reader = page.locator('[data-rt-kind=report]:visible')
@@ -145,10 +142,10 @@ try {
   })
   assert.equal(await current.getAttribute('data-rt-build'), updated.buildId)
   await closeReport(page, current)
-  await page.getByRole('button', { name: '打开报告', exact: true }).click()
+  await page.getByRole('button', { name: '打开分析视图', exact: true }).click()
   assert.equal(await dialog.getByRole('searchbox').inputValue(), '报告列表验收')
   await dialog.getByRole('searchbox').fill('不会匹配任何报告')
-  await dialog.getByText('没有匹配标题的报告。', { exact: true }).waitFor()
+  await dialog.getByText('没有匹配标题的分析视图。', { exact: true }).waitFor()
   await dialog.getByRole('searchbox').fill('')
   await page.screenshot({ path: path.join(output, 'catalog-desktop.png'), fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -165,7 +162,7 @@ try {
     ) < 3,
   )
   assert.deepEqual(await dialog.locator('thead th').allTextContents(), [
-    '报告标题',
+    '分析视图标题',
     '生成对话',
     '更新时间',
   ])

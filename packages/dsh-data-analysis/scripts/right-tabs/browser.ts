@@ -7,7 +7,7 @@ export function analysisSurface(reader: Locator) {
 }
 
 export async function openHistory(reader: Locator) {
-  await reader.getByRole('button', { name: '报告操作' }).click()
+  await reader.getByRole('button', { name: '分析视图操作' }).click()
   await reader.page().getByRole('menuitem', { name: '历史版本', exact: true }).click()
   await reader.getByRole('complementary', { name: '历史版本' }).waitFor()
 }

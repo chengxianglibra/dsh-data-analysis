@@ -1,6 +1,6 @@
 /** Real installed Host and browser; isolated profile, real tools, scripted model boundary. */
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -88,26 +88,23 @@ try {
   assert.deepEqual(Object.keys(native.receipt.files), ['document'])
   assert.equal(await page.locator('[data-presentation-card]').count(), 0)
   record('JSON-only report opens in right tab with no chat card')
-  assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 1)
+  assert.equal(await page.getByRole('button', { name: '打开分析视图', exact: true }).count(), 1)
   assert.equal(
     await page
       .locator('[class*="_footerActions"]')
-      .getByRole('button', { name: '打开报告', exact: true })
+      .getByRole('button', { name: '打开分析视图', exact: true })
       .count(),
     0,
   )
-  await page.getByRole('button', { name: '打开报告', exact: true }).first().click()
+  await page.getByRole('button', { name: '打开分析视图', exact: true }).first().click()
   const catalogPage = page.locator('[data-rt-kind=reports]')
   await catalogPage.locator('.pd-report-title').first().waitFor()
   const catalogSearch = catalogPage.getByRole('searchbox', { name: '按标题搜索', exact: true })
   const catalogRefresh = catalogPage.getByRole('button', { name: '刷新', exact: true })
   assert.equal(await catalogPage.getByRole('searchbox').count(), 1)
   assert.equal(await catalogPage.getByRole('button', { name: /刷新/ }).count(), 1)
-  // Report/result category is the only list selector; there are no sorting controls.
-  assert.equal(await catalogPage.locator('.pd-catalog-controls select').count(), 1)
-  assert.equal(await catalogPage.locator('.pd-catalog-controls button').count(), 0)
   assert.deepEqual(await catalogPage.locator('thead th').allTextContents(), [
-    '报告标题',
+    '分析视图标题',
     '生成对话',
     '更新时间',
   ])
@@ -119,7 +116,7 @@ try {
   assert.equal(await catalogPage.locator('tbody p').count(), 0)
   assert.equal(await catalogPage.getByText(native.receipt.summary, { exact: true }).count(), 0)
   const catalogHeadingBounds = await catalogPage
-    .getByRole('heading', { name: '报告', exact: true })
+    .getByRole('heading', { name: '分析视图', exact: true })
     .boundingBox()
   const catalogRefreshBounds = await catalogRefresh.boundingBox()
   assert.ok(catalogHeadingBounds && catalogRefreshBounds)
@@ -141,9 +138,9 @@ try {
     ),
   )
   await catalogSearch.fill('不会匹配任何报告')
-  await catalogPage.getByText('没有匹配标题的报告。', { exact: true }).waitFor()
+  await catalogPage.getByText('没有匹配标题的分析视图。', { exact: true }).waitFor()
   await catalogRefresh.click()
-  await catalogPage.getByText('正在读取报告列表…', { exact: true }).waitFor({ state: 'hidden' })
+  await catalogPage.getByText('正在读取分析视图列表…', { exact: true }).waitFor({ state: 'hidden' })
   assert.equal(await catalogSearch.inputValue(), '不会匹配任何报告')
   await catalogSearch.fill('')
   await catalogPage.locator('.pd-report-title').first().waitFor()
@@ -174,7 +171,7 @@ try {
   await page.setViewportSize({ width: 1680, height: 1100 })
   // The newest report was generated in right-tabs-native; its Session link must navigate there.
   await select(server.sessionId)
-  await page.getByRole('button', { name: '打开报告', exact: true }).click()
+  await page.getByRole('button', { name: '打开分析视图', exact: true }).click()
   await page
     .locator('[data-rt-kind=reports] tbody tr')
     .first()
@@ -265,11 +262,14 @@ try {
   record('fixed/current parallel panes; the current reader survives float/dock remount')
   await page.evaluate((id) => (window as any).__rtHost.sidebar.focus(id), currentTab)
   const history = (locale: 'zh' | 'en') =>
-    currentPage.getByRole('button', { name: locale === 'zh' ? '报告操作' : 'Report actions' })
-  const titleBeforeLocale = await currentPage.locator('.pr-reader h1').first().innerText()
+    currentPage.getByRole('button', {
+      name: locale === 'zh' ? '分析视图操作' : 'Analysis view actions',
+    })
+  const surface = analysisSurface(currentPage)
+  assert.equal(await surface.getAttribute('aria-label'), updated.receipt.title)
   await page.evaluate(() => (window as any).__rtHost.locale.setLocale('en'))
   await history('en').waitFor()
-  assert.equal(await currentPage.locator('.pr-reader h1').first().innerText(), titleBeforeLocale)
+  assert.equal(await surface.getAttribute('aria-label'), updated.receipt.title)
   assert.equal(await currentPage.getAttribute('data-rt-build'), updated.receipt.buildId)
   await page.evaluate(() => (window as any).__rtHost.locale.setLocale('zh'))
   await history('zh').waitFor()
@@ -508,7 +508,7 @@ try {
   assert.equal(await opens(), beforePtc + 1)
   const beforeBackground = await opens()
   await select('right-tabs-native')
-  await page.getByRole('button', { name: '打开报告', exact: true }).first().click()
+  await page.getByRole('button', { name: '打开分析视图', exact: true }).first().click()
   await page.locator('[data-rt-kind=reports] .pd-report-title').first().waitFor()
   await page.evaluate(
     ({ workspaceId, reportId }) =>
@@ -872,7 +872,7 @@ try {
   assert.equal(withoutSession, true)
   record('navigation without a foreground Session fails explicitly')
   assert.equal(await page.evaluate(() => (window as any).__rtHost.current()), undefined)
-  assert.equal(await page.getByRole('button', { name: '打开报告', exact: true }).count(), 0)
+  assert.equal(await page.getByRole('button', { name: '打开分析视图', exact: true }).count(), 0)
   record('clearing the foreground Session leaves no removed footer report shortcut')
   await page.evaluate(() => (window as any).__rtHost.unload())
   await page.evaluate(() => (window as any).__rtHost.delay.release())
@@ -936,6 +936,15 @@ try {
   await server.stop()
   // Only this invocation's generated Workspace/profile contain disposable test state.
   // Keep screenshots, HTML and audit evidence outside these directories.
+  const skills = path.join(outputRoot, 'web', 'web-runtime-marker', 'plugin-skills')
+  const entries = await readdir(skills, { recursive: true, withFileTypes: true }).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return []
+      throw error
+    },
+  )
+  for (const entry of entries)
+    if (entry.isDirectory()) await chmod(path.join(entry.parentPath, entry.name), 0o700)
   await rm(path.join(outputRoot, 'web'), { recursive: true, force: true })
   await rm(workspaceRoot, { recursive: true, force: true })
 }

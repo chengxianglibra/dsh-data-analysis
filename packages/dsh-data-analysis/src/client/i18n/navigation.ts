@@ -6,8 +6,8 @@ export const zh = {
   'marivo.navigation.a-newer-version-exists-the-current-view-is-unchanged':
     '已有新版本，当前阅读内容保持不变。',
   'marivo.navigation.view-new-version': '查看新版本',
-  'marivo.navigation.loading-report': '正在读取报告…',
-  'marivo.navigation.reload-report': '重新加载报告',
+  'marivo.navigation.loading-report': '正在读取分析视图…',
+  'marivo.navigation.reload-report': '重新加载分析视图',
   'marivo.navigation.workspace-changed-or-is-unavailable-reopen-the-page':
     'Workspace 已变化或不可用，请重新打开页面。',
   'marivo.navigation.host-connection-interrupted-reconnect-and-reopen-the-page':
@@ -16,7 +16,7 @@ export const zh = {
   'marivo.navigation.unknown-marivo-resource-address': '未知 Marivo 资源地址',
   'marivo.navigation.resource-address-is-not-canonically-encoded': '资源地址不是规范编码',
   'marivo.navigation.cannot-verify-the-new-version': '无法核验新版本',
-  'marivo.navigation.report-identity-changed': '报告身份已变化',
+  'marivo.navigation.report-identity-changed': '分析视图身份已变化',
   'marivo.navigation.open-value': '打开{p0}',
 } as const
 export const en = {
@@ -26,8 +26,8 @@ export const en = {
   'marivo.navigation.a-newer-version-exists-the-current-view-is-unchanged':
     'A newer version exists. The current view is unchanged.',
   'marivo.navigation.view-new-version': 'View new version',
-  'marivo.navigation.loading-report': 'Loading report…',
-  'marivo.navigation.reload-report': 'Reload report',
+  'marivo.navigation.loading-report': 'Loading analysis view…',
+  'marivo.navigation.reload-report': 'Reload analysis view',
   'marivo.navigation.workspace-changed-or-is-unavailable-reopen-the-page':
     'Workspace changed or is unavailable. Reopen the page.',
   'marivo.navigation.host-connection-interrupted-reconnect-and-reopen-the-page':
@@ -38,6 +38,6 @@ export const en = {
   'marivo.navigation.resource-address-is-not-canonically-encoded':
     'Resource address is not canonically encoded',
   'marivo.navigation.cannot-verify-the-new-version': 'Cannot verify the new version',
-  'marivo.navigation.report-identity-changed': 'Report identity changed',
+  'marivo.navigation.report-identity-changed': 'Analysis view identity changed',
   'marivo.navigation.open-value': 'Open {p0}',
 } satisfies Record<keyof typeof zh, string>

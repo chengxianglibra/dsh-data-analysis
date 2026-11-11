@@ -63,7 +63,7 @@ window.renderExport('current');
   })
   await page.setContent('<div id="root"></div>')
   await page.addScriptTag({ content: bundle.outputFiles[0]?.text })
-  const menu = page.getByRole('button', { name: 'Report actions' })
+  const menu = page.getByRole('button', { name: 'Analysis view actions' })
   const button = page.getByRole('menuitem', { name: 'Export HTML' })
   await menu.click()
   await page.getByRole('menuitem', { name: 'History' }).click()

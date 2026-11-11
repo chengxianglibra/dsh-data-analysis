@@ -1,4 +1,4 @@
-# 报告编写示例
+# 分析视图编写示例
 
 示例资源名、输入路径、列 ID 和结论须按实际任务替换。各视图使用准确固定结果，可以共享同一结果及生产 codeRef；以下纯文件示例使用 DatasetView，适用的 governed 分析优先使用后面的 Frame 组件。
 
@@ -62,7 +62,7 @@ detail = DatasetView("detail", {chart:"table", columns:["category", "value"]});
 scope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");
 ```
 
-preview 校验并更新内存草稿，返回 draft ref，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 saved ref；不从 deliveryJson 拼装身份。新报告正文在右侧 Tab 连续更新，以图表动效表达生成和修订，保存后停止；前台会话首次出现可展示候选时自动打开，Chat 保留入口供关闭后重开，后续更新不自动抢焦点。报告目录与版本链接也在右侧打开。每次显式指定 stage，身份与 patch 完整后候选才可更新；不传 surface。
+preview 校验并更新内存草稿，返回 draft ref，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 saved ref；不从 deliveryJson 拼装身份。新分析视图正文在右侧 Tab 连续更新，以图表动效表达生成和修订，保存后停止；前台会话首次出现可展示候选时自动打开，Chat 保留入口供关闭后重开，后续更新不自动抢焦点。分析视图目录与版本链接也在右侧打开。每次显式指定 stage，身份与 patch 完整后候选才可更新；不传 surface。
 
 ## 比较与抵消项
 

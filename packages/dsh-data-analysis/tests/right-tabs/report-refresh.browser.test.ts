@@ -32,7 +32,7 @@ window.fixture={resolve:value=>{locked=false;resolve(value);render()},calls:()=>
   const page = await browser.newPage()
   await page.setContent('<div id="root"></div>')
   await page.addScriptTag({ content: bundle.outputFiles[0]?.text })
-  const menu = page.getByRole('button', { name: 'Report actions' })
+  const menu = page.getByRole('button', { name: 'Analysis view actions' })
   const update = page.getByRole('menuitem', { name: 'Update data' })
   await menu.click()
   await update.click()

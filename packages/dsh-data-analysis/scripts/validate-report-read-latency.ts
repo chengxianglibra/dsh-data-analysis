@@ -57,18 +57,20 @@ try {
       server.sessionId,
     )
     await page.evaluate((id) => (window as any).__rtHost.select(id), server.sessionId)
-    await page.getByRole('button', { name: '打开报告', exact: true }).first().waitFor()
+    await page.getByRole('button', { name: '打开分析视图', exact: true }).first().waitFor()
   }
   const timings: Array<{ page: number; kind: string; elapsed: number }> = []
   for (let round = -1; round < 5; round++) {
     await Promise.all(
       pages.map(async (page, index) => {
-        await page.getByRole('button', { name: '打开报告', exact: true }).first().click()
+        await page.getByRole('button', { name: '打开分析视图', exact: true }).first().click()
         const catalog = page.locator('[data-rt-kind=reports]')
         await catalog.locator('.pd-report-title').first().waitFor()
         const start = await page.evaluate(() => performance.now())
         await catalog.getByRole('button', { name: '刷新', exact: true }).click()
-        await catalog.getByText('正在读取报告列表…', { exact: true }).waitFor({ state: 'hidden' })
+        await catalog
+          .getByText('正在读取分析视图列表…', { exact: true })
+          .waitFor({ state: 'hidden' })
         await catalog.locator('.pd-report-title').first().waitFor()
         const listed = await page.evaluate(() => performance.now())
         await catalog.locator('.pd-report-title').first().click()
@@ -138,11 +140,11 @@ try {
   assert.ok(watches.length > beforeReconnect, 'reconnect reloads the credential baseline')
   // History stays available on the saved analysis Tab after a fresh read.
   const page = pages[0]!
-  await page.getByRole('button', { name: '打开报告', exact: true }).first().click()
+  await page.getByRole('button', { name: '打开分析视图', exact: true }).first().click()
   await page.locator('[data-rt-kind=reports] .pd-report-title').first().click()
   const reader = page.locator('[data-rt-kind=report]')
   await reader.locator('[data-analysis-record]').waitFor()
-  await reader.getByRole('button', { name: '报告操作' }).click()
+  await reader.getByRole('button', { name: '分析视图操作' }).click()
   await page.getByRole('menuitem', { name: '历史版本', exact: true }).click()
   await reader.getByRole('complementary', { name: '历史版本' }).waitFor()
   assert.equal(errors.length, 0, errors.join('\n'))

@@ -7,7 +7,7 @@
 `marivo_report_write` 始终显式选择 `stage:"preview"|"save"`。成功返回单一 `ref`，直接传递而不构造或拆分。preview 是当前 Session/Turn 的内存草稿；save 是固定 Build，可在 Workspace 与存储仍可访问时跨 Session/Host 重启读取。ref 不代替权限核验。
 
 - 准确版本：`marivo_report_read({ref})`。
-- 报告当前版本：`marivo_report_read({ref,version:"current"})`，仅限 saved ref。
+- 视图当前版本：`marivo_report_read({ref,version:"current"})`，仅限 saved ref。
 - 当前 Turn 草稿：`marivo_report_read({draft:true})`。
 
 结构化 `definition` 包含实际读取的 ref、程序、资源声明、配置元信息和准确引用复用组。需要脚本时传 `includeCode:true`；sources 按执行记录去重，unavailable 不阻塞内嵌快照读取，也不触发代码执行。组件签名按需读[组件签名](analysis-catalog.md)。

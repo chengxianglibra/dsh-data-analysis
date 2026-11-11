@@ -101,7 +101,7 @@ export function calls(events: SessionEvent[]) {
     return []
   })
 }
-function deliveries(events: SessionEvent[], sessionId: string) {
+export function deliveries(events: SessionEvent[], sessionId: string) {
   return events.flatMap((event) => {
     let raw: unknown
     if (event.type === 'tool/result') raw = event.data.meta
@@ -347,7 +347,7 @@ try {
   assert.equal(generated.status, 0, generated.stderr)
   await save('fixtures.json', JSON.parse(generated.stdout))
   const suite = process.env.DSH_DATA_ANALYSIS_VALIDATION_SUITE ?? 'reports'
-  assert.ok(['reports', 'files'].includes(suite), 'Unknown file analysis suite')
+  assert.ok(['reports', 'files', 'analysis-views'].includes(suite), 'Unknown file analysis suite')
   const formats = process.env.DSH_DATA_ANALYSIS_VALIDATION_FORMATS?.split(',') ?? [
     'csv',
     'json',
@@ -362,6 +362,7 @@ try {
     'Selected formats must be unique known formats and include csv for recovery',
   )
   const workspaces = formats.map((format) => path.join(outputRoot, `workspace-${format}`))
+  if (suite === 'analysis-views') workspaces.push(path.join(outputRoot, 'workspace-save-failure'))
   await Promise.all(workspaces.map((root) => mkdir(root)))
   host = await startFileAnalysisWeb(outputRoot, workspaces, python, secret, {
     missingPresentPreset:
@@ -370,7 +371,22 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true })
   let page = await browser.newPage()
   await open(page, host.url)
-  if (suite === 'files') {
+  if (suite === 'analysis-views') {
+    const { verifyAnalysisViewRouting } = await import('./file-analysis-real/analysis-views.ts')
+    const results = await verifyAnalysisViewRouting({
+      page,
+      workspaceId: host.workspaceIds[0]!,
+      failureWorkspace: { id: host.workspaceIds.at(-1)!, root: workspaces.at(-1)! },
+      fixtureRoot,
+      model,
+      effort,
+      call,
+      prompt,
+      deliveries,
+    })
+    await save('result.json', { status: 'passed', model, effort, python, results })
+    console.log(JSON.stringify({ status: 'passed', outputRoot }))
+  } else if (suite === 'files') {
     const { runFileDelivery } = await import('./file-analysis-real/delivery.ts')
     await runFileDelivery({
       page,

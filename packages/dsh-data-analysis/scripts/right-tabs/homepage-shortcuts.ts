@@ -71,7 +71,7 @@ export async function verifyHomepageShortcuts(page: Page, outputRoot: string) {
   for (const [label, kind] of [
     ['数据源与凭证', 'datasources'],
     ['语义层', 'semantic'],
-    ['报告', 'reports'],
+    ['分析视图', 'reports'],
   ]) {
     const button = shortcuts.getByRole('button', { name: `打开${label}`, exact: true })
     await button.focus()
@@ -120,13 +120,13 @@ export async function verifyHomepageShortcuts(page: Page, outputRoot: string) {
     }
   })
   try {
-    await shortcuts.getByRole('button', { name: '打开报告', exact: true }).click()
+    await shortcuts.getByRole('button', { name: '打开分析视图', exact: true }).click()
     await shortcuts.getByRole('alert').waitFor()
     assert.deepEqual(await snapshot(), before)
   } finally {
     await page.evaluate(() => (window as any).__rtHost.restoreSessionRead())
   }
-  await shortcuts.getByRole('button', { name: '打开报告', exact: true }).click()
+  await shortcuts.getByRole('button', { name: '打开分析视图', exact: true }).click()
   await shortcuts.getByRole('alert').waitFor({ state: 'hidden' })
   await page.evaluate(() => {
     const sidebar = (window as any).__rtHost.sidebar

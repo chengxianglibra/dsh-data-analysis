@@ -159,8 +159,8 @@ export function createReportRefresh(ctx: RefreshHost, rpc: ClientConnectionRpc) 
       if (!valid()) return 'unavailable'
       const prompt =
         report.locale === 'en-US'
-          ? `Please update all existing data resources in this report:\n${ref}\n\nFirst read the current report and verify its exact ref still matches the ref above. If the version has changed, stop and tell me. Review available sources, original inputs, and calculation definitions. Recalculate and save using the report data refresh workflow, preserving layout, components, text, title, and labels, including shared resource aliases that need to be updated together. Explain anything that cannot be safely recalculated; do not guess sources or change definitions. Report which resources were updated, reused, or left unchanged, and whether static narrative needs review.`
-          : `请更新这份报告的全部现有数据资源：\n${ref}\n\n请先读取并核对当前报告的准确引用仍与以上引用一致；如果版本已变化，请停止并告知我。审阅可用来源，核对原始输入和计算口径，使用报告数据更新流程重新计算并保存，保持布局、组件、正文、标题和标签，包括需要一起更新的共享资源别名。无法安全重算的部分请明确说明，不要猜测来源或改变口径。完成后请说明哪些资源已更新、复用或尚未更新，以及静态正文是否需要复核。`
+          ? `Please update all existing data resources in this analysis view:\n${ref}\n\nFirst read the current analysis view and verify its exact ref still matches the ref above. If the version has changed, stop and tell me. Review available sources, original inputs, and calculation definitions. Recalculate and save using the analysis view data refresh workflow, preserving layout, components, text, title, and labels, including shared resource aliases that need to be updated together. Explain anything that cannot be safely recalculated; do not guess sources or change definitions. Report which resources were updated, reused, or left unchanged, and whether static narrative needs review.`
+          : `请更新此分析视图的全部现有数据资源：\n${ref}\n\n请先读取并核对当前分析视图的准确引用仍与以上引用一致；如果版本已变化，请停止并告知我。审阅可用来源，核对原始输入和计算口径，使用分析视图的数据刷新流程重新计算并保存，保持布局、组件、正文、标题和标签，包括需要一起更新的共享资源别名。无法安全重算的部分请明确说明，不要猜测来源或改变口径。完成后请说明哪些资源已更新、复用或尚未更新，以及静态正文是否需要复核。`
       lock.sawBusy = false
       lock.baselineTurn = binding.eventSource
         .getSnapshot()

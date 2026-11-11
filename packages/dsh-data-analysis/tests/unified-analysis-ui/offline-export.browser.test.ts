@@ -122,13 +122,13 @@ test('exported report opens offline, renders data and charts, and keeps local in
     const dialog = page.getByRole('dialog', { name: 'Data source and scope' })
     assert.equal(
       await dialog
-        .getByText('The execution script is not included in the offline report.')
+        .getByText('The execution script is not included in the offline analysis view.')
         .isVisible(),
       true,
     )
     assert.equal(
       await dialog
-        .getByText('Execution datasource information is not included in the offline report.')
+        .getByText('Execution datasource information is not included in the offline analysis view.')
         .isVisible(),
       true,
     )

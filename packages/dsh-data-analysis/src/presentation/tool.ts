@@ -80,7 +80,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present an existing result or update an analysis document. Reports are available in the right sidebar reader. For reports requiring analysis, preview early, update the same draft as results become ready, and save once. Already-ready changes can save directly. Send only changed resources and named program statements. Preview and save return an opaque ref and may include final changes. Drafts expire at Turn end or Host restart. Use marivo_report_read to recover editing context or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources. deliveryJson is for Host delivery.',
+      'Create or update an analysis view in the right sidebar. When data preparation is ongoing, preview early, update the same draft as results become ready, and save once. Ready results and changes can save directly. Send only changed resources and named program statements. Preview and save return an opaque ref and may include final changes. Drafts expire at Turn end or Host restart. Use marivo_report_read to recover editing context or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources. deliveryJson is for Host delivery.',
     parameters: {
       stage: {
         type: 'string',
@@ -92,13 +92,13 @@ export function createMarivoPresentTool(
       ref: {
         type: 'string',
         description:
-          'Opaque saved ref to edit a report, or latest draft ref to continue it. Omit only for a new report.',
+          'Opaque saved ref to edit an analysis view, or latest draft ref to continue it. Omit only for a new view.',
       },
       mode: {
         type: 'string',
         enum: ['edit', 'refresh-data'],
         description:
-          'First operation defaults to edit. refresh-data requires a saved report and forbids page or metadata changes. Draft mode is inherited and cannot change.',
+          'First operation defaults to edit. refresh-data requires a saved analysis view and forbids page or metadata changes. Draft mode is inherited and cannot change.',
       },
       onto: {
         type: 'string',
@@ -486,7 +486,7 @@ export function createMarivoUiReadTool(
   return defineTool({
     name: 'marivo_report_read',
     description:
-      "Read an exact/current saved report or the active Turn draft without querying data or executing scripts. Use it to establish data-refresh context, recover missing editing context or resolve conflicts. ref selects an exact version; version=current selects its report's current version; draft=true selects the calling Session Turn draft. A draft ref reads only its original active Turn. Choose ref or draft input. definition contains the actual ref, program, reusable declarations, codeRefs and bounded schemas, not business rows. includeCode reads available bound execution records in deduplicated sources. For data refresh, review inputs and scripts, prepare explicit new fixed results, reuse shared results across their dependent views, and preview same-name resource replacements while preserving the page definition. Do not routinely read back after successful previews or saves.",
+      'Read an exact/current saved analysis view or the active Turn draft without querying data or executing scripts. Use it to establish data-refresh context, recover missing editing context or resolve conflicts. ref selects an exact version; version=current selects the current version of that view; draft=true selects the calling Session Turn draft. A draft ref reads only its original active Turn. Choose ref or draft input. definition contains the actual ref, program, reusable declarations, codeRefs and bounded schemas, not business rows. includeCode reads available bound execution records in deduplicated sources. For data refresh, review inputs and scripts, prepare explicit new fixed results, reuse shared results across their dependent views, and preview same-name resource replacements while preserving the page definition. Do not routinely read back after successful previews or saves.',
     parameters: {
       ref: { type: 'string', description: 'Opaque ref returned by a successful write or read.' },
       version: {

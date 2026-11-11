@@ -48,7 +48,7 @@ try {
   )
   assert.equal(result.ok, true, JSON.stringify(result))
   await page.locator('.marivo-workspace-shortcuts').waitFor({ state: 'hidden' })
-  await page.getByRole('button', { name: '打开报告', exact: true }).click()
+  await page.getByRole('button', { name: '打开分析视图', exact: true }).click()
   await page.locator('[data-rt-kind="reports"]').waitFor()
   await page.evaluate(() => (window as any).__rtHost.select('right-tabs-ptc'))
   await page.locator('.marivo-workspace-shortcuts').waitFor()

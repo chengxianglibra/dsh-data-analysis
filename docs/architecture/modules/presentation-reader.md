@@ -1,9 +1,9 @@
-# 分析文档 reader
+# 分析视图阅读器
 
 ## 责任与入口
 
 本模块把已保存的分析文档（新保存为 `dsh.analysis-ui/v2`，兼容读取 v1）呈现在原生右侧 Tab 中，并在真实 Turn 的 Chat 节点保留入口。
-插件拥有 Catalog/Renderer、阅读状态、报告目录与版本历史视图；Marivo 拥有分析语义与来源事实，
+插件拥有 Catalog/Renderer、阅读状态、分析视图目录与版本历史视图；Marivo 拥有分析语义与来源事实，
 Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 消费已保存文档及交付链路提供的当前 Turn 草稿和候选，
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
 
@@ -13,11 +13,11 @@ Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader �
 [数据视图](../../../packages/dsh-data-analysis/src/client/analysis-ui/data-view.tsx)和
 [右侧 tab 接入](../../../packages/dsh-data-analysis/src/client/right-tabs/install.tsx)。
 
-## 报告位置与阅读状态
+## 分析视图位置与阅读状态
 
-报告正文固定在右侧 Tab，首次候选、后续修订和正式保存复用稳定的 report view。前台会话首次出现可展示候选时自动打开并选中 Tab；关闭或切换 Tab 后，后续更新不重新打开或抢焦点。Chat 保留可手动打开的入口；历史回放和后台会话不自动导航。目录与历史入口始终导航到右侧，重复点击由原生资源地址去重。
+分析视图正文固定在右侧 Tab，首次候选、后续修订和正式保存复用稳定的 report view。前台会话首次出现可展示候选时自动打开并选中 Tab；关闭或切换 Tab 后，后续更新不重新打开或抢焦点。Chat 保留可手动打开的入口；历史回放和后台会话不自动导航。目录与历史入口始终导航到右侧，重复点击由原生资源地址去重。
 
-可见的报告标题由 program 中的正文负责，AnalysisSurface 不再自动添加主标题。`AnalysisDocument.title` 继续用于目录、原生 Tab、离线 HTML 的页面标题及报告的无障碍名称；没有正文标题时不补写。TextContent 的 Markdown 保留作者声明的 h1–h6 层级。生成动效独立显示，保存后不保留空标题行；右侧报告操作占用独立一行，避免遮挡正文。
+可见的视图标题由 program 中的正文负责，AnalysisSurface 不再自动添加主标题。`AnalysisDocument.title` 继续用于目录、原生 Tab、离线 HTML 的页面标题及视图的无障碍名称；没有正文标题时不补写。TextContent 的 Markdown 保留作者声明的 h1–h6 层级。生成动效独立显示，保存后不保留空标题行；右侧视图操作占用独立一行，避免遮挡正文。
 
 客户端 ReportViews 维护已准入文档和读者状态，Tabs 选择、表格排序/分页及表格横向滚动按稳定语句身份保留，包括生成期间的更新和保存。报告外层滚动由各自 Host 容器负责。新会话、Workspace 或连接 generation 不继承旧状态。Tab 的 Build 地址支持已保存内容重开；临时阅读状态不持久写入报告。
 
@@ -46,9 +46,9 @@ preview/save 回执触发文档读取时，已显示内容持续挂载，直到�
 
 ## 组件与数据视图
 
-对外组件为 AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image、DashboardGrid、DashboardGridItem、TextCallout、Accordion、AccordionItem；
+对外组件为 AnalysisFrameView、DatasetView、SnapshotFilter、Stack、TextContent、Card、Tabs、TabItem、Image、DashboardGrid、DashboardGridItem、TextCallout、Accordion、AccordionItem。
 [Catalog 生成器](../../../packages/dsh-data-analysis/scripts/generate-analysis-catalog.mjs)从组件库生成本地 TypeScript Catalog，并校验 Git 中的随包 Skill 签名。
-OpenUI Lang / Renderer 负责报告编排；私有 Stack / Card / Tabs、主题、控件和共用结果外壳见[插件私有 UI 组件](custom-ui-components.md)。
+OpenUI Lang / Renderer 负责分析视图编排；私有 Stack / Card / Tabs、主题、控件和共用结果外壳见[插件私有 UI 组件](custom-ui-components.md)。
 DashboardGrid 使用 1–4 列和显式 item 跨列，按容器宽度缩减列数并保持内容顺序；span 不得超过声明列数。TextCallout 展示作者声明的静态提示；Accordion 每组单项展开且可全部折叠，展开选择属于当前阅读状态，具名组件按语句与出现次序识别，inline 组件按位置识别。DashboardGridItem 和 AccordionItem 只用于各自父组件的槽位。
 AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配合 shadcn Chart 容器、主题与提示；领域视图组合相同组件和局部领域标记。
 图表不使用 OpenUI 官方图表组件，也不保留旧通用 SVG 绘图引擎、兼容分支或按期间数、series 数、数值类型切换的路径。
@@ -142,11 +142,11 @@ sha256 标识完整 execution record，由 Host 校验记录，客户端核对�
 语义来源为分析时的静态身份，展示去重后的具体对象，不展示 datasource 和 entity；在已保存结果的会话节点和报告 tab 中可经现有[语义浏览器](semantic-browser.md)打开当前定义，
 并提示其可能已变化；候选预览不提供导航。
 
-## 报告目录、版本历史与旧格式
+## 分析视图目录、版本历史与旧格式
 
-报告目录按 Workspace 列出新格式记录，支持标题搜索，统一显示所有保存结果，不按 surface 分类。
+分析视图目录按 Workspace 列出新格式记录，支持标题搜索，统一显示所有保存结果，不按 surface 分类。
 报告地址为 `dsh-resource://marivo-report/<workspace>/<report>/current` 或 `.../build/<build>`；
-打开时在右侧 tab 中显示对应版本；右上角的报告操作菜单提供数据更新、历史版本和 HTML 导出入口。版本历史列出同一报告的不可变 Build，展示发布时间、标题、来源会话、当前版本与正在查看的版本，可切换到历史版本或回到 current，也可关闭历史区域。
+打开时在右侧 tab 中显示对应版本；右上角的「分析视图操作」菜单提供数据更新、历史版本和 HTML 导出入口。版本历史列出同一报告的不可变 Build，展示发布时间、标题、来源会话、当前版本与正在查看的版本，可切换到历史版本或回到 current，也可关闭历史区域。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。
 
 「更新数据」只从已保存且仍为 current 的 Build 发起。插件通过 Host 按 Session、Workspace 和 Build 核验目标，取得准确 saved ref，再向所属 Harness Session 发送更新全部现有数据资源的请求；已有输入草稿和附件不受影响。连接、会话或 Workspace 不可用、会话忙碌，以及所看版本不再是 current 时不发送，并显示状态。发送被接纳只表示请求已提交；Agent 按既有 `refresh-data` 流程审阅来源、重算和保存，具体结果在会话中反馈。请求要求版本变化时停止，保存时仍依赖现有冲突检查；固定 Build 不会因新版本发布自动替换。候选预览和离线 HTML 不提供该操作。插件卸载后，尚未提交的请求失效，迟到的 Host 校验结果不会触发发送。

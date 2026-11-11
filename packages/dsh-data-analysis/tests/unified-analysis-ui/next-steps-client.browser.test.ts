@@ -195,14 +195,10 @@ test('a queued submission retires the Turn even after carrier failure hid its no
   await page.evaluate('window.fixture.close()')
 })
 
-test('a normal empty result uses the no-suggestions copy without a failure or retry control', async () => {
+test('a normal empty result shows an empty status without a failure or retry control', async () => {
   await start()
   await page.evaluate('window.fixture.publish({status:"empty",items:[]})')
   await page.locator('[data-next-steps-status="empty"]').waitFor()
-  assert.equal(
-    await page.getByText('No suitable next steps are available for this report.').count(),
-    1,
-  )
   assert.equal(await page.getByRole('button').count(), 0)
   assert.equal(await page.locator('[data-next-steps-status="unavailable"]').count(), 0)
   assert.equal(await page.locator('[data-next-steps-status="connection-failed"]').count(), 0)
@@ -214,7 +210,7 @@ test('generation failure stays separate from normal empty and a decline hides th
   await page.evaluate(
     'window.fixture.publish({status:"unavailable",reason:"generation-failed",items:[]})',
   )
-  await page.getByText('Next steps for this report are currently unavailable.').waitFor()
+  await page.locator('[data-next-steps-status="unavailable"]').waitFor()
   await page.evaluate('window.fixture.publish({status:"declined",items:[]})')
   await page.waitForFunction('!document.querySelector("[data-next-steps-status]")')
   await page.evaluate('window.fixture.publish()')

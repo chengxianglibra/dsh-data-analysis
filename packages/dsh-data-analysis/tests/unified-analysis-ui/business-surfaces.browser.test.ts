@@ -60,7 +60,7 @@ createRoot(document.getElementById('root')).render(h(ReportCopyProvider,{locale:
     assert.equal(await reports.getByRole('combobox').count(), 0)
     assert.equal(await reports.getByRole('button', { name: 'Tool result', exact: true }).count(), 1)
     await reports.getByRole('searchbox').fill('no match')
-    await reports.getByText('No reports match this title.').waitFor()
+    await reports.getByText('No analysis views match this title.').waitFor()
     const semantic = page.locator('#semantics')
     const definition = semantic.getByRole('tab', { name: 'Definition', exact: true })
     await semantic.getByRole('tab', { name: 'Overview', exact: true }).focus()

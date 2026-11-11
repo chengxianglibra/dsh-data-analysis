@@ -93,7 +93,7 @@ test('default client is a valid Cordis effect and registers native resources wit
   const directoryTitles = [
     ['marivo-datasources', '数据源与凭证', 'Datasources and credentials'],
     ['marivo-semantic', '语义层', 'Semantic layer'],
-    ['marivo-reports', '报告', 'Reports'],
+    ['marivo-reports', '分析视图', 'Analysis views'],
   ]
   for (const [kind, zh, en] of directoryTitles) {
     const definition = definitions.find((entry) => entry.kind === kind)

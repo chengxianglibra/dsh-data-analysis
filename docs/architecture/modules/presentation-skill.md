@@ -2,13 +2,15 @@
 
 ## 责任与入口
 
-随包 `dsh-data-analysis-presentation` 拥有报告编写、增量交付、数据刷新及叙事核对流程；分析方法与 Marivo API 分别由分析 Skill 和 live Help 拥有。实现资源位于 `packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/`，接口见[展示交付](presentation-delivery.md)，数据边界见[展示投影](presentation-projection.md)。
+随包 `dsh-data-analysis-presentation` 拥有分析视图的编排、增量交付、数据刷新和最终回复约定。分析方法与 Marivo API 分别由分析 Skill 和 live Help 拥有。实现资源位于 `packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/`，接口见[展示交付](presentation-delivery.md)，数据边界见[展示投影](presentation-projection.md)。
 
 Harness 的 Skill provider 与 `skill` 工具提供发现、加载与引用资源读取。插件通过生成的构建清单核验全部随包资源，挂载内容寻址的只读快照；正文和 resourceBase 采用同一快照，不扫描默认 roots，不监听目录变化。旧 Host 继续使用原快照，具体身份与失败策略见[插件集成](plugin-integration-delivery.md)。Runtime 的 marivo-analysis、marivo-semantic 和可选 marivo-service 由独立 provider 挂载，插件不修改其正文。
 
 ## 工作流与工具责任
 
-报告任务在准备数据前加载本 Skill。已有结果且只需一次明确修改时可以直接 save；需要持续分析时，先 preview 已确认的问题与范围，结果就绪后及时更新同一草稿，最终保存一次。候选、成功草稿与固定 Build 的事实分开，不把回执当作浏览器已经渲染的证明。
+全局路由在用户要求图表、报告、看板或分析视图时进入本流程。用户未指定形式时，只要图表或交互有助于理解、比较或核对结果，就创建能回答问题的最小分析视图。文字足以回答时直接在 Chat 回复，用户指定只要文字或文件时采用指定格式。已知适合展示时在准备数据前加载本 Skill，分析中才确定时在展示前加载。
+
+可直接展示的结果或一次明确修改可以直接 save。需要持续分析时，先 preview 已确认的问题与范围，结果就绪后及时更新同一草稿，最终保存一次。候选、成功草稿与固定 Build 的事实分开，保存回执只确认已完成写入。
 
 数据视图使用独立命名语句，可以共享准确固定结果。新计算显式读取输入、计算和持久化，按实际依赖组织执行，可导出多个结果或从准确固定输入派生，不依赖前次内存。Python 与草稿写入当前保持 Harness exclusive 调度，同一草稿使用最新成功 ref 串行修改。
 
@@ -22,7 +24,7 @@ Harness 的 Skill provider 与 `skill` 工具提供发现、加载与引用资�
 
 相同声明返回 reused，不代表新计算。准确引用的共享别名由 reader 分组、writer 提示，更新范围由本次请求明确指定。auto 换成另一图形类型时拒绝，内部尺寸仍可随行数变化。静态正文的待复核状态随固定 Build 持久化并显示于正文之外，数据保存不证明结论已经重新核对。详细流程见[数据刷新](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/data-update.md)。
 
-Skill 保留方法选择、证据核对、解释与停止条件。每轮最终报告保存后提交准确 saved ref 的推荐或明确空状态；推荐不结束 Turn，可以继续文件交付和最终答复。API 参数与当前修复动作分别由 schema 和本次结构化错误提供。
+Skill 保留证据核对、解释与停止条件。每轮最终视图保存后提交准确 saved ref 的推荐或明确空状态，随后完成其他交付。最终 Chat 回复通常用一两句话说明核心结论和会改变解读的限制。完整证据和说明放在视图中，用户明确要求的文字内容仍直接回答。只有草稿或保存失败时，回复说明实际状态并给出已有证据支持的答案。API 参数与当前修复动作分别由 schema 和本次结构化错误提供。
 
 ## 披露归属
 
@@ -33,7 +35,8 @@ Skill 保留方法选择、证据核对、解释与停止条件。每轮最终�
 | draftId/revision 组合与默认保存 | 单一 ref、必填 stage 的工具校验 |
 | 只刷新资源的重复告诫 | refresh-data 服务端原子校验；Skill 保留范围判断 |
 | 错误后的机械恢复 | 错误 code/phase/path/recovery |
-| 渐进报告、叙事、何时停止 | 本 Skill |
+| 选择是否生成分析视图 | 全局路由 |
+| 视图编排、增量交付与聊天收尾 | 本 Skill |
 | API 签名、持久化与读取语义 | 绑定 Runtime live Help |
 | 展示位置、候选、Tab 和临时按钮 | Host/UI |
 

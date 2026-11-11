@@ -30,10 +30,11 @@ import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const ROUTING_PROMPT = [
   'For attachment or Workspace data files, load dsh-data-analysis-files. For governed analysis, load marivo-analysis; load marivo-semantic when shared definitions are needed or authoring is requested. For project HTTP services, load marivo-service when the bound Runtime provides it.',
-  'For reports or dashboards, load dsh-data-analysis-presentation before preparing data. That Skill owns the progressive report workflow and completion criteria.',
+  'Create an analysis view when the user requests a chart, report, dashboard, or analysis view, or when a chart or interactive data view would help them understand, compare, or verify the findings. Answer directly in chat when text is sufficient. Honor explicit output formats, including text-only and file-only requests.',
+  'Load dsh-data-analysis-presentation before preparing data when an analysis view is already warranted. If its value becomes clear during analysis, load the Skill before presenting the findings. The Skill owns view composition, progressive delivery, and the final reply.',
   'Use marivo_help for current Marivo API contracts, including upstream marivo help examples. It uses the verified Runtime; report failures without switching installations.',
   'Run analysis and create, edit, or remove datasource definitions with marivo_python in the bound Workspace. Use marivo_help and the live Runtime contracts for datasource authoring. Put only non-secret configuration and credential references in code; use Harness credential forms for secret values, never chat or code. Use marivo_datasource_test when a connection test is requested or useful.',
-  'Answer ordinary questions in chat. Deliver reports with marivo_report_write and requested files with Harness native present. Honor the requested format and explain the actual delivery status.',
+  'Deliver analysis views with marivo_report_write and requested files with Harness native present. State the actual delivery status.',
 ].join('\n')
 
 export type MarivoPluginEnvironmentResolver = (

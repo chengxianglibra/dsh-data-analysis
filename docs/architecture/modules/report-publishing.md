@@ -1,6 +1,6 @@
-# 报告离线 HTML 导出
+# 分析视图离线 HTML 导出
 
-报告 tab 可将当前显示的已保存的受支持分析文档版本（新保存为 `dsh.analysis-ui/v2`，兼容读取 v1）下载为单个 HTML 文件。导出使用已读取并校验的固定 Build，包括历史版本；不重新查询数据源、执行 Python 或更新报告。生成和下载发生在浏览器中，不创建 Workspace 或 Session 文件，也不自动通过 Harness `present` 交付。
+分析视图 Tab 可将当前显示的已保存的受支持分析文档版本（新保存为 `dsh.analysis-ui/v2`，兼容读取 v1）下载为单个 HTML 文件。导出使用已读取并校验的固定 Build，包括历史版本；不重新查询数据源、执行 Python 或更新视图。生成和下载发生在浏览器中，不创建 Workspace 或 Session 文件，也不自动通过 Harness `present` 交付。
 
 浏览器发起下载后显示短暂提示；生成或发起下载失败时显示可关闭的错误提示。下载提示不代表文件已成功保存。
 
@@ -8,8 +8,8 @@
 
 离线筛选复用保存的声明与默认值；导出不携带阅读时的临时选择，打开后可在完整已保存快照上本地筛选、清除或恢复默认，不访问 Host 或业务来源。
 
-正文复核提示位于报告正文之外，随准确 Build 保留；旧 v1 未记录状态时显示 unknown，不推定已复核。
+正文复核提示位于视图正文之外，随准确 Build 保留；旧 v1 未记录状态时显示 unknown，不推定已复核。
 
-离线页面不连接 Harness：就此提问、语义定义导航和 Host 侧 Python 源码读取不可用。独立文件不保证访问浏览器的剪贴板权限，实际复制能力取决于浏览器。HTML 依赖 JavaScript；禁止 JavaScript 时显示提示。导出文件为生成时的独立副本，不跟随报告后续更新或插件卸载变化。
+离线页面不连接 Harness：就此提问、语义定义导航和 Host 侧 Python 源码读取不可用。独立文件不保证访问浏览器的剪贴板权限，实际复制能力取决于浏览器。HTML 依赖 JavaScript；禁止 JavaScript 时显示提示。导出文件为生成时的独立副本，不跟随视图后续更新或插件卸载变化。
 
 对象存储发布、发布凭据及 `marivo_publish_report` 未提供；也不注册 Agent 导出 Tool。保存和读取契约分别见[展示交付](presentation-delivery.md)与[分析文档 reader](presentation-reader.md)。

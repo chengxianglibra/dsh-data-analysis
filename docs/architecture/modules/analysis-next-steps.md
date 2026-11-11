@@ -2,15 +2,15 @@
 
 ## 责任与入口
 
-每轮成功新建或更新报告并正式保存分析 UI 后，分析 Agent 都须为本轮最终保存版本重新生成推荐，不因上一轮已给过推荐而跳过。分析 Agent 通过 `marivo_next_steps` 提供当前 Chat 的临时下一步按钮。插件拥有工具、实时通知、推荐完成检查和按钮；Harness 拥有原生输入、消息准入、失败反馈及重试；Marivo 的分析与固定结果契约不变。
+每轮成功新建或更新分析视图并正式保存 后，分析 Agent 都须为本轮最终保存版本重新生成推荐，不因上一轮已给过推荐而跳过。分析 Agent 通过 `marivo_next_steps` 提供当前 Chat 的临时下一步按钮。插件拥有工具、实时通知、推荐完成检查和按钮；Harness 拥有原生输入、消息准入、失败反馈及重试；Marivo 的分析与固定结果契约不变。
 
-实现为 `src/next-steps/`、`src/client/next-steps.tsx` 和 `src/client/next-steps-model.ts`。报告保存与位置见[展示交付](presentation-delivery.md)，正文阅读见[分析文档 reader](presentation-reader.md)。
+实现为 `src/next-steps/`、`src/client/next-steps.tsx` 和 `src/client/next-steps-model.ts`。分析视图保存与位置见[展示交付](presentation-delivery.md)，正文阅读见[分析视图阅读器](presentation-reader.md)。
 
 ## 生成与收尾
 
 `marivo_next_steps({ref,items:[{label,prompt}],emptyReason?})` 要求准确 saved ref，接受 0—4 项，正常提供 1—4 项，通常为 3 项。用户明确拒绝时使用 `items=[]`、`emptyReason="declined"`，不生成推荐，也不触发补齐。没有合适推荐时使用 `items=[]`、`emptyReason="no-suggestions"`；只传 `items=[]` 也归入此情况，不能当作用户拒绝。非空列表不能携带 `emptyReason`。标题与问题分别限制 40、1000 个 Unicode code points；去除首尾空白，拒绝空文本、额外字段和空白规范化后的重复标题或问题。Session、Workspace 与 Turn 从真实工具执行取得。
 
-短标题完整表达动作和对象，问题只能展开同一任务，不能增加未显示的操作或范围。Agent 只推荐当前数据可立即执行、报告尚未回答的任务；不默认建议补充缺少的维度、期间或数据集，宁可少给；确实没有可行任务时返回空数组，不编造填充项。推荐语言跟随分析语言，常驻 routing prompt 与工具说明指导此流程。
+短标题完整表达动作和对象，问题只能展开同一任务，不能增加未显示的操作或范围。Agent 只推荐当前数据可立即执行、视图尚未回答的任务；不默认建议补充缺少的维度、期间或数据集，宁可少给；确实没有可行任务时返回空数组，不编造填充项。推荐语言跟随分析语言，常驻 routing prompt 与工具说明指导此流程。
 
 自动收尾仅由当前安装中实际观察到、属于当前 Agent、Session 与开放 Turn 的成功报告 writer save 触发。观察器核对安装时捕获的工具定义、registry execution token、准入 Workspace、成功 canonical result 的 saved ref 和 delivery 的准确版本。实际 writer 在锁内 current 指针生效时通过该安装独占的闭包记录 token/ref 与提交顺序证明，观察器必须匹配并消费它；保存结果倒序到达时不回退到更早的成功版本；仅靠 pre-execute 的 registry 定义快照不足以证明最终执行的 body。同名替换、结果前恢复原定义或 post-policy 改写 ref 均不能伪造保存。证明仅在单次执行内存在，错误结果消费、卸载清空，不是投递 metadata 或可重放历史。preview、旧历史、失败结果、其他 Agent 及 Turn 不匹配的结果不触发。每次保存更新最终 `reportId/buildId` 并使待定推荐失效；同一轮多次保存只针对最后成功保存的版本发布一组。新的用户输入撤销待定状态；在该输入前已开始的保存，即使迟到成功也不能重新触发收尾。
 
