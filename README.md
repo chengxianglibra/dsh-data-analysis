@@ -30,7 +30,7 @@
 - 命令行中可使用 `pnpm`，供 Harness 安装插件。
 - Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），且支持 `venv`/`ensurepip`；部分 Linux 发行版需额外安装 `python3-venv`。
 
-无需预装 Marivo。首次启动会通过 pip 安装 Marivo `0.6.4` 正式版并自动准备分析环境，需要联网下载依赖，请等待准备完成。首次 Marivo 项目分析或结果持久化时，插件根据 `project:"required"` 准备当前工作区根项目；已有项目保留，普通文件预览无需初始化。
+无需预装 Marivo。首次启动会通过 pip 安装 Marivo `0.6.5` 正式版并自动准备分析环境，需要联网下载依赖，请等待准备完成。首次 Marivo 项目分析或结果持久化时，插件根据 `project:"required"` 准备当前工作区根项目；已有项目保留，普通文件预览无需初始化。
 
 ### 安装并启动
 

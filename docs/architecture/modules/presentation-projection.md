@@ -98,7 +98,7 @@ observation/statistic/share/pair_statistic context、comparisons、decomposition
 比较序号或比较组名，键值沿用所属轴键的 codec。各节独立为 `captured` 或带封闭原因的 `unavailable`
 （`runtime-incompatible`、`read-failed`、`identity-mismatch`、`budget`），不写入原始异常，也不改用其他读法；
 单节上限 semantics/interpretation 256 KiB、periods 1.5 MiB，整份快照超 2 MiB 时先降级最大节，元数据失败不阻断数据结果。
-Marivo 0.6.4 的 `Frame.schema.value_time_semantics` 当前不纳入快照，因此报告不能展示该字段中的值时间语义。
+Marivo 0.6.5 的 `Frame.schema.value_time_semantics` 当前不纳入快照，因此报告不能展示该字段中的值时间语义。
 契约与交叉校验见 [snapshot.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/snapshot.ts)。新 `analysis-frame` 资源通过 [result-reader.ts](../../../packages/dsh-data-analysis/src/presentation/result-reader.ts) 读取固定身份，Host 只接受 Frame v2。
 
 日历期间按当前 Marivo 公共契约保存 civil `label`、`selection` 和可选 `cutoff`；不根据日期标签、键或时区推算未公开的起止边界。

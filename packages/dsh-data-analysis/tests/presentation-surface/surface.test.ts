@@ -37,8 +37,8 @@ test('package cutover removes report exports and pins the Runtime dependency', a
   assert.deepEqual(
     { version, packageSpec },
     {
-      version: '0.6.4',
-      packageSpec: 'marivo[duckdb,trino,clickhouse]==0.6.4',
+      version: '0.6.5',
+      packageSpec: 'marivo[duckdb,trino,clickhouse]==0.6.5',
     },
   )
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.contracts, {

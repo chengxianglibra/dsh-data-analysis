@@ -29,7 +29,7 @@ This is an independently maintained community plugin. It is not an official Deep
 - `pnpm` available on the command line for Harness to install the plugin.
 - Python 3.10+, available as `python3` (`python` on Windows), with `venv`/`ensurepip` support. Some Linux distributions require the additional `python3-venv` package.
 
-You do not need to install Marivo beforehand. The first launch uses pip to install the Marivo `0.6.4` release and prepares the analysis environment automatically. For Marivo project analysis or result persistence, the plugin prepares the exact Workspace root when the execution declares `project:"required"`. Existing projects are preserved; ordinary file inspection needs no initialization.
+You do not need to install Marivo beforehand. The first launch uses pip to install the Marivo `0.6.5` release and prepares the analysis environment automatically. For Marivo project analysis or result persistence, the plugin prepares the exact Workspace root when the execution declares `project:"required"`. Existing projects are preserved; ordinary file inspection needs no initialization.
 An internet connection is required to download dependencies; wait for setup to finish.
 
 ### Install and launch
