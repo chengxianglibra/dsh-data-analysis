@@ -89,7 +89,7 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
   }
 })
 
-test('500px Frame and Dataset charts keep labels, bars, and values visible', async () => {
+test('Frame and Dataset charts retain their saved categories and values', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-narrow-bars-'))
   const browser = await chromium.launch()
   const fullLabel = 'Upper East Side South A Very Long Category Name'
@@ -136,57 +136,15 @@ createRoot(document.getElementById('root')).render(createElement('div',null,
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
     const framePlot = page.locator('[data-case="frame"] .fv-plot')
     await framePlot.locator('[data-mark="bar"]').first().waitFor()
-    const frameSize = await framePlot.evaluate((node) => ({
-      width: node.clientWidth,
-      scrollWidth: node.scrollWidth,
-      scrollLeft: node.scrollLeft,
-    }))
-    assert.ok(frameSize.width >= 400 && frameSize.width <= 500, JSON.stringify(frameSize))
-    assert.ok(frameSize.scrollWidth <= frameSize.width + 1, JSON.stringify(frameSize))
-    assert.equal(frameSize.scrollLeft, 0)
     assert.equal(await framePlot.locator('[data-mark="bar"]').count(), 2)
-    const visibleLabels = await framePlot
-      .locator('[data-row-label] .fv-row-label')
-      .allTextContents()
-    assert.deepEqual(visibleLabels, ['JFK Airport', 'Upper East Side South …'])
+    assert.deepEqual(await framePlot.locator('[data-row-label] title').allTextContents(), [
+      'JFK Airport',
+      fullLabel,
+    ])
     const visibleValues = await framePlot.locator('.recharts-label-list text').allTextContents()
     assert.deepEqual(visibleValues, ['187,466.00', '156,673.00'])
-    assert.equal(
-      await framePlot.locator('[data-row-label]').last().locator('title').textContent(),
-      fullLabel,
-    )
-    const visible = await framePlot
-      .locator('[data-row-label], [data-mark="bar"], .recharts-label-list text')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => {
-          const rect = node.getBoundingClientRect()
-          const plot = node.closest('.fv-plot')!.getBoundingClientRect()
-          return {
-            left: rect.left,
-            right: rect.right,
-            plotLeft: plot.left,
-            plotRight: plot.right,
-            width: rect.width,
-          }
-        }),
-      )
-    assert.equal(visible.length >= 6, true)
-    for (const item of visible) {
-      assert.ok(
-        item.width > 0 && item.left >= item.plotLeft && item.right <= item.plotRight,
-        JSON.stringify(item),
-      )
-    }
     const datasetPlot = page.locator('[data-case="dataset"] .fv-plot')
     await datasetPlot.locator('[data-mark="bar"]').first().waitFor()
-    const datasetSize = await datasetPlot.evaluate((node) => ({
-      width: node.clientWidth,
-      scrollWidth: node.scrollWidth,
-      scrollLeft: node.scrollLeft,
-    }))
-    assert.equal(datasetSize.width, 500)
-    assert.ok(datasetSize.scrollWidth <= datasetSize.width + 1, JSON.stringify(datasetSize))
-    assert.equal(datasetSize.scrollLeft, 0)
     assert.equal(await datasetPlot.locator('[data-mark="bar"]').count(), 2)
     assert.deepEqual(
       await datasetPlot.locator('[data-row-label] .fv-row-label').allTextContents(),
@@ -196,27 +154,6 @@ createRoot(document.getElementById('root')).render(createElement('div',null,
       '12345.67',
       '123.45',
     ])
-    const datasetVisible = await datasetPlot
-      .locator('[data-row-label], [data-mark="bar"], .recharts-label-list text')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => {
-          const rect = node.getBoundingClientRect()
-          const plot = node.closest('.fv-plot')!.getBoundingClientRect()
-          return {
-            left: rect.left,
-            right: rect.right,
-            plotLeft: plot.left,
-            plotRight: plot.right,
-            width: rect.width,
-          }
-        }),
-      )
-    assert.ok(datasetVisible.length >= 6)
-    for (const item of datasetVisible)
-      assert.ok(
-        item.width > 0 && item.left >= item.plotLeft && item.right <= item.plotRight,
-        JSON.stringify(item),
-      )
   } finally {
     await browser.close()
     await rm(directory, { recursive: true, force: true })

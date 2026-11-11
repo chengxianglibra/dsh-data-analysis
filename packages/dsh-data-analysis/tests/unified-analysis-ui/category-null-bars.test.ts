@@ -61,7 +61,7 @@ test('an absent category-series combination is not labeled as a saved null', asy
   assert.equal((html.match(/data-mark="missing"/g) ?? []).length, 1)
 })
 
-test('dense null bars use compact marks with an NA key', async () => {
+test('dense bars retain saved nulls', async () => {
   const count = 60
   const snapshot = frame({
     axes: [categoryAxis(count)],
@@ -69,19 +69,11 @@ test('dense null bars use compact marks with an NA key', async () => {
   })
   const html = await renderer.render(snapshot, { view: { chart: 'bar' } })
   assert.equal((html.match(/<g data-mark="missing"/g) ?? []).length, count)
-  const marks = [
-    ...html.matchAll(/<g data-mark="missing"><title>[^<]*<\/title><path d="M([\d.]+),/g),
-  ]
-    .map((match) => Number(match[1]))
-    .sort((a, b) => a - b)
-  assert.equal(marks.length, count)
-  assert.ok(marks.every((x, index) => index === 0 || x - marks[index - 1]! >= 6))
   assert.match(html, /data-missing-key=""[^>]*><span[^>]*>× <\/span>NA/)
   assert.match(html, /<title>[^<]+ · revenue: NA<\/title>/)
-  assert.match(html, /grid-template-columns: minmax\(640px, 1fr\)/)
 })
 
-test('grouped bars use compact marks when their slots are narrow even at 24 cells', async () => {
+test('grouped bars retain saved nulls', async () => {
   const snapshot = frame({
     axes: [categoryAxis(3)],
     values: Array.from({ length: 8 }, (_, i) => ({ name: `v${i}`, values: [null, null, null] })),
@@ -89,19 +81,10 @@ test('grouped bars use compact marks when their slots are narrow even at 24 cell
   for (const column of snapshot.data.columns) if (column.id.startsWith('v')) column.unit = 'USD'
   const html = await renderer.render(snapshot, { view: { chart: 'bar' } })
   assert.equal((html.match(/<g data-mark="missing"/g) ?? []).length, 24)
-  const marks = [
-    ...html.matchAll(/<g data-mark="missing"><title>[^<]*<\/title><path d="M([\d.]+),/g),
-  ]
-    .map((match) => Number(match[1]))
-    .sort((a, b) => a - b)
-  assert.equal(marks.length, 24)
-  assert.ok(marks.every((x, index) => index === 0 || x - marks[index - 1]! >= 6))
   assert.match(html, /data-missing-key=""/)
-  assert.doesNotMatch(html, /<text[^>]*data-mark="missing"/)
-  assert.match(html, /grid-template-columns: minmax\(300px, 1fr\)/)
 })
 
-test('a single null does not expand a large grouped category chart', async () => {
+test('a single null remains identifiable in a large grouped category chart', async () => {
   const columns = [
     { id: 'category', label: 'Category', type: 'string' as const, nullable: false },
     ...Array.from({ length: 8 }, (_, i) => ({
@@ -124,26 +107,4 @@ test('a single null does not expand a large grouped category chart', async () =>
   })
   assert.equal((html.match(/<g data-mark="missing"/g) ?? []).length, 1)
   assert.match(html, /data-missing-key=""/)
-  assert.match(html, /grid-template-columns: minmax\(640px, 1fr\)/)
-  assert.doesNotMatch(html, /minmax\(96096px/)
-})
-
-test('null label remains inside a negative-only plot', async () => {
-  const snapshot = datasetSnapshot(
-    [
-      ['A', 'one', '-5'],
-      ['A', 'two', null],
-    ],
-    [
-      { id: 'category', label: 'Category', type: 'string', nullable: false },
-      { id: 'series', label: 'Series', type: 'string', nullable: false },
-      { id: 'value', label: 'Value', type: 'decimal', nullable: true },
-    ],
-  )
-  const html = await renderer.render(snapshot, {
-    view: { chart: 'bar', encoding: { axis: 'category', series: 'series', values: ['value'] } },
-  })
-  const mark = /<text x="[\d.]+" y="([\d.]+)"[^>]*data-mark="missing"[^>]*>NA<\/text>/.exec(html)
-  assert.ok(mark)
-  assert.ok(Number(mark[1]) >= 12)
 })

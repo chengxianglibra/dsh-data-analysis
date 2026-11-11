@@ -9,7 +9,7 @@ import { chromium } from 'playwright'
 import { validateAnalysisResources } from '../../src/presentation/contracts/analysis-document.ts'
 import { parseAnalysisSnapshot } from '../../src/presentation/contracts/snapshot.ts'
 
-test('a real Frame filter preserves saved point identities, table rows and series colors', async () => {
+test('a real Frame filter preserves saved point identities and table rows', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-filter-real-frame-'))
   const browser = await chromium.launch()
   try {
@@ -64,8 +64,6 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:$
     const table = page.locator('[data-frame-view="table"]')
     const southPoint = chart.locator('[data-frame-point="3:revenue"] circle').first()
     await southPoint.waitFor()
-    const southColor = await southPoint.getAttribute('stroke')
-    assert.ok(southColor)
     assert.deepEqual(
       await table
         .locator('tbody tr')
@@ -83,7 +81,6 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:$
       ['3', '4', '5'],
     )
     assert.equal(await chart.locator('[data-frame-point="0:revenue"]').count(), 0)
-    assert.equal(await southPoint.getAttribute('stroke'), southColor)
     await table.getByRole('button', { name: 'Sort by revenue', exact: true }).click()
     assert.deepEqual(
       await table

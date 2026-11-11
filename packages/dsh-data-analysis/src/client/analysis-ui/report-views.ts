@@ -1,5 +1,8 @@
 import type { ConnectionGeneration } from '@deepseek-ai/dsh-client-connection/client'
-import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
+import {
+  type AnalysisDocument,
+  analysisRecordId,
+} from '../../presentation/contracts/analysis-document.ts'
 import type { ResourceStreamResponse } from '../../presentation/contracts/resource-stream.ts'
 import type { DraftDelivery, PresentationDelivery } from '../../presentation/receipt.ts'
 import type { AnalysisCandidate } from './candidate.ts'
@@ -32,17 +35,24 @@ export interface ReportViewState {
   saved?: PresentationDelivery
   document?: AnalysisDocument
   documentKey?: string
+  fallbackDocument?: { document: AnalysisDocument; key: string }
   resourceStream?: Pick<ResourceStreamResponse, 'callId' | 'revision' | 'status' | 'resources'>
   reading: ReportReadingState
-  tabId?: string
+  openError?: boolean
   settled?: boolean
 }
 
-export const reportContentKey = (view: ReportViewState) =>
-  view.saved?.receipt.buildId ??
-  view.candidate?.rebaseOnRecordId ??
-  (!view.draft ? view.candidate?.basedOnRecordId : undefined) ??
-  view.draft?.draftRevision
+export const reportContentKey = (view: ReportViewState) => {
+  if (view.saved && !view.candidate) return view.saved.receipt.buildId
+  const pendingSavedBase = Boolean(
+    view.candidate?.basedOnRecordId && ['preparing', 'start'].includes(view.candidate.phase),
+  )
+  const baseId =
+    view.candidate?.rebaseOnRecordId ??
+    (pendingSavedBase || !view.draft ? view.candidate?.basedOnRecordId : undefined)
+  if (baseId && view.document?.recordId === baseId) return view.documentKey ?? baseId
+  return baseId ?? view.draft?.draftRevision ?? view.saved?.receipt.buildId
+}
 
 export const reportViewId = (sessionId: string, turn: number, callId: string) =>
   JSON.stringify([sessionId, turn, callId])
@@ -51,6 +61,7 @@ export const reportViewId = (sessionId: string, turn: number, callId: string) =>
 export class ReportViews {
   #items = new Map<string, ReportViewState>()
   #calls = new Map<string, string>()
+  #deliveries = new WeakMap<ReportReadingState, Set<string>>()
   #revision = 0
   #listeners = new Set<() => void>()
   getSnapshot = () => this.#revision
@@ -79,17 +90,47 @@ export class ReportViews {
     for (const listener of this.#listeners) listener()
     return view
   }
+  #receive(reading: ReportReadingState, delivery: DraftDelivery | PresentationDelivery) {
+    // Chat projections replay earlier receipts while a later call is editing
+    // the same view. A receipt may advance that view only once per owner.
+    const key =
+      'receipt' in delivery
+        ? analysisRecordId(delivery.receipt.reportId, delivery.receipt.buildId)
+        : JSON.stringify([delivery.draftId, delivery.draftRevision])
+    let received = this.#deliveries.get(reading)
+    if (!received) {
+      received = new Set()
+      this.#deliveries.set(reading, received)
+    }
+    if (received.has(key)) return false
+    received.add(key)
+    return true
+  }
+  observeReady(candidate: AnalysisCandidate, workspacePath: string) {
+    // Until the arguments identify a draft or a complete standalone request,
+    // assigning a call to a view can accidentally merge different reports.
+    if (!candidate.preview && !candidate.draft && !candidate.delivery) return undefined
+    return this.observe(candidate, workspacePath)
+  }
+  openingFailed(id: string, failed: boolean) {
+    const view = this.get(id)
+    if (view && Boolean(view.openError) !== failed) this.#write({ ...view, openError: failed })
+  }
   observe(candidate: AnalysisCandidate, workspacePath: string) {
     const call = reportViewId(candidate.sessionId, candidate.turn, candidate.callId)
     const views = this.forTurn(candidate.sessionId, candidate.turn)
+    const draftId = candidate.draftId ?? candidate.draft?.draftId
     const old =
       this.#items.get(this.#calls.get(call) ?? call) ??
       views.find((view) =>
-        candidate.draftId
-          ? view.draft?.draftId === candidate.draftId || view.saved?.draftId === candidate.draftId
+        draftId
+          ? view.draft?.draftId === draftId || view.saved?.draftId === draftId
           : candidate.delivery
             ? view.saved?.receipt.buildId === candidate.delivery.receipt.buildId
-            : !view.saved && Boolean(view.draft),
+            : candidate.basedOnRecordId && view.saved
+              ? analysisRecordId(view.saved.receipt.reportId, view.saved.receipt.buildId) ===
+                candidate.basedOnRecordId
+              : !candidate.preview && !view.saved && Boolean(view.draft),
       )
     const current =
       old?.generation === candidate.generation &&
@@ -97,7 +138,18 @@ export class ReportViews {
       old.workspacePath === workspacePath
         ? old
         : undefined
-    if (current?.saved && !candidate.delivery) {
+    const startingRevision =
+      current?.saved &&
+      candidate.basedOnRecordId ===
+        analysisRecordId(current.saved.receipt.reportId, current.saved.receipt.buildId) &&
+      current.candidate?.callId !== candidate.callId
+    if (
+      current?.saved &&
+      !candidate.delivery &&
+      !startingRevision &&
+      current.candidate?.callId !== candidate.callId &&
+      (!draftId || draftId !== current.draft?.draftId)
+    ) {
       this.#calls.set(call, current.id)
       return current
     }
@@ -115,11 +167,33 @@ export class ReportViews {
         scroll: new Map(),
       },
       ...current,
+      ...(startingRevision
+        ? {
+            resourceStream: undefined,
+            fallbackDocument:
+              current?.draft &&
+              current.document &&
+              current.documentKey === current.draft.draftRevision
+                ? { document: current.document, key: current.documentKey }
+                : undefined,
+          }
+        : {}),
+      ...(['failed', 'cancelled'].includes(candidate.phase) && current?.fallbackDocument
+        ? {
+            document: current.fallbackDocument.document,
+            documentKey: current.fallbackDocument.key,
+            fallbackDocument: undefined,
+          }
+        : {}),
       candidate: candidate.delivery ? undefined : candidate,
-      ...(candidate.draft ? { draft: candidate.draft } : {}),
-      ...(candidate.delivery ? { saved: candidate.delivery } : {}),
+      ...(candidate.draft ? { draft: candidate.draft, fallbackDocument: undefined } : {}),
+      ...(candidate.delivery
+        ? { saved: candidate.delivery, draft: undefined, fallbackDocument: undefined }
+        : {}),
     }
     this.#calls.set(call, view.id)
+    const delivery = candidate.delivery ?? candidate.draft
+    if (delivery && !this.#receive(view.reading, delivery) && current) return current
     return this.#write(view)
   }
   accept(
@@ -143,13 +217,6 @@ export class ReportViews {
       old.workspacePath === workspacePath
         ? old
         : undefined
-    if (
-      current &&
-      ('receipt' in delivery
-        ? current.saved?.receipt.buildId === delivery.receipt.buildId
-        : current.draft?.draftRevision === delivery.draftRevision)
-    )
-      return current
     const view: ReportViewState = {
       id: current?.id ?? call,
       sessionId: delivery.dshSessionId,
@@ -160,15 +227,17 @@ export class ReportViews {
       reading: { tabs: new Map(), accordions: new Map(), tables: new Map(), scroll: new Map() },
       ...current,
       ...('receipt' in delivery
-        ? { saved: delivery, candidate: undefined }
+        ? { saved: delivery, candidate: undefined, draft: undefined, fallbackDocument: undefined }
         : {
             draft: delivery,
+            fallbackDocument: undefined,
             candidate: current?.candidate
               ? { ...current.candidate, phase: 'previewed' as const }
               : undefined,
           }),
     }
     this.#calls.set(call, view.id)
+    if (!this.#receive(view.reading, delivery) && current) return current
     return this.#write(view)
   }
   document(
@@ -218,37 +287,26 @@ export class ReportViews {
       },
     })
   }
-  attach(id: string, tabId: string) {
-    const current = this.get(id)
-    if (current && current.tabId !== tabId) this.#write({ ...current, tabId })
-  }
-  reconcile(
-    tabs: readonly { sessionId: string; tabId: string; viewId?: string; workspaceId?: string }[],
-  ) {
-    for (const view of this.#items.values()) {
-      const existing = tabs.find(
-        (tab) => tab.sessionId === view.sessionId && tab.tabId === view.tabId,
-      )
-      const restored = tabs.find(
-        (tab) =>
-          tab.sessionId === view.sessionId &&
-          tab.viewId === view.id &&
-          tab.workspaceId === view.workspaceId,
-      )
-      const tabId = (existing ?? restored)?.tabId
-      if (view.tabId !== tabId) this.#write({ ...view, tabId })
-    }
-  }
   settle(sessionId: string) {
     for (const view of this.#items.values()) {
-      if (view.sessionId === sessionId && !view.saved && !view.settled)
+      if (view.sessionId === sessionId && (!view.saved || view.candidate) && !view.settled)
         this.#write({
           ...view,
           settled: true,
+          ...(view.fallbackDocument
+            ? {
+                document: view.fallbackDocument.document,
+                documentKey: view.fallbackDocument.key,
+                fallbackDocument: undefined,
+              }
+            : {}),
           candidate:
             view.candidate && ['preparing', 'start'].includes(view.candidate.phase)
               ? { ...view.candidate, phase: 'cancelled' }
               : view.candidate,
+          // Drafts expire with the Turn. A previously saved report remains
+          // readable and its actions must target that saved Build again.
+          ...(view.saved ? { candidate: undefined, draft: undefined } : {}),
         })
     }
   }

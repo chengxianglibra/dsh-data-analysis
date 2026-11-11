@@ -151,7 +151,6 @@ export const zh = {
   'marivo.presentation.export-html-scope':
     '文件包含此版本的已保存快照，包括未在当前视图显示的数据；快照可能不完整。分享前请确认内容。',
   'marivo.presentation.ui-open-tab': '在右侧打开报告',
-  'marivo.presentation.ui-view-sidebar': '在边栏查看',
   'marivo.presentation.ui-loading': '正在读取已保存快照…',
   'marivo.presentation.ui-preparing': '正在准备分析展示…',
   'marivo.presentation.ui-generating': '正在生成展示，尚未保存…',
@@ -159,6 +158,8 @@ export const zh = {
   'marivo.presentation.ui-draft': '报告草稿 · 尚未保存为正式版本',
   'marivo.presentation.ui-draft-updated': '报告草稿已更新。',
   'marivo.presentation.ui-draft-unavailable': '无法读取此草稿更新。',
+  'marivo.presentation.ui-draft-expired': '草稿已失效，未保存正式版本。',
+  'marivo.presentation.ui-open-failed': '无法打开报告，请重试。',
   'marivo.presentation.ui-saving': '正在读取资源并保存…',
   'marivo.presentation.ui-resource-pending': '数据准备中，完成后将自动显示。',
   'marivo.presentation.ui-failed': '此次报告更新失败。',
@@ -396,7 +397,6 @@ export const en = {
   'marivo.presentation.export-html-scope':
     'The file contains this version’s saved snapshots, including data not currently visible. Snapshots may be incomplete. Review the content before sharing.',
   'marivo.presentation.ui-open-tab': 'Open report in sidebar',
-  'marivo.presentation.ui-view-sidebar': 'View in sidebar',
   'marivo.presentation.ui-loading': 'Reading saved snapshot…',
   'marivo.presentation.ui-preparing': 'Preparing analysis view…',
   'marivo.presentation.ui-generating': 'Generating view; not saved yet…',
@@ -404,6 +404,8 @@ export const en = {
   'marivo.presentation.ui-draft': 'Report draft · no version saved yet',
   'marivo.presentation.ui-draft-updated': 'Report draft updated.',
   'marivo.presentation.ui-draft-unavailable': 'This draft update is unavailable.',
+  'marivo.presentation.ui-draft-expired': 'This draft has expired and was not saved.',
+  'marivo.presentation.ui-open-failed': 'Cannot open the report. Please try again.',
   'marivo.presentation.ui-saving': 'Reading resources and saving…',
   'marivo.presentation.ui-resource-pending': 'Preparing data. It will appear when ready.',
   'marivo.presentation.ui-failed': 'This report update failed.',

@@ -80,7 +80,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Present an existing result or update an analysis document. New reports always appear in one Chat region; only the reader can move it to the sidebar. For reports requiring analysis, preview early, update the same draft as results become ready, and save once. Already-ready changes can save directly. Send only changed resources and named program statements. Preview and save return an opaque ref and may include final changes. Drafts expire at Turn end or Host restart. Use marivo_report_read to recover editing context or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources. deliveryJson is for Host delivery.',
+      'Present an existing result or update an analysis document. Reports are available in the right sidebar reader. For reports requiring analysis, preview early, update the same draft as results become ready, and save once. Already-ready changes can save directly. Send only changed resources and named program statements. Preview and save return an opaque ref and may include final changes. Drafts expire at Turn end or Host restart. Use marivo_report_read to recover editing context or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources. deliveryJson is for Host delivery.',
     parameters: {
       stage: {
         type: 'string',
@@ -173,13 +173,13 @@ export function createMarivoPresentTool(
           return [
             {
               type: 'text',
-              text: `Preview updated (unsaved).\nRef: ${value.ref}\nInitial location: Chat\nMode: ${value.mode}\nChanged: ${JSON.stringify(value.changed)}\nReused: ${JSON.stringify(value.reused)}\nContent review: ${value.contentReview}\nUnchanged aliases: ${JSON.stringify(value.unchangedAliases)}\nResult metadata: ${JSON.stringify(value.resultMetadata)}`,
+              text: `Preview updated (unsaved).\nRef: ${value.ref}\nReader: right sidebar\nMode: ${value.mode}\nChanged: ${JSON.stringify(value.changed)}\nReused: ${JSON.stringify(value.reused)}\nContent review: ${value.contentReview}\nUnchanged aliases: ${JSON.stringify(value.unchangedAliases)}\nResult metadata: ${JSON.stringify(value.resultMetadata)}`,
             },
           ]
         return [
           {
             type: 'text',
-            text: `${presentationReceiptText(delivery.receipt, delivery.surface)}\nMode: ${value.mode}\nChanged: ${JSON.stringify(value.changed)}\nReused: ${JSON.stringify(value.reused)}\nContent review: ${value.contentReview}\nUnchanged aliases: ${JSON.stringify(value.unchangedAliases)}\nResult metadata: ${JSON.stringify(value.resultMetadata)}`,
+            text: `${presentationReceiptText(delivery.receipt)}\nMode: ${value.mode}\nChanged: ${JSON.stringify(value.changed)}\nReused: ${JSON.stringify(value.reused)}\nContent review: ${value.contentReview}\nUnchanged aliases: ${JSON.stringify(value.unchangedAliases)}\nResult metadata: ${JSON.stringify(value.resultMetadata)}`,
           },
         ]
       },

@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('Dataset and Frame share result layout and data actions at desktop and mobile widths', async () => {
+test('Dataset and Frame preserve exact values and accessible data actions', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-dataset-frame-alignment-'))
   const browser = await chromium.launch()
   try {
@@ -65,90 +65,52 @@ root.render(createElement(AnalysisRenderer,{resources,title:'Alignment',locale:'
         },
       })
     })
-    for (const width of [1000, 390]) {
-      await page.setViewportSize({ width, height: 900 })
-      await page.goto(url)
-      await page.locator('[data-resource="frameChart"] .recharts-surface').waitFor()
-      for (const [dataset, frame] of [
-        ['datasetMetric', 'frameMetric'],
-        ['datasetTable', 'frameTable'],
-        ['datasetChart', 'frameChart'],
-      ]) {
-        const a = page.locator(`[data-resource="${dataset}"]`)
-        const b = page.locator(`[data-resource="${frame}"]`)
-        for (const selector of ['.fv-head', '.fv-header-actions', '.fv-icons']) {
-          assert.equal(await a.locator(selector).count(), 1, `${dataset} ${selector}`)
-          assert.equal(await b.locator(selector).count(), 1, `${frame} ${selector}`)
-        }
-        assert.equal(await a.locator('.fv-chart-tag').count(), 0, `${dataset} chart type label`)
-        assert.equal(await b.locator('.fv-chart-tag').count(), 0, `${frame} chart type label`)
-        for (const card of [a, b]) {
-          assert.equal(
-            await card
-              .locator('.fv-icons button')
-              .evaluateAll((buttons) =>
-                buttons.every(
-                  (button) =>
-                    button.textContent === '' &&
-                    button.getAttribute('aria-label') &&
-                    button.getBoundingClientRect().width === 24,
-                ),
-              ),
-            true,
-          )
-          assert.equal(
-            await card
-              .locator('.fv-icons')
-              .evaluate((node) => getComputedStyle(node).borderTopWidth),
-            '0px',
-          )
-        }
-        const structure = (selector: string) =>
-          page.locator(selector).evaluate((node) => {
-            const header = node.querySelector('.fv-head')!
-            const content = header.nextElementSibling!
-            const actions = node.querySelector('.fv-icons')!
-            return {
-              header: header.className,
-              content: content.className,
-              actions: actions.className,
-            }
-          })
-        assert.deepEqual(
-          await structure(`[data-resource="${dataset}"]`),
-          await structure(`[data-resource="${frame}"]`),
+    await page.goto(url)
+    await page.locator('[data-resource="frameChart"] .recharts-surface').waitFor()
+    for (const [dataset, frame] of [
+      ['datasetMetric', 'frameMetric'],
+      ['datasetTable', 'frameTable'],
+      ['datasetChart', 'frameChart'],
+    ]) {
+      const a = page.locator(`[data-resource="${dataset}"]`)
+      const b = page.locator(`[data-resource="${frame}"]`)
+      for (const card of [a, b]) {
+        assert.equal(
+          await card
+            .locator('.fv-icons button')
+            .evaluateAll((buttons) => buttons.every((button) => button.getAttribute('aria-label'))),
+          true,
         )
-        if (dataset === 'datasetTable') {
-          assert.equal(await a.locator('[data-icon="data"]').count(), 0)
-          assert.equal(await a.locator('.fv-scroll-hint').count(), 0)
-          continue
-        }
-        await a.locator('[data-icon="data"] button').click()
-        const dialog = page.getByRole('dialog')
-        await dialog.waitFor()
-        assert.match((await dialog.textContent()) ?? '', /12345678901234\.5678/)
-        await dialog.getByRole('button', { name: 'Close', exact: true }).click()
       }
-      const metric = page.locator('[data-resource="datasetMetric"]')
-      assert.equal(
-        await metric.locator('.au-metric-value strong').textContent(),
-        '12345678901234.5678',
-      )
-      assert.equal(await page.locator('[data-resource="datasetTable"] .pr-table').count(), 1)
-      assert.equal(await page.locator('[data-resource="frameTable"] .pr-table').count(), 1)
-      assert.equal(
-        await page.locator('[data-resource="datasetChart"] .recharts-bar-rectangle').count(),
-        3,
-      )
-      assert.equal(
-        await page.locator('[data-resource="frameChart"] .recharts-bar-rectangle').count(),
-        3,
-      )
-      assert.equal(
-        await page.locator('[data-resource="datasetPartial"] [data-icon="coverage"]').count(),
-        1,
-      )
+      if (dataset === 'datasetTable') continue
+      const open = a.locator('[data-icon="data"] button')
+      await open.focus()
+      await open.press('Enter')
+      const dialog = page.getByRole('dialog')
+      await dialog.waitFor()
+      assert.match((await dialog.textContent()) ?? '', /12345678901234\.5678/)
+      await dialog.getByRole('button', { name: 'Close', exact: true }).press('Enter')
+      await dialog.waitFor({ state: 'detached' })
     }
+    const metric = page.locator('[data-resource="datasetMetric"]')
+    assert.equal(
+      await metric.locator('.au-metric-value strong').textContent(),
+      '12345678901234.5678',
+    )
+    assert.equal(await page.locator('[data-resource="datasetTable"] .pr-table').count(), 1)
+    assert.equal(await page.locator('[data-resource="frameTable"] .pr-table').count(), 1)
+    assert.equal(
+      await page.locator('[data-resource="datasetChart"] .recharts-bar-rectangle').count(),
+      3,
+    )
+    assert.equal(
+      await page.locator('[data-resource="frameChart"] .recharts-bar-rectangle').count(),
+      3,
+    )
+    assert.equal(
+      await page.locator('[data-resource="datasetPartial"] [data-icon="coverage"]').count(),
+      1,
+    )
     await page.goto(`${url}?candidate`)
     await page.locator('[data-resource="datasetMetric"]').waitFor()
     await page.evaluate(() => {

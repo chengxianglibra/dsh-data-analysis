@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-`marivo_report_write` 将已有结果预览为草稿，或保存为不可变的分析 UI 版本（`dsh.analysis-ui/v2`），新生成的报告固定在独立 Chat 节点呈现，读者点击“在边栏查看”图标后在右侧 Tab 继续阅读。Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实；Harness 拥有 Session/Turn、
+`marivo_report_write` 将已有结果预览为草稿，或保存为不可变的分析 UI 版本（`dsh.analysis-ui/v2`），新生成的报告固定在右侧 Tab 呈现，Chat 保留打开入口。Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实；Harness 拥有 Session/Turn、
 Workspace 成员关系和事件存储；插件拥有快照读取、文件完整提交、receipt、交付事件与报告目录。
 
 实现位于 `src/presentation/{tool,analysis,reports,commit,files,receipt,delivery,rpc}.ts`，生产接线在 `plugin.ts`、
@@ -19,7 +19,7 @@ Workspace 成员关系和事件存储；插件拥有快照读取、文件完整�
 
 - 创建自定义页面时提供完整 OpenUI Lang。只有一个资源时可省略 `program`，Frame、DataFrame 和图片分别使用 `AnalysisFrameView`、`DatasetView` 和 `Image`。
 - 不接收 rows、`draft_path` 或旧的 `report_id`／`expected_build_id` 更新参数。
-- Tool 不公开 `surface` 输入；新生成报告始终从 Chat 开始，位置由客户端读者控制。v2 回执与历史仍保留必填 surface 供旧记录解析，新调用固定写入 `tool`，不表示原生 tool view，也不记录读者的移动操作。
+- Tool 不公开 `surface` 输入；新生成报告正文固定在右侧 Tab。v2 回执与历史仍保留必填 surface 供旧记录解析，新调用固定写入 `tool`，不表示原生 tool view，也不记录读者的导航操作。
 - 成功回执表示对应的草稿更新或正式保存完成，不证明浏览器已打开或渲染；调用不等待浏览器检查或用户确认。Native 使用真实参数前缀形成生成期候选；PTC 按实际 dispatch 粒度交付。
   Native 候选不依赖字段顺序。ref/onto 已完整且有效，或整个参数对象关闭并证明相应字段省略后，才允许应用 program、resourcePatch、title 和 locale；身份未决时保持最后成功内容。
 
@@ -71,11 +71,11 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
 definition 和 sources 使用具体本地 schema 逐项校验；当前 Harness 只支持 boolean additionalProperties，无法在 PTC 中为动态 resources/resultMetadata 名称映射推导 entry 类型。Tool schema 明确披露顶层字段及来源结构，并用准确 description 标明 map entry 的列、coverage 和 Frame 元数据约束，不宣称 Host 已提供 typed map。
 
 includeCode 按 codeRef 去重返回 definition.sources，逐项标明 available 的 code.text、datasources、resultVariables，或 unavailable。未绑定来源的资源没有来源项。记录的空 datasource 数组只代表执行未声明 Marivo datasource，旧记录缺失时保持未知。读取核验当前 Workspace 的 Host 文件，不执行代码或业务查询；源码未内嵌报告，记录丢失不阻止读取固定快照。组件签名按展示 Skill 的生成 Catalog 参考取得，不例行回读成功保存。
-报告视图以 Session/Turn/首次 call 建立稳定身份，草稿后续调用通过 draftId 关联；Workspace 路径与连接 generation 共同限定读写归属。独立 Chat 节点使用 Host 提供的真实 Turn location 与 `groupTree: 'turn'`，稳定锚定首次候选或交付，不在保存或 Turn 结束时重新定位。它属于原 Turn，但位于工作步骤折叠区之外；原生 tool view 只保留错误说明或已保存报告入口，不重复展示草稿已更新等状态文案。
+报告视图以 Session/Turn/首次 call 建立稳定身份，草稿后续调用通过 draftId 关联；Workspace 路径与连接 generation 共同限定读写归属。真实 Turn 的 Chat 节点保留轻量报告入口及推荐，正文仅在右侧 Tab 展示；原生 tool view 保留错误说明或已保存报告入口。
 
-首次 Native 参数候选、已校验草稿修订和最终 Build 由同一报告视图更新。固定工具栏使用侧栏图标按钮，悬停或键盘聚焦显示“在边栏查看”。点击后打开一个原生 Tab，Chat 隐藏报告正文、标题和入口链接，相关 tool view 的展示状态及链接也隐藏。报告继续生成时不自动跳转。原生 openTabs inventory 确认 Tab 关闭才恢复 Chat；切换 Tab、折叠侧栏或组件卸载不改变位置。移动过的草稿保存后在同一 Tab occurrence 内切换到准确 Build 地址。
+首次 Native 参数候选、已校验草稿修订和最终 Build 由同一报告视图更新。前台会话首次出现可展示候选时自动打开并选中原生 Tab；此操作会展开侧栏并切换当前 Tab。用户关闭或切换 Tab 后，后续更新不再次打开或抢焦点；可从 Chat 入口手动重开。草稿保存后同一 Tab 展示准确 Build。
 
-位置由客户端 ReportViews 与原生 Tab 地址持有，不写入报告内容、草稿、receipt 或 Workspace 文件。原生 navigation.params 不跨刷新保留，因此移动标识放在 live 地址或准确 Build 地址的 view 查询参数中。刷新后通过 openTabs inventory 恢复移动关系；已保存报告按原生 Tab 地址读取，草稿不承诺跨 Host 重启恢复。报告目录、历史和工具结果入口始终打开右侧 Tab，不借此移动已有 Chat 报告。失败保留最后成功文档；Workspace 失效或连接重置撤销旧归属，迟到读取不能恢复它。
+Tab 与报告视图身份由客户端和原生地址管理，不写入报告内容、草稿、receipt 或 Workspace 文件。为避免抢焦点，非活动的 live Tab 在用户再次选中时才转换为准确 Build 地址；转换前刷新依赖会话投影重建，若历史不完整而无法确定身份，需从 Chat 的已保存入口或报告目录重开。历史回放与后台会话不自动打开 Tab；已保存报告按准确 Build 地址读取，草稿不承诺跨 Host 重启恢复，失效时明确提示。报告目录、历史和工具结果入口打开右侧 Tab。失败保留最后成功文档；Workspace 失效或连接重置撤销旧归属，迟到读取不能恢复它。
 
 已保存版本可在报告 tab 中下载离线 HTML；对象存储发布与 Reader 内编辑不受支持，见[报告 HTML 导出](report-publishing.md)。
 
@@ -83,7 +83,7 @@ includeCode 按 codeRef 去重返回 definition.sources，逐项标明 available
 
 - `stage: "preview"` 为当前 Harness Session/Turn 创建一个内存草稿。可指定 saved ref 以现有正式版本为基准。调用使用与保存相同的资源、视图和预算校验，Native 与 Code Mode 原始结果均直接返回 `stage` 和准确 draft ref。
 - 后续 preview 必须携带最新草稿标识，命名语句合并到上一次预览的程序，resourcePatch 只更新指定资源。错误或并发冲突保留最后一次成功的草稿。草稿不写 Workspace 文件、报告目录或历史，Turn 结束后释放。
-- Native 和 PTC 的预览通知携带草稿身份与 surface。浏览器通过 Session 绑定的 `draft/read` 读取确切修订；Chat 节点与右侧 Tab 共用同一报告状态，后续 preview 更新同一处内容，不逐次追加结果卡片。
+- Native 和 PTC 的预览通知携带草稿身份与 surface。浏览器通过 Session 绑定的 `draft/read` 读取确切修订；Chat 入口与右侧 Tab 引用同一报告状态，后续 preview 更新同一处内容，不逐次追加结果卡片。
 - `stage: "save"` 携带最新草稿标识后，以最初正式基版本为条件保存一个新版本；同次可携带最后一批 program、resourcePatch 或元数据修改。若正式基版本已变化，保存失败并保留当前草稿。成功后，当前阅读位置的草稿在正式文档读取完成后原位切换到正式结果；读取间隙继续显示已有内容，历史只增加本次保存的一个版本。
 - save 原始结果直接返回 `stage` 和准确 saved ref，并含 mode/contentReview/changed/reused/unchangedAliases 及结构化 resultMetadata。Host-owned deliveryJson 保留可重放完整投递身份；当前 Harness 缺少 execute 返回模型 canonical value 之外的持久 metadata 接缝，不能声称该字段已移出模型。
 - 草稿不跨 Turn 或 Host 重启保留。`analysis-draft-busy`、`analysis-draft-conflict`、`analysis-draft-unavailable` 的错误包含稳定 code、phase、recovery，message 携带同一 JSON，指导等待、核对最新草稿或从保留结果重建；不自动重放分析。

@@ -253,9 +253,9 @@ test('production present saves independent Lang documents and returns complete h
   assert.deepEqual(await readdir(path.dirname(first.receipt.files.document.path)), [
     'presentation.json',
   ])
-  const text = presentationReceiptText(second.receipt, second.surface)
+  const text = presentationReceiptText(second.receipt)
   assert(text.includes('Ref: mr1:s:'))
-  assert(text.includes('Surface: chat'))
+  assert(text.includes('Reader: right sidebar'))
   // Workspace paths and digests stay on disk, out of the model-facing text.
   assert(!text.includes(second.receipt.files.document.sha256))
   assert(!text.includes(second.receipt.files.document.path))

@@ -15,7 +15,7 @@ import type { AnalysisResourceContext } from './context.tsx'
 import { ReportAnalysisSurface } from './lazy-surface.tsx'
 import { ReportReading } from './reading-state.tsx'
 import { ReportMotion } from './report-motion.tsx'
-import type { ReportViewState, ReportViews } from './report-views.ts'
+import { type ReportViewState, type ReportViews, reportContentKey } from './report-views.ts'
 import { streamingAnalysisProgram } from './streaming-program.ts'
 
 /** One renderer for the whole report lifecycle; moving hosts retains admitted data and reading state. */
@@ -44,10 +44,16 @@ export function ReportView({
     documentKey,
     settled,
   } = view
-  const baseId = candidate?.rebaseOnRecordId ?? (!draft ? candidate?.basedOnRecordId : undefined)
-  const target = saved?.receipt.buildId ?? baseId ?? draft?.draftRevision
+  const editing = Boolean(saved && candidate)
+  const pendingSavedBase = Boolean(
+    candidate?.basedOnRecordId && ['preparing', 'start'].includes(candidate.phase),
+  )
+  const baseId =
+    candidate?.rebaseOnRecordId ??
+    (pendingSavedBase || !draft ? candidate?.basedOnRecordId : undefined)
+  const target = reportContentKey(view)
   const callId = candidate?.callId
-  const executing = candidate?.phase === 'start' && !settled && !saved
+  const executing = candidate?.phase === 'start' && !settled && (!saved || editing)
   useEffect(() => {
     if (!executing || !callId) return
     const abort = new AbortController()
@@ -104,7 +110,8 @@ export function ReportView({
     const abort = new AbortController()
     void (async () => {
       let document: AnalysisDocument | undefined
-      if (saved) document = await readSavedAnalysis(rpc, sessionId, saved.receipt, abort.signal)
+      if (saved && (!editing || target === saved.receipt.buildId))
+        document = await readSavedAnalysis(rpc, sessionId, saved.receipt, abort.signal)
       else if (baseId) {
         const { reportId, buildId } = parseAnalysisRecordId(baseId)
         const response = await rpc.call(
@@ -161,6 +168,7 @@ export function ReportView({
     settled,
     documentKey,
     saved,
+    editing,
     draft,
     baseId,
   ])
@@ -172,11 +180,11 @@ export function ReportView({
     stream?.status === 'failed'
   const document = view.document
   const streaming = Boolean(
-    !saved &&
+    (!saved || editing) &&
       candidate?.preview &&
       !terminal &&
       ['preparing', 'start'].includes(candidate.phase) &&
-      (!baseId || view.documentKey === baseId) &&
+      (!baseId || view.documentKey === baseId || view.document?.recordId === baseId) &&
       (!candidate.draftId || candidate.draftRevision === document?.buildId),
   )
   const nextProgram =
@@ -222,13 +230,17 @@ export function ReportView({
   useLayoutEffect(() => {
     if (content) previous.current = content
   })
-  const published = Boolean(saved && view.documentKey === saved.receipt.buildId)
+  const published = Boolean(
+    saved &&
+      view.document?.buildId === saved.receipt.buildId &&
+      (!candidate || (terminal && !draft)),
+  )
   const failed = candidate?.phase === 'failed' || stream?.status === 'failed'
   const readFailed = Boolean(target && failedKey === target)
   const progress =
     published || failed || readFailed || settled
       ? undefined
-      : saved
+      : saved && !editing
         ? 'loading'
         : streaming || !draft
           ? 'generating'

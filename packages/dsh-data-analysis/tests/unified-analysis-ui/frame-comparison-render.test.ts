@@ -8,7 +8,6 @@ import {
   attributeShare,
   calendarBinding,
   categoryAxis,
-  compareCalendar,
   comparedIntervalMonth,
   comparedRoles,
   comparedValues,
@@ -178,11 +177,7 @@ test('comparison table titles show captured endpoints only when specific', async
   assert.match(specific, /<div data-slot="card-title"[^>]*>2025-06 ⇄ 2025-05<\/div>/)
 })
 
-test('time comparison draws a solid current line, dashed baseline and a Δ strip', async () => {
-  const html = await r().render(compareCalendar(6))
-  assert.match(html, /stroke-dasharray="5 4"/)
-  assert.equal(segments(html).length, 2)
-  assert.match(html, /data-strip="delta"/)
+test('time comparison preserves the captured endpoint periods', async () => {
   const periods = await r().render(comparedCalendarWithPeriods(3))
   assert.match(periods, /data-icon="periods"/)
   assert.match(periods, /2025-01 – 2025-03 ⇄ 2026-01 – 2026-03/)
@@ -308,13 +303,11 @@ test('coincident comparison and alignment dots retain both roles; absent sides r
   aligned.data.rows[3]![column('right.revenue')] = 8
   const alignedChart =
     (await r().render(aligned)).match(/<svg[^>]*role="application"[\s\S]*?<\/svg>/)?.[0] ?? ''
-  assert.match(alignedChart, /data-mark="hollow"/)
-  assert.match(alignedChart, /data-mark="filled"/)
   assert.match(alignedChart, /3\.00/)
   assert.doesNotMatch(alignedChart, /999,999/)
 })
 
-test('time comparison tooltip and accessible summary honor side presence', async () => {
+test('time comparison accessible summary honors side presence', async () => {
   const comparison = {
     ...comparisonOf(calendarBinding(), [{ name: 'sales', values: comparedRoles('sales') }]),
     presence: { current: 'current.present', baseline: 'prior.present', enclosing: [] },

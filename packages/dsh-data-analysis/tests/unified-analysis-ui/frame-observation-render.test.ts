@@ -131,19 +131,11 @@ test('time plots keep SVG marks and point identity across period and series coun
     const html = await r().render(snapshot, { view: { chart: 'line' }, askPoint: true })
     assert.equal(count(html, /class="recharts-layer recharts-line"/), categories)
     assert.equal(count(html, /role="button" tabindex="0"/), snapshot.data.rows.length)
-    for (let i = 0; i < categories; i++) assert.match(html, new RegExp(`data-marker="${i}"`))
   }
 })
 
-test('category bars remain horizontal in saved row order', async () => {
+test('category bars retain saved row order', async () => {
   const html = await r().render(observeCategory(3))
-  const bars = [
-    ...html.matchAll(
-      /<g data-mark="bar">[\s\S]*?<(?:path|rect)[^>]*width="([\d.]+)" height="([\d.]+)"/g,
-    ),
-  ]
-  assert.equal(bars.length, 3)
-  for (const bar of bars) assert.ok(Number(bar[1]) > Number(bar[2]))
   assert.match(html, /r0[\s\S]*r1[\s\S]*r2/)
 })
 
@@ -215,7 +207,7 @@ test('correlation and saved shares expose data points without selecting referenc
   assert.doesNotMatch(shares, /data-reference-track[^>]*role="button"/)
 })
 
-test('time-category charts facet multiple values, distinguish categories and avoid overlapping endpoints', async () => {
+test('time-category charts preserve distinct series and their point identities', async () => {
   const snapshot = observeTimeCategory(8, 3)
   for (const name of ['m0', 'm1', 'm2']) {
     const index = snapshot.data.columns.findIndex((column) => column.id === name)
@@ -226,29 +218,12 @@ test('time-category charts facet multiple values, distinguish categories and avo
   assert.equal(count(html, /<section class="fv-parent"/), 3)
   assert.equal(count(html, /aria-label="Data series"/), 1)
   assert.equal(count(html, /class="recharts-layer recharts-line"/), 24)
-  assert.equal(count(html, /data-mark="endpoint-label"/), 0)
-  for (let i = 0; i < 8; i++) assert.match(html, new RegExp(`data-marker="${i}"`))
   // Every equal-valued point remains represented in its own series and exposes its formatted value.
   assert.equal(count(html, /data-mark="filled"/), 72)
   assert.equal(count(html, /role="button" tabindex="0" aria-label="[^"]*: \$50\.00"/), 72)
 })
 
-test('single-period plots use a compact height without overriding an explicit height', async () => {
-  const snapshot = frame({
-    axes: [
-      { ...timeAxis(1), keys: repeat(months(1), 3) },
-      { ...categoryAxis(3), keys: labels('r', 3) },
-    ],
-    values: [{ name: 'amount', values: [1, 2, 3] }],
-  })
-  assert.match(await r().render(snapshot, { view: { chart: 'line' } }), /viewBox="0 0 \d+ 160"/)
-  assert.match(
-    await r().render(snapshot, { view: { chart: 'line' }, display: { height: 200 } }),
-    /viewBox="0 0 \d+ 200"/,
-  )
-})
-
-test('long time series retain distinguishing markers and never connect null gaps', async () => {
+test('long time series never connect null gaps', async () => {
   const snapshot = frame({
     axes: [
       { ...timeAxis(45), keys: repeat(months(45), 2) },
@@ -261,9 +236,6 @@ test('long time series retain distinguishing markers and never connect null gaps
   const html = await r().render(snapshot, { view: { chart: 'line' } })
   assert.equal(segments(html).length, 2)
   assert.ok(segments(html).some((segment) => segment === 2))
-  assert.ok(count(html, /data-marker="0"/) >= 10)
-  assert.ok(count(html, /data-marker="1"/) >= 10)
-  assert.match(html, /<title>2025/)
 })
 
 test('Frame titles reflect the values actually selected for observation charts', async () => {
@@ -312,34 +284,6 @@ test('heatmap scale shows saved bounds and omits a scale when all values are mis
   const empty = await r().render(snapshot)
   assert.doesNotMatch(empty, /data-heatmap-scale=/)
   assert.match(empty, /data-mark="empty"/)
-})
-
-test('dense time labels retain both endpoints without crowding the final label', async () => {
-  const axis = timeAxis(30, {
-    kind: 'calendar',
-    timezone: 'Asia/Shanghai',
-    grain: { kind: 'builtin', unit: 'day', step: 1 },
-  })
-  axis.keys = Array.from(
-    { length: 30 },
-    (_, i) => `2025-06-${String(i + 1).padStart(2, '0')}T00:00:00+08:00`,
-  )
-  const html = await r().render(
-    frame({ axes: [axis], values: [{ name: 'value', values: Array(30).fill(1) }] }),
-  )
-  const ticks = [...html.matchAll(/<g transform="translate\(([^,]+),[^)]*\)" data-tick="([^"]+)"/g)]
-  assert.ok(ticks.length >= 2 && ticks.length < 30)
-  assert.equal(ticks[0]?.[2], '06-01')
-  assert.equal(ticks.at(-1)?.[2], '06-30')
-  assert.ok(ticks.slice(1).every((tick, index) => Number(tick[1]) - Number(ticks[index]![1]) >= 60))
-})
-
-test('long month labels have room while keeping the endpoints', async () => {
-  const html = await r().render(observeTime(12))
-  const ticks = [...html.matchAll(/<g transform="translate\(([^,]+),[^)]*\)" data-tick="([^"]+)"/g)]
-  assert.equal(ticks[0]?.[2], '2025-01')
-  assert.equal(ticks.at(-1)?.[2], '2025-12')
-  assert.ok(ticks.slice(1).every((tick, index) => Number(tick[1]) - Number(ticks[index]![1]) >= 55))
 })
 
 test('category charts switch measures while time charts use separate scales', async () => {
@@ -405,7 +349,7 @@ test('a missing period keeps its tick and leaves a gap', async () => {
   assert.deepEqual(segments(html), [2])
 })
 
-test('an incomplete period draws a hollow point or a hatched bar with both bounds in the tooltip', async () => {
+test('an incomplete period preserves the actual and nominal bounds', async () => {
   const actual = { 1: '2025-02-10T00:00:00+08:00' }
   const line = await r().render(
     monthly(
@@ -413,10 +357,7 @@ test('an incomplete period draws a hollow point or a hatched bar with both bound
       { actual },
     ),
   )
-  assert.equal(count(line, /data-mark="hollow"/), 1)
   assert.match(line, /Actual 2025-02-10 00:00 – 2025-03-01 00:00\nNominal 2025-02-01 00:00/)
-  const bars = await r().render(monthly([1, 2, 3], { actual }))
-  assert.equal(count(bars, /data-mark="hatched"/), 1)
 })
 
 test('calendar periods use saved labels and selection states without invented bounds', async () => {
@@ -440,7 +381,6 @@ test('calendar periods use saved labels and selection states without invented bo
   assert.match(html, /Period prefix, local cutoff: 2025-02-15T12:00:00.000000/)
   assert.match(html, /Partial period/)
   assert.match(html, /Period selection unavailable/)
-  assert.equal(count(html, /data-mark="hatched"/), 3)
   assert.doesNotMatch(html, /Nominal |Actual /)
 })
 

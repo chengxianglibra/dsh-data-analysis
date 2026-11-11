@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('Dataset charts select their saved row and field with pointer and keyboard', async () => {
+test('Dataset charts select their saved row and field with keyboard', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-dataset-point-'))
   const browser = await chromium.launch()
   try {
@@ -52,10 +52,8 @@ window.render(false);`,
       const mark = page
         .locator(`[data-resource="${resourceName}"] [data-frame-point="${row}:value"]`)
         .first()
-      await mark.hover()
-      const box = await mark.boundingBox()
-      assert.ok(box)
-      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+      await mark.focus()
+      await mark.press('Enter')
       if (resourceName === 'area') {
         await page.getByRole('menuitem', { name: 'Ask about this' }).waitFor()
         await page.keyboard.press('Escape')

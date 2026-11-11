@@ -101,7 +101,7 @@ For a multiword search, use `@"monthly revenue"`. Ask questions about the select
 
 ### 4. Read analysis views and reports
 
-New results, reports and dashboards start in a separate Chat node in their actual Turn, outside folded work steps.
+New results, reports and dashboards appear in a right-hand tab, with an entry in their Chat turn.
 
 For AnalysisFrame, explicitly call `persist()` and pass `saved.ref.to_dict()` as an `analysis-frame` resource. The plugin reads it through the bound Python Runtime without an HTTP service. For DataFrame, pass `mv.persist_dataframe(table).to_dict()` as a `dataframe` resource; its captured project must match the current Workspace.
 
@@ -115,8 +115,8 @@ preferring `AnalysisFrameView` for Frame data. After saving, read the report and
 - **Inspect data**: Sort exact values, browse local pages, and ask about a data point or the whole result. Previews disclose their range and cannot become complete single-value metrics.
 - **Check sources**: Frame views show structure and source identity. DataFrame views bring together the captured range, execution script and declared datasources.
 - **Ask a follow-up**: Select a chart point or supported cell in a DataFrame or Frame and add it to the question draft.
-- **Switch location**: Use the fixed icon with the “View in sidebar” tooltip. Further previews and saving update the same tab; Chat hides the report body, title, and entry links until that tab is closed. Catalog and history entries always open on the right.
-- **Suggested next steps**: After analysis, Chat offers a row of temporary follow-up buttons. Clicking uses the native Harness composer to submit the question; existing drafts are preserved. Suggestions stay in Chat when the report moves and disappear on reload, reconnection or session switch.
+- **Read the report**: The first report preview in the foreground session opens and selects a right-hand tab. Reopen it from Chat after closing it; later updates do not repeatedly open the tab. Catalog and history entries also open on the right.
+- **Suggested next steps**: After analysis, Chat offers a row of temporary follow-up buttons. Clicking uses the native Harness composer to submit the question; existing drafts are preserved. Suggestions stay in Chat and disappear on reload, reconnection or session switch.
 - **Export offline**: Download the displayed version as a single HTML file from the report tab. It includes the saved snapshots and supports offline viewing and local interactions; review its data before sharing.
 
 Initial previews, revisions and final saving update one report region. Subtle chart motion indicates generation and updates, then stops after saving; reduced motion preferences use a static indicator. The report workflow shows a draft early, prepares each data component independently, updates the same draft as each result becomes ready, and saves one version at completion. Native generation also displays program candidates. Failures and cancellation preserve the last successful content. When refreshing a saved report, the assistant retains its layout, components and body while replacing component data sources. Static text is not rewritten automatically, and auto views may still adapt to the new data shape.

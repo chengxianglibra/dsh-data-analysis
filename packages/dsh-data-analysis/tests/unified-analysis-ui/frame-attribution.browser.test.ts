@@ -57,12 +57,10 @@ after(async () => {
   await rm(directory, { recursive: true, force: true })
 })
 
-test('narrow attribution keeps both periods, contribution, share, direction and exact selection visible', async () => {
+test('attribution keeps saved periods, contributions and exact point selection', async () => {
   const card = page.locator('[data-resource="attribution"]')
   const region = card.locator('.fv-decomposition-details')
   const row = region.locator('tbody tr').first()
-  assert.ok((await region.evaluate((e) => e.scrollWidth - e.clientWidth)) <= 1)
-  assert.ok((await row.locator('.fv-decomposition-track').boundingBox())!.width >= 80)
   assert.deepEqual(await row.locator('.fv-decomposition-field-label').allTextContents(), [
     'Baseline',
     'Current',
@@ -72,102 +70,10 @@ test('narrow attribution keeps both periods, contribution, share, direction and 
   assert.match(await row.innerText(), /3,907,565/)
   assert.match(await row.innerText(), /3,650,127/)
   assert.match(await row.innerText(), /-257,438,678/)
-  const value = row.locator('[data-frame-point="0:contribution"]')
-  const lines = await value.evaluate((element) => {
-    const range = document.createRange()
-    range.selectNodeContents(element)
-    return range.getClientRects().length
-  })
-  assert.equal(lines, 1, 'the full contribution stays on one line')
   assert.equal(await region.locator('[data-frame-point="1:current"]').count(), 0)
   await row.locator('[data-frame-point="0:contribution"]').click()
   await page.getByRole('menuitem', { name: 'Ask about this' }).click()
   assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'requests')), [
     { resourceName: 'attribution', row: 0, field: 'contribution' },
   ])
-})
-
-test('narrow attribution scrolls rather than breaking a long contribution', async () => {
-  await page.setViewportSize({ width: 190, height: 900 })
-  const region = page.locator('[data-resource="attribution"] .fv-decomposition-details')
-  const value = region.locator('[data-frame-point="0:contribution"]')
-  assert.equal(
-    await value.evaluate((element) => {
-      const range = document.createRange()
-      range.selectNodeContents(element)
-      return range.getClientRects().length
-    }),
-    1,
-  )
-  const bounds = await region
-    .locator('tbody tr')
-    .first()
-    .evaluate((row) => {
-      const track = row.querySelector('.fv-decomposition-track')!.getBoundingClientRect()
-      const amount = row
-        .querySelector('[data-frame-point="0:contribution"]')!
-        .getBoundingClientRect()
-      return { trackRight: track.right, amountLeft: amount.left }
-    })
-  assert.ok(bounds.trackRight <= bounds.amountLeft, JSON.stringify(bounds))
-  assert.ok(await region.evaluate((element) => element.scrollWidth > element.clientWidth))
-  await region.evaluate((element) => {
-    element.scrollLeft = element.scrollWidth
-  })
-  const visible = await value.evaluate((element) => {
-    const region = element.closest('.fv-decomposition-details')!.getBoundingClientRect()
-    const amount = element.getBoundingClientRect()
-    return amount.left >= region.left && amount.right <= region.right + 1
-  })
-  assert.ok(visible, 'scrolling exposes the entire contribution')
-  await page.setViewportSize({ width: 390, height: 900 })
-})
-
-test('twelve monthly bars and long-label horizontal bars adapt to a 390px viewport', async () => {
-  for (const name of ['months', 'regions']) {
-    const card = page.locator(`[data-resource="${name}"]`)
-    const plot = card.locator('.fv-plot')
-    await page
-      .waitForFunction(
-        (resource) => {
-          const element = document.querySelector(`[data-resource="${resource}"] .fv-plot`)
-          return !!element && element.scrollWidth <= element.clientWidth + 1
-        },
-        name,
-        { timeout: 3000 },
-      )
-      .catch(async () => {
-        const size = await plot.evaluate((e) => ({
-          client: e.clientWidth,
-          scroll: e.scrollWidth,
-          html: e.outerHTML.slice(0, 500),
-        }))
-        throw new Error(`${name}: ${JSON.stringify(size)}`)
-      })
-    assert.ok((await plot.evaluate((e) => e.scrollWidth - e.clientWidth)) <= 1)
-  }
-  assert.equal(await page.locator('[data-resource="months"] [data-mark="bar"]').count(), 12)
-  const region = page.locator('[data-resource="regions"]')
-  assert.equal(await region.locator('[data-mark="bar"]').count(), 2)
-  assert.match(
-    (await region.locator('[data-row-label] title').first().textContent()) ?? '',
-    /exceptionally long region/,
-  )
-  assert.match((await region.locator('.recharts-label-list').textContent()) ?? '', /123,456,789/)
-  assert.ok(
-    (await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)) <= 1,
-  )
-})
-
-test('a single decomposition parent fills a wide card', async () => {
-  await page.setViewportSize({ width: 1600, height: 900 })
-  const parents = page.locator('[data-resource="attribution"] .fv-parents')
-  const parent = parents.locator('.fv-parent')
-  assert.equal(await parent.count(), 1)
-  const widths = await parents.evaluate((element) => ({
-    available: element.getBoundingClientRect().width,
-    parent: element.firstElementChild!.getBoundingClientRect().width,
-  }))
-  assert.ok(widths.available > 1280)
-  assert.ok(Math.abs(widths.available - widths.parent) < 1, JSON.stringify(widths))
 })

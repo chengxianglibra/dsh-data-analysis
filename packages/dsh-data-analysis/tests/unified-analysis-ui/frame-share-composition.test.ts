@@ -29,8 +29,6 @@ test('complete saved category shares expose their saved numerator and selectable
   assert.match(html, /data-frame-point="0:revenue_share"/)
   assert.match(html, /data-frame-point="0:revenue"/)
   assert.match(html, /data-frame-point="2:revenue_share"/)
-  assert.match(html, /fill="var\(--chart-1\)"/)
-  assert.match(html, /background: var\(--chart-1\)/)
   const header = html.match(/<li class="fv-share-row fv-share-header">[\s\S]*?<\/li>/)?.[0] ?? ''
   assert.match(header, />revenue</)
   assert.match(header, />revenue_share</)

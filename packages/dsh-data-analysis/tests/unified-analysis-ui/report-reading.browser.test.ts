@@ -8,7 +8,7 @@ import { build } from 'esbuild'
 import { chromium } from 'playwright'
 import { datasetSnapshot } from './dataset-fixtures.ts'
 
-test('report table sorting and pagination survive save and moving hosts, and tolerate removed columns', async () => {
+test('report table sorting and pagination survive save and reopening, and tolerate removed columns', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-report-reading-'))
   const browser = await chromium.launch()
   try {
@@ -29,7 +29,7 @@ function render(){root.render(h('section',{key:host},h(ReportReading.Provider,{v
 viewId:'stable-report',recordId:saved?'saved-record':undefined,program:'root=DatasetView("data", {chart:"table"});',title:'Reading state',locale:'en-US',resources:{},candidate:!saved,
 readResource:()=>({kind:'snapshot',snapshot,declaration:{kind:'dataset-snapshot',snapshotRef:'ref'},binding:{workspaceId:'workspace'}})
 }))));}
-window.readingTest=mode=>{if(mode==='save')saved=true;if(mode==='move')host++;if(mode==='remove'){snapshot.data.columns=snapshot.data.columns.slice(0,1);snapshot.data.rows=snapshot.data.rows.map(row=>row.slice(0,1));snapshot.coverage.columns=['category'];}render();};render();`,
+window.readingTest=mode=>{if(mode==='save')saved=true;if(mode==='reopen')host++;if(mode==='remove'){snapshot.data.columns=snapshot.data.columns.slice(0,1);snapshot.data.rows=snapshot.data.rows.map(row=>row.slice(0,1));snapshot.coverage.columns=['category'];}render();};render();`,
       },
       outfile: path.join(directory, 'page.js'),
       bundle: true,
@@ -50,7 +50,7 @@ window.readingTest=mode=>{if(mode==='save')saved=true;if(mode==='move')host++;if
     await page.getByRole('button', { name: 'Sort by Value', exact: true }).click()
     await page.getByRole('button', { name: 'Next page', exact: true }).click()
     const firstRow = await page.locator('tbody tr').first().getAttribute('data-row-index')
-    for (const mode of ['save', 'move']) {
+    for (const mode of ['save', 'reopen']) {
       await page.evaluate((mode) => Reflect.get(window, 'readingTest')(mode), mode)
       await page.locator('th[aria-sort="ascending"]').waitFor()
       assert.equal(await page.locator('tbody tr').first().getAttribute('data-row-index'), firstRow)

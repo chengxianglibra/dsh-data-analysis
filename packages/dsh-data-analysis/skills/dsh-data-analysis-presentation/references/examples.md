@@ -62,7 +62,7 @@ detail = DatasetView("detail", {chart:"table", columns:["category", "value"]});
 scope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");
 ```
 
-preview 校验并更新内存草稿，返回 draft ref，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 saved ref；不从 deliveryJson 拼装身份。新报告在同一 Chat 区域连续更新，以图表动效表达生成和修订，保存后停止；读者用“在边栏查看”图标移动，Chat 隐藏正文、标题和链接，关闭 Tab 后恢复。报告目录与版本链接始终在右侧打开。每次显式指定 stage，身份与 patch 完整后候选才可更新；不传 surface。
+preview 校验并更新内存草稿，返回 draft ref，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 saved ref；不从 deliveryJson 拼装身份。新报告正文在右侧 Tab 连续更新，以图表动效表达生成和修订，保存后停止；前台会话首次出现可展示候选时自动打开，Chat 保留入口供关闭后重开，后续更新不自动抢焦点。报告目录与版本链接也在右侧打开。每次显式指定 stage，身份与 patch 完整后候选才可更新；不传 surface。
 
 ## 比较与抵消项
 

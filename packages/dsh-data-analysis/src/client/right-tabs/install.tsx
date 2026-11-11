@@ -143,7 +143,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     const view = identity && reportViews.get(identity.viewId)
     return view?.workspaceId === identity?.workspaceId ? view : undefined
   }
-  const moveReport = (view) => {
+  const moveReport = (view, automatic = false) => {
     check(view.sessionId, view.workspaceId, true)
     if (
       ctx.connection.generation.getSnapshot() !== view.generation ||
@@ -151,14 +151,18 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         ?.path !== view.workspacePath
     )
       throw new Error('report-view-owner-changed')
-    if (
-      view.tabId &&
-      ctx.sidebarRight.openTabs
-        .getSnapshot()
-        .some((tab) => tab.sessionId === view.sessionId && tab.tabId === view.tabId)
-    ) {
-      ctx.sidebarRight.focus(view.tabId)
+    const existing = ctx.sidebarRight.openTabs.getSnapshot().find((tab) => {
+      const identity = reportViewFromAddress(tab.contentId)
+      return (
+        tab.sessionId === view.sessionId &&
+        identity?.viewId === view.id &&
+        identity.workspaceId === view.workspaceId
+      )
+    })
+    if (existing) {
+      ctx.sidebarRight.focus(existing.tabId)
       if (!ctx.sidebarRight.isExpanded()) ctx.sidebarRight.toggleExpanded()
+      reportViews.openingFailed(view.id, false)
       return
     }
     const params = { reportViewId: view.id, workspaceId: view.workspaceId, turn: view.turn }
@@ -173,13 +177,39 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           reportViewId: view.id,
         },
         ctx.sidebarRight,
-        false,
+        automatic,
         params,
       )
-    else ctx.sidebarRight.openResource(liveReportAddress(view.workspaceId, view.id), { params })
+    else {
+      const address = liveReportAddress(view.workspaceId, view.id)
+      ctx.sidebarRight.openResource(address, { params })
+      if (diagnostics) audit.opens.push({ sessionId: view.sessionId, address, automatic })
+    }
     const active = ctx.sidebarRight.active()
     if (!active) throw new Error('report-tab-unavailable')
-    reportViews.attach(view.id, active.id)
+    reportViews.openingFailed(view.id, false)
+  }
+  // Opening is an event, not a derived consequence of whether a tab exists.
+  // Keep one attempt per report so closing it never makes a later revision reopen it.
+  const automaticAttempts = new Map()
+  const maybeOpenReport = (view, { replay = false, ready = true } = {}) => {
+    let seen = automaticAttempts.get(view.sessionId)
+    if (!seen) {
+      seen = new Set()
+      automaticAttempts.set(view.sessionId, seen)
+    }
+    if (seen.has(view.id)) return
+    if (replay || !ctx.sessions.list.getSnapshot().byId[view.sessionId]?.retainedBy.mainView) {
+      seen.add(view.id)
+      return
+    }
+    if (!ready) return
+    seen.add(view.id)
+    try {
+      moveReport(view, true)
+    } catch {
+      reportViews.openingFailed(view.id, true)
+    }
   }
   const { ReportBody } = installAnalysisTool(
     ctx,
@@ -242,8 +272,14 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         const view = viewForAddress(tab.navigation.address)
         useEffect(() => {
           if (!view || view.sessionId !== sessionId || tab.signal.aborted) return
-          reportViews.attach(view.id, tab.id)
-          if (view.saved) {
+          // A background or hidden occurrence must not select itself when a
+          // save arrives. Convert it when the user next reveals this tab.
+          if (
+            view.saved &&
+            tab.visible &&
+            ctx.sidebarRight.active()?.id === tab.id &&
+            ctx.sessions.list.getSnapshot().byId[sessionId]?.retainedBy.mainView
+          ) {
             const { workspaceId, reportId, buildId } = view.saved.receipt
             tab.actions.openResource(
               resourceAddress({
@@ -262,30 +298,13 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           }
         }, [view, sessionId, tab])
         return view ? (
-          <ReportBody viewId={view.id} sessionId={sessionId} inTab />
+          <ReportBody viewId={view.id} sessionId={sessionId} />
         ) : (
           <p role="status">{t('marivo.presentation.ui-draft-unavailable')}</p>
         )
       }),
     ),
   )
-  ctx.effect(() => {
-    const reconcile = () =>
-      reportViews.reconcile(
-        ctx.sidebarRight.openTabs.getSnapshot().map((tab) => ({
-          sessionId: tab.sessionId,
-          tabId: tab.tabId,
-          ...reportViewFromAddress(tab.contentId),
-        })),
-      )
-    const stopTabs = ctx.sidebarRight.openTabs.subscribe(reconcile)
-    const stopViews = reportViews.subscribe(reconcile)
-    reconcile()
-    return () => {
-      stopTabs()
-      stopViews()
-    }
-  })
   installSemanticReferenceSource(ctx, rpc)
   installSelectionText(ctx)
   installPointReferenceSource(ctx, rpc)
@@ -364,6 +383,15 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       owners[0].workspaceId === page.target.workspaceId
     const state = useSyncExternalStore(page.subscribe, page.getSnapshot)
     const report = useSyncExternalStore(page.reader.subscribe, page.reader.getSnapshot)
+    const activeReportView = viewForAddress(tab.navigation.address)
+    const revisionInProgress = Boolean(
+      (activeReportView?.candidate &&
+        (!['failed', 'cancelled'].includes(activeReportView.candidate.phase) ||
+          activeReportView.draft)) ||
+        (activeReportView?.saved &&
+          report.analysisDocument &&
+          activeReportView.saved.receipt.buildId !== report.analysisDocument.buildId),
+    )
     const pointLifetime = useRef()
     useEffect(() => {
       if (!report.analysisDocument?.recordId || !canAsk || tab.signal.aborted) return
@@ -493,28 +521,41 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 )}
                 {report.analysisDocument && (
                   <div className="rt-report-surface">
-                    <div className="rt-toolbar">
-                      <ReportActions
-                        key={report.analysisDocument.recordId}
-                        document={report.analysisDocument}
-                        onHistory={() => void page.reader.toggleHistory()}
-                        refreshLocked={refreshLocks.has(page.sessionId)}
-                        onRefreshData={(isCurrent) =>
-                          refreshReport(page, tab, report.analysisDocument, isCurrent)
-                        }
-                        isCurrent={() =>
-                          !tab.signal.aborted &&
-                          !page.getSnapshot().error &&
-                          page.reader.getSnapshot().analysisDocument === report.analysisDocument
-                        }
-                      />
-                    </div>
-                    {viewForAddress(tab.navigation.address)?.saved?.receipt.buildId ===
-                    report.analysisDocument.buildId ? (
+                    {!revisionInProgress && (
+                      <div className="rt-toolbar">
+                        <ReportActions
+                          key={report.analysisDocument.recordId}
+                          document={report.analysisDocument}
+                          onHistory={() => void page.reader.toggleHistory()}
+                          refreshLocked={refreshLocks.has(page.sessionId)}
+                          onRefreshData={(isCurrent) =>
+                            refreshReport(page, tab, report.analysisDocument, isCurrent)
+                          }
+                          isCurrent={() =>
+                            !tab.signal.aborted &&
+                            !page.getSnapshot().error &&
+                            page.reader.getSnapshot().analysisDocument ===
+                              report.analysisDocument &&
+                            (!activeReportView ||
+                              (() => {
+                                const current = reportViews.get(activeReportView.id)
+                                return (
+                                  current?.saved?.receipt.buildId ===
+                                    report.analysisDocument.buildId &&
+                                  (!current.candidate ||
+                                    (['failed', 'cancelled'].includes(current.candidate.phase) &&
+                                      !current.draft))
+                                )
+                              })())
+                          }
+                        />
+                      </div>
+                    )}
+                    {activeReportView?.sessionId === page.sessionId &&
+                    activeReportView?.saved?.receipt.reportId === page.target.reportId ? (
                       <ReportBody
                         viewId={reportViewFromAddress(tab.navigation.address).viewId}
                         sessionId={page.sessionId}
-                        inTab
                       />
                     ) : (
                       <SavedAnalysisSurface
@@ -600,8 +641,37 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     useSyncExternalStore(reportViews.subscribe, reportViews.getSnapshot)
     const liveReport = viewForAddress(tab.navigation.address)
     useEffect(() => {
-      if (liveReport && liveReport.sessionId === sessionId && !tab.signal.aborted)
-        reportViews.attach(liveReport.id, tab.id)
+      if (
+        !liveReport?.saved ||
+        liveReport.sessionId !== sessionId ||
+        tab.signal.aborted ||
+        !tab.visible ||
+        ctx.sidebarRight.active()?.id !== tab.id ||
+        !ctx.sessions.list.getSnapshot().byId[sessionId]?.retainedBy.mainView
+      )
+        return
+      const target = parseResource(tab.navigation.address)
+      if (
+        target.kind !== 'report' ||
+        target.reportId !== liveReport.saved.receipt.reportId ||
+        target.buildId === liveReport.saved.receipt.buildId
+      )
+        return
+      const { workspaceId, reportId, buildId } = liveReport.saved.receipt
+      tab.actions.openResource(
+        resourceAddress({
+          kind: 'report',
+          workspaceId,
+          reportId,
+          buildId,
+          reportViewId: liveReport.id,
+        }),
+        {
+          replaceTab: true,
+          revealIfOpened: false,
+          params: { reportViewId: liveReport.id, workspaceId, turn: liveReport.turn },
+        },
+      )
     }, [liveReport, sessionId, tab])
     const workspaces = useWorkspaces((s) => s.items),
       sessions = useSessions((s) => s.byId),
@@ -636,7 +706,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       }
     }, [sessionId, tab])
     if (!page && liveReport?.sessionId === sessionId)
-      return <ReportBody viewId={liveReport.id} sessionId={sessionId} inTab />
+      return <ReportBody viewId={liveReport.id} sessionId={sessionId} />
     return error ? (
       <p role="alert">{t(error)}</p>
     ) : page && page.sessionId === sessionId && page.signal === tab.signal ? (
@@ -874,6 +944,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       const binding = ctx.sessions.binding(id)
       if (!binding || binding.session.getSnapshot().removed) continue
       let chatBaseline = true
+      const suppressedCalls = new Set()
       let readChat = () => {}
       const observer = new LiveDeliveryObserver(
         id,
@@ -891,8 +962,12 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           const workspace = ctx.workspaces.list
             .getSnapshot()
             .items.find((w) => w.workspaceId === workspaceId)
-          if (generation && workspace)
-            reportViews.accept(delivery, callId, generation, workspace.path)
+          if (generation && workspace) {
+            const view = reportViews.accept(delivery, callId, generation, workspace.path)
+            maybeOpenReport(view, {
+              replay: suppressedCalls.has(JSON.stringify([delivery.turn, callId])),
+            })
+          }
         },
         (delivery, callId) => {
           const generation = ctx.connection.generation.getSnapshot()
@@ -903,7 +978,10 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           try {
             check(id, delivery.workspaceId)
             readChat()
-            reportViews.accept(delivery, callId, generation, workspace.path)
+            const view = reportViews.accept(delivery, callId, generation, workspace.path)
+            maybeOpenReport(view, {
+              replay: suppressedCalls.has(JSON.stringify([delivery.turn, callId])),
+            })
           } catch (error) {
             if (ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView) fail(error)
           }
@@ -930,11 +1008,27 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 workspaceId,
                 generation,
                 (candidate) => {
+                  const call = JSON.stringify([candidate.turn, candidate.callId])
+                  if (baseline || !ctx.sessions.list.getSnapshot().byId[id]?.retainedBy.mainView)
+                    suppressedCalls.add(call)
                   if (!baseline || binding.session.getSnapshot().running) {
                     const workspace = ctx.workspaces.list
                       .getSnapshot()
                       .items.find((w) => w.workspaceId === workspaceId)
-                    if (workspace) reportViews.observe(candidate, workspace.path)
+                    if (workspace) {
+                      const view = reportViews.observeReady(candidate, workspace.path)
+                      if (!view) return
+                      maybeOpenReport(view, {
+                        replay: suppressedCalls.has(call),
+                        ready:
+                          binding.session.getSnapshot().running &&
+                          ['preparing', 'start'].includes(candidate.phase) &&
+                          candidate.preview &&
+                          Boolean(
+                            candidate.program || candidate.basedOnRecordId || candidate.draftId,
+                          ),
+                      })
+                    }
                   }
                 },
                 'turn' in node.location ? node.location.turn.turn : undefined,
@@ -970,6 +1064,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         }
         if (state.removed) {
           reportViews.revoke(id)
+          automaticAttempts.delete(id)
           feeds.get(id)?.stop()
           feeds.delete(id)
         } else if (settled && state.openState !== 'open') {
@@ -1044,6 +1139,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       if (ctx.connection.generation.getSnapshot()) return
       stopFeeds()
       reportViews.revoke()
+      automaticAttempts.clear()
       for (const page of pages.values())
         page.unavailable(
           'marivo.navigation.host-connection-interrupted-reconnect-and-reopen-the-page',
@@ -1052,6 +1148,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   )
   ctx.on('connection/reset', () => {
     reportViews.revoke()
+    automaticAttempts.clear()
     for (const page of pages.values())
       page.unavailable('marivo.navigation.host-connection-reset-reopen-the-page')
     stopFeeds()
@@ -1059,6 +1156,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   })
   ctx.effect(() => () => {
     reportViews.revoke()
+    automaticAttempts.clear()
     for (const page of pages.values()) {
       page.detachSignal?.()
       page.dispose()

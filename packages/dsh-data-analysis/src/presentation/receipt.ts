@@ -62,14 +62,11 @@ export function parsePresentationDelivery(value: unknown): PresentationDelivery 
 }
 
 /** Model-facing receipt text: identity and delivery surface, without Workspace paths or digests. */
-export function presentationReceiptText(
-  receipt: PresentationReceipt,
-  surface: 'tool' | 'tab',
-): string {
+export function presentationReceiptText(receipt: PresentationReceipt): string {
   return [
     receipt.title,
     receipt.summary,
     `Ref: ${savedReportRef({ workspaceId: receipt.workspaceId, reportId: receipt.reportId, buildId: receipt.buildId })}`,
-    `Surface: ${surface === 'tab' ? 'tab' : 'chat'}`,
+    'Reader: right sidebar',
   ].join('\n')
 }

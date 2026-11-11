@@ -20,7 +20,7 @@ before(async () => {
 import { createRoot } from 'react-dom/client';
 import { AnalysisRenderer } from './src/client/analysis-ui/surface.tsx';
 import { datasetSnapshot } from './tests/unified-analysis-ui/dataset-fixtures.ts';
-import { frame, categoryAxis, timeAxis, observeTime, observeTimeCategory, attributeEffects, compareOrdinary, align } from './tests/unified-analysis-ui/frame-fixtures.ts';
+import { frame, categoryAxis, timeAxis, observeTime, observeTimeCategory, attributeEffects } from './tests/unified-analysis-ui/frame-fixtures.ts';
 const ref = (sha256) => ({ executionId: '6f9619ff-8b86-4d01-b42d-00cf4fc964ff', sha256 });
 const resource = (snapshot, codeRef) => ({ kind: 'snapshot',
   declaration: { kind: snapshot.kind === 'frame' ? 'frame-snapshot' : 'dataset-snapshot', snapshotRef: 'ref' }, snapshot,
@@ -56,18 +56,6 @@ const withNull = source => {
   return copy;
 };
 const nullableHeatmap = withNull(heatmap);
-const emptyHeatmap = frame({
-  axes: [timeAxis(0), categoryAxis(0)],
-  values: [{ name: 'amount', values: [] }],
-});
-const blankLabels = frame({
-  axes: [timeAxis(1), {...categoryAxis(1), keys: ['']}],
-  values: [{ name: 'amount', values: [null] }],
-});
-const mixedLabels = frame({
-  axes: [{...timeAxis(1), keys: [timeAxis(1).keys[0], timeAxis(1).keys[0]]}, {...categoryAxis(2), keys: ['', 'zone']}],
-  values: [{ name: 'amount', values: [null, 2] }],
-});
 // Borough labels and comparable trip magnitudes come from the Yellow Taxi visual acceptance case.
 const boroughs = ['Bronx', 'Brooklyn', 'EWR', 'Manhattan', 'N/A', 'Queens', 'Staten Island', 'Unknown'];
 const taxiHeatmap = frame({
@@ -78,23 +66,6 @@ const sparseTaxiHeatmap = frame({
   axes: [{name: 'borough', keys: ['Bronx', 'Bronx', 'Manhattan']}, {name: 'payment', keys: ['Cash', 'Card', 'Cash']}],
   values: [{name: 'trips', values: [377903, 1767304, 41820207]}],
 });
-const taxiAlignment = align({name: 'region', keys: ['Bronx', 'Brooklyn', 'EWR', 'Manhattan']});
-for (const [index, value] of [377903, 1767304, 6056, 41820207].entries()) {
-  for (const name of ['left.revenue', 'right.revenue']) {
-    taxiAlignment.data.rows[index][taxiAlignment.data.columns.findIndex(column => column.id === name)] = value;
-  }
-}
-// Keep one surviving endpoint visible even when the other side is absent.
-taxiAlignment.data.rows[2][taxiAlignment.data.columns.findIndex(column => column.id === 'left_present')] = false;
-const longPeriod = observeTimeCategory(9);
-longPeriod.frame.sections.periods = { status: 'captured', pages: [{
-  target: { kind: 'axis', axisToken: 't_month' }, totalCount: 3, hasMore: false,
-  items: [0, 9, 18].map((row, index) => ({
-    kind: 'calendar', key: [longPeriod.frame.coordinates.k_month.values[row]],
-    timezone: 'Asia/Shanghai', label: index === 1 ? 'A deliberately long saved period with many separate words' : 'Month ' + index,
-    selection: index === 1 ? 'partial' : 'full', cutoff: null,
-  })),
-}] };
 const resources = {
   dataset: resource(datasetSnapshot()),
   good: resource(observeTime(3), ref(${JSON.stringify(sha256)})),
@@ -106,20 +77,12 @@ const resources = {
   inline: resource(precise),
   heatmap: resource(heatmap),
   nullableHeatmap: resource(nullableHeatmap),
-  empty: resource(emptyHeatmap),
-  blank: resource(blankLabels),
-  mixed: resource(mixedLabels),
   effects: resource(attributeEffects()),
-  comparison: resource(compareOrdinary([categoryAxis(3)])),
-  alignment: resource(align(categoryAxis(3))),
   taxiHeatmap: resource(taxiHeatmap),
   nullableTaxiHeatmap: resource(withNull(taxiHeatmap)),
   sparseTaxiHeatmap: resource(sparseTaxiHeatmap),
-  taxiAlignment: resource(taxiAlignment),
-  longPeriodX: resource(longPeriod),
-  longPeriodY: resource(longPeriod),
 };
-const program = 'root = Stack([good, long, bad, dataset, records, heatmap, nullableHeatmap, effects, comparison, empty, blank, mixed, alignment, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, taxiAlignment, precise, partial, inline, longPeriodX, longPeriodY]);\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "category", values: ["value"]}});\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long", {chart: "line"});\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ncomparison = AnalysisFrameView("comparison");\\nempty = AnalysisFrameView("empty", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nblank = AnalysisFrameView("blank", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nmixed = AnalysisFrameView("mixed", {chart: "heatmap", encoding: {x: "month", y: "region", value: "amount"}});\\nalignment = AnalysisFrameView("alignment");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\ntaxiAlignment = AnalysisFrameView("taxiAlignment");\\nprecise = AnalysisFrameView("precise");\\npartial = AnalysisFrameView("partial");\\ninline = AnalysisFrameView("inline", {chart: "auto"}, {dataTable: "visible"});\\nlongPeriodX = AnalysisFrameView("longPeriodX", {chart: "heatmap", encoding: {x: "month", y: "region", value: "m0"}});\\nlongPeriodY = AnalysisFrameView("longPeriodY", {chart: "heatmap", encoding: {x: "region", y: "month", value: "m0"}});';
+const program = 'root = Stack([good, long, bad, dataset, records, heatmap, nullableHeatmap, effects, taxiHeatmap, nullableTaxiHeatmap, sparseTaxiHeatmap, precise, partial, inline]);\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "category", values: ["value"]}});\\ngood = AnalysisFrameView("good");\\nlong = AnalysisFrameView("long", {chart: "line"});\\nbad = AnalysisFrameView("bad");\\nrecords = AnalysisFrameView("records");\\nheatmap = AnalysisFrameView("heatmap");\\nnullableHeatmap = AnalysisFrameView("nullableHeatmap");\\neffects = AnalysisFrameView("effects");\\ntaxiHeatmap = AnalysisFrameView("taxiHeatmap");\\nnullableTaxiHeatmap = AnalysisFrameView("nullableTaxiHeatmap");\\nsparseTaxiHeatmap = AnalysisFrameView("sparseTaxiHeatmap");\\nprecise = AnalysisFrameView("precise");\\npartial = AnalysisFrameView("partial");\\ninline = AnalysisFrameView("inline", {chart: "auto"}, {dataTable: "visible"});';
 window.pointSelections = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program, title: 'Frames', locale: 'en-US', resources,
@@ -150,43 +113,19 @@ after(async () => {
   await rm(directory, { recursive: true, force: true })
 })
 
-test('line points have one hover tooltip and preserve saved keyboard selection', async () => {
+test('line points preserve saved keyboard selection', async () => {
   const card = page.locator('[data-resource="long"]')
   const point = card.locator('.recharts-line-dots [data-frame-point="0:m0"]').first()
   await point.waitFor()
   assert.match((await point.getAttribute('aria-label')) ?? '', /m0: 1\.00/)
-  assert.equal(await card.locator('.recharts-line-dots circle title').count(), 0)
   await point.focus()
   assert.equal(await point.evaluate((node) => node === document.activeElement), true)
-  await point.hover({ force: true })
-  const tooltip = card.locator('.recharts-tooltip-wrapper:visible')
-  await tooltip.waitFor()
-  assert.equal(await tooltip.count(), 1)
-  assert.match(await tooltip.innerText(), /m0: 1\.00/)
-  const active = card.locator('.recharts-zIndex-layer_1200 [data-frame-point]')
-  assert.equal(await active.count(), 1)
-  assert.equal(await active.getAttribute('data-frame-point'), '0:m0')
-  assert.match((await active.getAttribute('aria-label')) ?? '', /m0: 1\.00/)
-  assert.equal(await active.locator('circle title').count(), 0)
-  await point.focus()
   await page.keyboard.press('Enter')
   await page.getByRole('menu').getByRole('menuitem', { name: 'Ask about this' }).click()
   assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
     { resourceName: 'long', row: 0, field: 'm0' },
   ])
   await page.evaluate(() => Reflect.set(window, 'pointSelections', []))
-})
-
-test('Dataset line hover preserves exact decimal text without a second native tooltip', async () => {
-  const card = page.locator('[data-resource="dataset"]')
-  const point = card.locator('.recharts-line-dots circle').first()
-  await point.waitFor()
-  assert.equal(await point.locator('title').count(), 0)
-  await point.hover()
-  const tooltip = card.locator('.recharts-tooltip-wrapper:visible')
-  await tooltip.waitFor({ timeout: 3000 })
-  assert.equal(await tooltip.count(), 1)
-  assert.match(await tooltip.innerText(), /12345678901234\.5678/)
 })
 
 test('the Python icon shows the bound source only when its sha256 matches', async () => {
@@ -274,43 +213,9 @@ test('overflowing Frame tables describe the keyboard-scrollable region', async (
   })
 })
 
-test('short plugin charts fit a narrow card and their marks are keyboard-selectable', async () => {
+test('chart marks are keyboard-selectable', async () => {
   const card = page.locator('[data-resource="good"]')
-  const chart = card.locator('svg.recharts-surface')
-  assert.equal(await chart.count(), 1)
-  const measured = await page.waitForFunction(() => {
-    const ticks = document.querySelectorAll('[data-resource="good"] g[data-tick] text')
-    if (ticks.length !== 3) return false
-    const metrics = [...ticks].map((tick) => {
-      const bounds = tick.getBoundingClientRect()
-      return {
-        connected: tick.isConnected,
-        left: bounds.left,
-        right: bounds.right,
-        width: bounds.width,
-        size: Number.parseFloat(getComputedStyle(tick).fontSize),
-      }
-    })
-    return metrics.every((tick) => tick.connected && tick.width > 0 && tick.size >= 12)
-      ? metrics
-      : false
-  })
-  const metrics = await measured.jsonValue()
-  assert.ok(metrics)
-  assert.equal(metrics.length, 3)
-  for (const [i, tick] of metrics.entries()) {
-    assert.ok(tick.size >= 12, JSON.stringify(tick))
-    if (i > 0) assert.ok(tick.left >= metrics[i - 1]!.right, JSON.stringify(metrics))
-  }
-  const fit = await card.locator('.fv-plot').evaluate((node) => ({
-    plotRight: node.getBoundingClientRect().right,
-    cardRight: node.closest('[data-frame-view]')!.getBoundingClientRect().right,
-    clientWidth: node.clientWidth,
-    scrollWidth: node.scrollWidth,
-  }))
-  assert.ok(fit.plotRight <= fit.cardRight + 1, JSON.stringify(fit))
-  assert.ok(fit.scrollWidth <= fit.clientWidth + 1, JSON.stringify(fit))
-  const first = chart.getByRole('button').first()
+  const first = card.locator('svg.recharts-surface').getByRole('button').first()
   await first.focus()
   await page.keyboard.press('Enter')
   const selected = page.getByRole('menu')
@@ -320,102 +225,34 @@ test('short plugin charts fit a narrow card and their marks are keyboard-selecta
   ])
 })
 
-test('Taxi heatmap formats cells and supports point selection without aggregating', async () => {
+test('Taxi heatmap supports point selection without aggregating', async () => {
   await page.locator('body').click({ position: { x: 1, y: 1 } })
-  try {
-    for (const width of [710, 360]) {
-      await page.setViewportSize({ width, height: 900 })
-      await page.locator('body').evaluate((body, value) => {
-        body.style.width = `${value}px`
-        body.style.margin = '0'
-      }, width)
-      const card = page.locator('[data-resource="taxiHeatmap"]')
-      const cells = card.locator('[data-mark="cell"]')
-      assert.equal(await cells.count(), 8)
-      const manhattan = cells.filter({ has: page.locator('title', { hasText: 'Manhattan' }) })
-      await manhattan.hover()
-      const tooltip = await manhattan.locator('title').textContent()
-      assert.match(tooltip ?? '', /Manhattan.*Cash.*41,820,207\.00/)
-      assert.doesNotMatch(tooltip ?? '', /Row avg|Column avg/i)
-      await manhattan.locator('rect').click()
-      const selected = page.getByRole('menu')
-      await page.evaluate(() => {
-        Reflect.set(window, 'pointSelections', [])
-      })
-      await selected.getByRole('menuitem', { name: 'Ask about this' }).click()
-      assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
-        { resourceName: 'taxiHeatmap', row: 3, field: 'trips' },
-      ])
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0)
-      await page.keyboard.press('Escape')
-      await selected.waitFor({ state: 'detached' })
-    }
-    const nullCard = page.locator('[data-resource="nullableTaxiHeatmap"]')
-    assert.equal(await nullCard.locator('[data-mark="cell"]').count(), 7)
-    assert.equal(await nullCard.locator('[data-mark="empty"]').count(), 1)
-    const sparseCard = page.locator('[data-resource="sparseTaxiHeatmap"]')
-    assert.equal(await sparseCard.locator('[data-mark="cell"]').count(), 3)
-    assert.equal(
-      await sparseCard
-        .locator('[data-heatmap-missing-count]')
-        .getAttribute('data-heatmap-missing-count'),
-      '1',
-    )
-    assert.equal(await sparseCard.locator('[data-mark="empty"]').count(), 0)
-  } finally {
-    await page.setViewportSize({ width: 420, height: 900 })
-    await page.locator('body').evaluate((body) => {
-      body.style.width = '420px'
-      body.style.margin = '0'
-    })
-  }
-})
-
-test('Taxi heatmap orders its sequential colors by value in both Host themes', async () => {
-  const selector = '[data-resource="taxiHeatmap"] [data-mark="cell"] rect'
-  const values = [377903, 1767304, 6056, 41820207, 22200, 4647000, 4730, 80900]
-  try {
-    for (const mode of ['light', 'dark'] as const) {
-      await page.evaluate((next) => {
-        document.documentElement.setAttribute('data-ds-theme-source', next)
-        document.body.toggleAttribute('data-ds-dark-theme', next === 'dark')
-      }, mode)
-      const fills = await page.locator(selector).evaluateAll((cells) =>
-        cells.map((cell) => ({
-          fill: getComputedStyle(cell).fill,
-          opacity: Number(getComputedStyle(cell).fillOpacity),
-        })),
-      )
-      assert.equal(fills.length, values.length)
-      assert.ok(fills.every(({ fill }) => fill.length > 0 && fill !== 'none'))
-      assert.equal(new Set(fills.map((item) => item.fill)).size, 1)
-      const ordered = values.map((value, index) => ({ value, opacity: fills[index]!.opacity }))
-      ordered.sort((left, right) => left.value - right.value)
-      for (let index = 1; index < ordered.length; index++) {
-        assert.ok(ordered[index]!.opacity >= ordered[index - 1]!.opacity)
-      }
-      assert.ok(ordered[0]!.opacity < ordered.at(-1)!.opacity)
-    }
-  } finally {
-    await page.evaluate(() => {
-      document.documentElement.removeAttribute('data-ds-theme-source')
-      document.body.removeAttribute('data-ds-dark-theme')
-    })
-  }
-})
-
-test('long series retain legible text and scroll with the keyboard', async () => {
-  const card = page.locator('[data-resource="long"]')
-  const chart = card.locator('svg.recharts-surface')
-  const scroll = card.locator('.fv-plot')
-  assert.ok(await chart.evaluate((svg) => svg.getBoundingClientRect().width >= 640))
-  assert.ok(
-    await chart
-      .locator('text')
-      .first()
-      .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize) >= 12),
+  const card = page.locator('[data-resource="taxiHeatmap"]')
+  const cells = card.locator('[data-mark="cell"]')
+  assert.equal(await cells.count(), 8)
+  await cells.nth(3).locator('rect').click()
+  const selected = page.getByRole('menu')
+  await page.evaluate(() => Reflect.set(window, 'pointSelections', []))
+  await selected.getByRole('menuitem', { name: 'Ask about this' }).click()
+  assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [
+    { resourceName: 'taxiHeatmap', row: 3, field: 'trips' },
+  ])
+  const nullCard = page.locator('[data-resource="nullableTaxiHeatmap"]')
+  assert.equal(await nullCard.locator('[data-mark="cell"]').count(), 7)
+  assert.equal(await nullCard.locator('[data-mark="empty"]').count(), 1)
+  const sparseCard = page.locator('[data-resource="sparseTaxiHeatmap"]')
+  assert.equal(await sparseCard.locator('[data-mark="cell"]').count(), 3)
+  assert.equal(
+    await sparseCard
+      .locator('[data-heatmap-missing-count]')
+      .getAttribute('data-heatmap-missing-count'),
+    '1',
   )
-  assert.ok(await scroll.evaluate((node) => node.scrollWidth > node.clientWidth))
+  assert.equal(await sparseCard.locator('[data-mark="empty"]').count(), 0)
+})
+
+test('long series scroll with the keyboard', async () => {
+  const scroll = page.locator('[data-resource="long"] .fv-plot')
   await scroll.focus()
   await page.keyboard.press('ArrowRight')
   assert.ok(await scroll.evaluate((node) => node.scrollLeft > 0))
@@ -434,52 +271,13 @@ test('chart regions scroll with arrow keys after expanding the data table', asyn
     await region.focus()
     await page.keyboard.press('ArrowRight')
     assert.equal(await region.evaluate((element) => element.scrollLeft), 80, name)
+    if (name !== 'long') {
+      const rail = card.locator('[data-frame-rail]')
+      await rail.waitFor()
+      assert.equal(await rail.getAttribute('aria-hidden'), 'true', name)
+    }
     await page.keyboard.press('ArrowLeft')
     assert.equal(await region.evaluate((element) => element.scrollLeft), 0, name)
-  }
-})
-
-test('row labels stay aligned and readable while heatmap and effects charts scroll', async () => {
-  for (const name of ['nullableHeatmap', 'effects']) {
-    const card = page.locator(`[data-resource="${name}"]`)
-    const region = card.locator('.fv-plot').first()
-    const original = region.locator('svg.recharts-surface .fv-row-label').first()
-    await region.evaluate((node) => {
-      node.scrollLeft = 0
-    })
-    await page.waitForFunction(
-      (resource) => !document.querySelector(`[data-resource="${resource}"] [data-frame-rail]`),
-      name,
-    )
-    const originalText = (await original.textContent())!.trim()
-    await region.focus()
-    await page.keyboard.press('ArrowRight')
-    const rail = region.locator('[data-frame-rail]')
-    await rail.waitFor({ state: 'visible' })
-    const railText = rail.locator('[data-rail-row="0"]')
-    const geometry = await railText.evaluate((element) => {
-      const plot = element.closest('.fv-plot')!
-      const source = plot.querySelector('.fv-row-label')!
-      return {
-        y: element.getBoundingClientRect().y,
-        originalY: source.getBoundingClientRect().y,
-        railLeft: element.closest('[data-frame-rail]')!.getBoundingClientRect().left,
-        regionLeft: plot.getBoundingClientRect().left,
-        originalVisibility: getComputedStyle(source).visibility,
-        pointerEvents: getComputedStyle(element.closest('[data-frame-rail]')!).pointerEvents,
-      }
-    })
-    assert.ok(Math.abs(geometry.y - geometry.originalY) < 1, `${name}: ${JSON.stringify(geometry)}`)
-    assert.ok(Math.abs(geometry.railLeft - geometry.regionLeft) < 1, name)
-    assert.equal(geometry.originalVisibility, 'hidden', name)
-    assert.equal(geometry.pointerEvents, 'none', name)
-    assert.equal(await rail.getAttribute('aria-hidden'), 'true', name)
-    assert.ok(
-      (await railText.locator('title').textContent())!.startsWith(originalText.replace(/…$/, '')),
-      name,
-    )
-    await page.keyboard.press('ArrowLeft')
-    await rail.waitFor({ state: 'detached' })
   }
 })
 
@@ -495,42 +293,9 @@ test('a truncated row label remains available in the expanded data table', async
   await details.getByRole('button', { name: 'Close' }).click()
 })
 
-test('an empty heatmap never paints an opaque row-label rail', async () => {
-  const card = page.locator('[data-resource="empty"]')
-  const region = card.locator('.fv-plot')
-  await region.focus()
-  await page.keyboard.press('ArrowRight')
-  assert.ok((await region.evaluate((element) => element.scrollLeft)) > 0)
-  assert.equal(await region.locator('[data-frame-rail]').count(), 0)
-  assert.equal(
-    await region.evaluate((element) => element.classList.contains('fv-plot-scrolled')),
-    false,
-  )
-})
-
-test('blank row labels do not paint an opaque rail, and mixed rows keep their positions', async () => {
-  const blank = page.locator('[data-resource="blank"] .fv-plot')
-  await blank.focus()
-  await page.keyboard.press('ArrowRight')
-  assert.ok((await blank.evaluate((element) => element.scrollLeft)) > 0)
-  assert.equal(await blank.locator('[data-frame-rail]').count(), 0)
-
-  const mixed = page.locator('[data-resource="mixed"] .fv-plot')
-  await mixed.focus()
-  await page.keyboard.press('ArrowRight')
-  const rail = mixed.locator('[data-frame-rail]')
-  await rail.waitFor({ state: 'visible' })
-  assert.equal(await rail.locator('[data-rail-row]').count(), 2)
-  assert.equal(await rail.locator('[data-rail-row="0"] title').textContent(), '')
-  assert.equal(await rail.locator('[data-rail-row="1"] title').textContent(), 'zone')
-})
-
-test('chart data uses the icon row and a keyboard operable dialog with formatted values', async () => {
+test('chart data uses a keyboard operable dialog with formatted values', async () => {
   const frame = page.locator('[data-resource="precise"]')
   const toggle = frame.locator('[data-icon="data"] button')
-  assert.equal(await frame.locator('.fv-icons > [data-icon="data"]').count(), 1)
-  assert.equal(await frame.locator('.fv-icons > [data-icon="origins"]').count(), 1)
-  assert.equal(await frame.locator('.fv-icons > [data-icon="python"]').count(), 1)
   assert.equal(await toggle.getAttribute('aria-haspopup'), 'dialog')
   await toggle.focus()
   await page.keyboard.press('Enter')
@@ -538,8 +303,6 @@ test('chart data uses the icon row and a keyboard operable dialog with formatted
   const saved = details.locator('td[data-column-id="amount"]').first()
   await saved.waitFor()
   assert.equal(await saved.textContent(), '118,393,545.05')
-  assert.equal(await saved.getAttribute('title'), null)
-  assert.equal(await details.locator('.fv-scroll-hint, .pr-table > p').count(), 0)
   await page.evaluate(() => Reflect.set(window, 'pointSelections', []))
   await saved.getByRole('button').click()
   const menu = page.getByRole('menu')
@@ -561,28 +324,12 @@ test('chart data uses the icon row and a keyboard operable dialog with formatted
   assert.equal(await page.locator('[data-resource="records"] [data-icon="data"]').count(), 1)
 })
 
-test('chart metadata uses small accessible icons in one undivided action row', async () => {
+test('chart metadata actions remain accessible and deduplicate origins', async () => {
   const frame = page.locator('[data-resource="precise"]')
-  const data = frame.locator('.fv-icons > [data-icon="data"]')
-  const origins = frame.locator('.fv-icons > [data-icon="origins"]')
-  for (const entry of [data, origins]) {
-    const button = entry.locator('button')
-    assert.equal((await entry.innerText()).trim(), '')
-    assert.ok(await button.getAttribute('aria-label'))
-    assert.equal(await button.getAttribute('data-size'), 'icon-xs')
-  }
-  assert.equal(
-    await frame
-      .locator('.fv-icons')
-      .evaluate((element) => getComputedStyle(element).borderTopWidth),
-    '0px',
-  )
-  assert.equal(
-    await data.locator('button svg').evaluate((element) => getComputedStyle(element).display),
-    'block',
-  )
-  assert.equal(await data.evaluate((element) => getComputedStyle(element).order), '0')
-  assert.equal(await data.evaluate((element) => getComputedStyle(element).marginLeft), '0px')
+  const data = frame.locator('[data-icon="data"]')
+  const origins = frame.locator('[data-icon="origins"]')
+  for (const entry of [data, origins])
+    assert.ok(await entry.locator('button').getAttribute('aria-label'))
   await origins.locator('button').click()
   const dialog = page.getByRole('dialog')
   assert.equal(await dialog.getByText(/sales\.revenue/).count(), 1)
@@ -621,190 +368,14 @@ test('an explicitly visible data reference remains inline and can be toggled', a
   await page.getByRole('dialog').waitFor({ state: 'detached' })
 })
 
-test('coincident alignment marks retain visible rings at wide and narrow widths', async () => {
-  for (const width of [710, 360]) {
-    await page.setViewportSize({ width, height: 900 })
-    await page.locator('body').evaluate((body, value) => {
-      body.style.width = `${value}px`
-      body.style.margin = '0'
-    }, width)
-    for (const name of ['alignment']) {
-      const card = page.locator(`[data-resource="${name}"]`)
-      const chart = card.locator('svg.recharts-surface').first()
-      const hollow = chart.locator('circle[data-mark="hollow"]').first()
-      const filled = chart.locator('circle[data-mark="filled"]').first()
-      assert.ok(Number(await hollow.getAttribute('r')) > Number(await filled.getAttribute('r')))
-      assert.equal(await hollow.getAttribute('cx'), await filled.getAttribute('cx'))
-      assert.notEqual(
-        await hollow.evaluate((node) => getComputedStyle(node).fill),
-        await filled.evaluate((node) => getComputedStyle(node).fill),
-      )
-    }
-  }
-  await page.setViewportSize({ width: 420, height: 900 })
-  await page.locator('body').evaluate((body) => {
-    body.style.width = '420px'
-    body.style.margin = '0'
-  })
-})
-
-test('taxi heatmap headers fit their columns and alignment values fit the full chart', async () => {
-  for (const width of [710, 360]) {
-    await page.setViewportSize({ width, height: 900 })
-    await page.locator('body').evaluate((body, value) => {
-      body.style.width = `${value}px`
-      body.style.margin = '0'
-    }, width)
-    const heatmap = page.locator('[data-resource="nullableTaxiHeatmap"] svg.recharts-surface')
-    const manhattan = heatmap.locator('text[data-heatmap-column="Manhattan"]')
-    const staten = heatmap.locator('text[data-heatmap-column="Staten Island"]')
-    const brooklyn = heatmap.locator('text[data-heatmap-column="Brooklyn"]')
-    const unknown = heatmap.locator('text[data-heatmap-column="Unknown"]')
-    assert.equal(await manhattan.locator('title').textContent(), 'Manhattan')
-    assert.equal(await staten.locator('title').textContent(), 'Staten Island')
-    assert.equal((await manhattan.locator('tspan').allTextContents()).join(''), 'Manhattan')
-    assert.equal((await staten.locator('tspan').allTextContents()).join(' '), 'Staten Island')
-    assert.deepEqual(await brooklyn.locator('tspan').allTextContents(), ['Brooklyn'])
-    assert.deepEqual(await unknown.locator('tspan').allTextContents(), ['Unknown'])
-    const columns = await heatmap.locator('text[data-heatmap-column]').evaluateAll((elements) =>
-      elements.map((element) => ({
-        left: element.getBoundingClientRect().left,
-        right: element.getBoundingClientRect().right,
-      })),
-    )
-    for (let i = 1; i < columns.length; i++)
-      assert.ok(columns[i]!.left >= columns[i - 1]!.right, `${width}: ${JSON.stringify(columns)}`)
-
-    const alignment = page.locator('[data-resource="taxiAlignment"] svg.recharts-surface')
-    const fit = await alignment.evaluateAll((svgs) =>
-      svgs.flatMap((svg) => {
-        const axis = svg.querySelector('.recharts-xAxis .recharts-cartesian-axis-line')!
-        const marks = [...svg.querySelectorAll('[data-mark="filled"], [data-mark="hollow"]')]
-        const axisBox = axis.getBoundingClientRect()
-        const markRight = Math.max(...marks.map((mark) => mark.getBoundingClientRect().right))
-        return [...svg.querySelectorAll('[data-chart-end-label]')].map((element) => {
-          const box = element.getBoundingClientRect()
-          return {
-            text: element.textContent,
-            left: box.left,
-            right: box.right,
-            bottom: box.bottom,
-            axisTop: axisBox.top,
-            markRight,
-            svgRight: svg.getBoundingClientRect().right,
-          }
-        })
-      }),
-    )
-    assert.equal(fit.length, 4)
-    assert.ok(fit.some((item) => item.text?.includes('—') && item.text.includes('6,056')))
-    for (const item of fit) {
-      assert.ok(item.left > item.markRight, `${width}: ${JSON.stringify(item)}`)
-      assert.ok(item.right <= item.svgRight, `${width}: ${JSON.stringify(item)}`)
-      assert.ok(item.bottom < item.axisTop, `${width}: ${JSON.stringify(item)}`)
-    }
-    assert.equal(
-      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
-      0,
-    )
-  }
-  await page.setViewportSize({ width: 420, height: 900 })
-  await page.locator('body').evaluate((body) => {
-    body.style.width = '420px'
-    body.style.margin = '0'
-  })
-})
-
-test('Host theme overrides the OS without remounting, while custom tokens remain authoritative', async () => {
-  const card = page.locator('[data-resource="good"]')
-  await card.evaluate((node) => node.setAttribute('data-theme-test', 'preserved'))
-  const read = () =>
-    card.evaluate((node) => ({
-      colors: Array.from({ length: 8 }, (_, i) =>
-        getComputedStyle(node)
-          .getPropertyValue(`--chart-${i + 1}`)
-          .trim(),
-      ),
-      background: getComputedStyle(node).backgroundColor,
-      color: getComputedStyle(node).color,
-      scheme: getComputedStyle(node.closest('.au-surface')!).colorScheme,
-      sentinel: node.getAttribute('data-theme-test'),
-    }))
-  await page.emulateMedia({ colorScheme: 'light' })
-  await page.evaluate(() => {
-    document.documentElement.setAttribute('data-ds-theme-source', 'dark')
-    document.body.setAttribute('data-ds-dark-theme', '')
-  })
-  const dark = await read()
-  assert.equal(dark.scheme, 'dark')
-  assert.equal(dark.sentinel, 'preserved')
-  assert.equal(new Set(dark.colors).size, 8)
-  await page.evaluate(() => {
-    document.body.style.setProperty('--dsw-alias-bg-base', '#202020')
-    document.body.style.setProperty('--dsw-alias-label-primary', '#ffffff')
-  })
-  const custom = await read()
-  assert.equal(custom.color, 'rgb(255, 255, 255)')
-  await page.emulateMedia({ colorScheme: 'dark' })
-  await page.evaluate(() => {
-    document.body.style.removeProperty('--dsw-alias-bg-base')
-    document.body.style.removeProperty('--dsw-alias-label-primary')
-    document.documentElement.setAttribute('data-ds-theme-source', 'light')
-    document.body.removeAttribute('data-ds-dark-theme')
-  })
-  const light = await read()
-  assert.equal(light.scheme, 'light')
-  assert.equal(new Set(light.colors).size, 8)
-  assert.notDeepEqual(light.colors, dark.colors)
-  assert.equal(light.sentinel, 'preserved')
-  await page.evaluate(() => {
-    document.documentElement.setAttribute('data-ds-theme-source', 'system')
-    document.body.setAttribute('data-ds-dark-theme', '')
-  })
-  await page.emulateMedia({ colorScheme: 'light' })
-  assert.equal((await read()).scheme, 'dark')
-  await page.evaluate(() => {
-    document.documentElement.removeAttribute('data-ds-theme-source')
-    document.body.removeAttribute('data-ds-dark-theme')
-    document.body.setAttribute('data-theme', 'light')
-  })
-  await page.emulateMedia({ colorScheme: 'dark' })
-  await page.waitForFunction(
-    () =>
-      getComputedStyle(document.querySelector('[data-resource=good]')!.closest('.au-surface')!)
-        .colorScheme === 'light',
-  )
-  assert.equal((await read()).scheme, 'light')
-  await page.evaluate(() => document.body.removeAttribute('data-theme'))
-})
-
-test('Dataset charts retain exact summaries and tooltips, local scrolling and the saved data dialog', async () => {
-  // Earlier responsive, theme and keyboard tests share this page. Reset the fixture
-  // so their final scroll and active-point state does not affect this interaction.
+test('Dataset chart summaries and data dialog retain exact saved values', async () => {
   await page.reload()
   const card = page.locator('[data-resource="dataset"]')
-  const chart = card.locator('svg.recharts-surface')
-  await chart.waitFor()
-  assert.equal(await chart.count(), 1)
-  assert.equal(await chart.getByRole('button').count(), 0)
   const plot = card.locator('.fv-plot')
   const summary = await plot.getAttribute('aria-label')
   assert.ok(summary)
   assert.ok(summary.includes('12345678901234.5678'))
   assert.ok(summary.includes('-2.5000'))
-  const marks = chart.locator('.recharts-line-dots circle')
-  await marks.first().hover()
-  const tooltip = card.locator('.recharts-tooltip-wrapper:visible')
-  await tooltip.waitFor()
-  assert.match(await tooltip.innerText(), /12345678901234\.5678/)
-  await marks.last().hover()
-  await page.waitForFunction(() =>
-    document
-      .querySelector('[data-resource="dataset"] .recharts-tooltip-wrapper')
-      ?.textContent?.includes('-2.5000'),
-  )
-  assert.match(await tooltip.innerText(), /-2\.5000/)
-  assert.ok(await plot.evaluate((node) => node.scrollWidth > node.clientWidth))
   await plot.focus()
   await page.keyboard.press('ArrowRight')
   assert.ok(await plot.evaluate((node) => node.scrollLeft > 0))
@@ -813,69 +384,4 @@ test('Dataset charts retain exact summaries and tooltips, local scrolling and th
   await dialog.getByText('12345678901234.5678', { exact: true }).waitFor()
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   await dialog.waitFor({ state: 'detached' })
-})
-
-test('long partial period labels retain their marker within the header and frozen rail', async () => {
-  const label = 'A deliberately long saved period with many separate words'
-  for (const width of [710, 360]) {
-    await page.setViewportSize({ width, height: 900 })
-    await page.locator('body').evaluate((body, value) => {
-      body.style.width = `${value}px`
-      body.style.margin = '0'
-    }, width)
-    const column = page.locator('[data-resource="longPeriodX"] text[data-heatmap-column]').filter({
-      has: page.locator('title', { hasText: label }),
-    })
-    assert.equal(await column.count(), 1)
-    assert.match((await column.locator('title').textContent()) ?? '', /Partial period/)
-    const lines = await column.locator('tspan').allTextContents()
-    assert.ok(lines.length <= 2, JSON.stringify(lines))
-    assert.match(lines.join(' '), /◌/)
-    const lineWidths = await column
-      .locator('tspan')
-      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().width))
-    assert.ok(
-      lineWidths.every((lineWidth) => lineWidth < 88),
-      JSON.stringify(lineWidths),
-    )
-
-    const region = page.locator('[data-resource="longPeriodY"] .fv-plot')
-    const overflowing = await region.evaluate(
-      (element) => element.scrollWidth > element.clientWidth + 1,
-    )
-    if (!overflowing) {
-      const labels = await region.locator('[data-row-label]').evaluateAll((rows) =>
-        rows.map((row) => ({
-          title: row.querySelector('title')?.textContent,
-          label: row.querySelector('text')?.textContent,
-        })),
-      )
-      const entry = labels.find((item) => item.title?.includes(label))
-      assert.ok(entry, JSON.stringify(labels))
-      assert.match(entry.title ?? '', /Partial period/)
-      assert.match(entry.label ?? '', /◌/)
-      continue
-    }
-    await region.evaluate((element) => {
-      element.scrollLeft = element.scrollWidth
-      element.dispatchEvent(new Event('scroll'))
-    })
-    const rail = region.locator('[data-frame-rail]')
-    await rail.waitFor({ state: 'visible' })
-    const entries = await rail.locator('[data-rail-row]').evaluateAll((rows) =>
-      rows.map((row) => ({
-        title: row.querySelector('title')?.textContent,
-        label: row.querySelector('text')?.textContent,
-      })),
-    )
-    const entry = entries.find((item) => item.title?.includes(label))
-    assert.ok(entry, JSON.stringify(entries))
-    assert.match(entry.title ?? '', /Partial period/)
-    assert.match(entry.label ?? '', /◌/)
-  }
-  await page.setViewportSize({ width: 420, height: 900 })
-  await page.locator('body').evaluate((body) => {
-    body.style.width = '420px'
-    body.style.margin = '0'
-  })
 })

@@ -74,7 +74,14 @@ const rpc={call:async(_channel,endpoint)=>({ok:true,value:endpoint==='reports/hi
 let args,field;
 function observe(){const candidate=analysisCandidate({phase:'preparing',args,callId:'patch',name:'marivo_report_write',turn:1,step:1,time:1,subCalls:[]},'session','workspace',generation);window.preview=candidate.preview;views.observe(candidate,${JSON.stringify(root)});}
 function reset(){views.revoke('session');const view=views.accept(delivery,'initial',generation,${JSON.stringify(root)});views.document(view.id,{generation,workspacePath:${JSON.stringify(root)}},documentValue.buildId,documentValue);}
-window.identity={reset,begin(nextField){reset();field=nextField;args=new PartialArguments();args.append(JSON.stringify({stage:'preview',title:'Candidate title',locale:'zh-CN',program:'root = Stack([intro, stable]); intro = TextContent("Candidate body"); image = null;',resourcePatch:{remove:['image']},...(field==='onto'?{ref:draftRef}:{})}).slice(0,-1));observe();},partial(){args.append(',"'+field+'":"mr1:');observe();},completeValue(){args.append(savedRef.slice(4)+'"');observe();},close(){args.append('}');observe();},standalone(close=false){views.revoke('session');args=new PartialArguments();args.append(JSON.stringify({stage:'preview',program:'root = TextContent("Standalone body");'}).slice(0,-1)+(close?'}':''));observe();}};
+window.identity={reset,begin(nextField){reset();field=nextField;args=new PartialArguments();args.append(JSON.stringify({stage:'preview',title:'Candidate title',locale:'zh-CN',program:'root = Stack([intro, stable]); intro = TextContent("Candidate body"); image = null;',resourcePatch:{remove:['image']},...(field==='onto'?{ref:draftRef}:{})}).slice(0,-1));observe();},partial(){args.append(',"'+field+'":"mr1:');observe();},completeValue(){args.append(savedRef.slice(4)+'"');observe();},close(){args.append('}');observe();},standalone(close=false){views.revoke('session');args=new PartialArguments();args.append(JSON.stringify({stage:'preview',program:'root = TextContent("Standalone body");'}).slice(0,-1)+(close?'}':''));observe();},savedBase(){views.revoke('session');const saved={kind:'marivo.presentation.delivery',schemaVersion:2,dshSessionId:'session',turn:1,surface:'tool',receipt};const view=views.accept(saved,'initial',generation,${JSON.stringify(root)});views.document(view.id,{generation,workspacePath:${JSON.stringify(root)}},documentValue.buildId,documentValue);window.originalView=view.id;},savedPatch(fail=false){args=PartialArguments.fromObject({stage:'preview',ref:savedRef,program:'root = TextContent("Revised body");'});const next=analysisCandidate({phase:'preparing',args,callId:'patch',name:'marivo_report_write',turn:1,step:1,time:1,subCalls:[]},'session','workspace',generation);const view=views.observeReady(fail?{...next,phase:'failed'}:next,${JSON.stringify(root)});window.revisionView=view.id;}};
+window.identity.admitSavedRevision=()=>{
+  const draftRevision='22222222-2222-4222-8222-222222222222';
+  const view=views.accept({...delivery,draftRevision},'patch',generation,${JSON.stringify(root)});
+  views.document(view.id,{generation,workspacePath:${JSON.stringify(root)}},draftRevision,
+    {...documentValue,buildId:draftRevision,recordId:'marivo-ui:report:'+draftRevision,program:'root = TextContent("Admitted revision");'});
+};
+window.identity.settle=()=>views.settle('session');
 function App(){useSyncExternalStore(views.subscribe,views.getSnapshot);const view=views.forTurn('session',1).at(-1);return view?h(ReportView,{view,views,rpc}):null;}
 reset();createRoot(document.getElementById('root')).render(h(App));
 `,
@@ -144,5 +151,21 @@ reset();createRoot(document.getElementById('root')).render(h(App));
   assert.equal(await page.getByText('Standalone body', { exact: true }).count(), 0)
   await page.evaluate(() => Reflect.get(window, 'identity').standalone(true))
   await page.getByText('Standalone body', { exact: true }).waitFor()
+  await page.evaluate(() => Reflect.get(window, 'identity').savedBase())
+  await page.getByText('Successful body', { exact: true }).waitFor()
+  await page.evaluate(() => Reflect.get(window, 'identity').savedPatch())
+  await page.getByText('Revised body', { exact: true }).waitFor()
+  assert.equal(
+    await page.evaluate(() => Reflect.get(window, 'revisionView')),
+    await page.evaluate(() => Reflect.get(window, 'originalView')),
+  )
+  await page.evaluate(() => Reflect.get(window, 'identity').savedPatch(true))
+  await page.getByText('Successful body', { exact: true }).waitFor()
+  assert.equal(await page.getByText('Revised body', { exact: true }).count(), 0)
+  await page.evaluate(() => Reflect.get(window, 'identity').admitSavedRevision())
+  await page.getByText('Admitted revision', { exact: true }).waitFor()
+  await page.evaluate(() => Reflect.get(window, 'identity').settle())
+  await page.locator('[data-analysis-phase="saved"]').waitFor()
+  await page.getByText('Successful body', { exact: true }).waitFor()
   assert.deepEqual(errors, [])
 })

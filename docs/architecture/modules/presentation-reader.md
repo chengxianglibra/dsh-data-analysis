@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-本模块把已保存的分析文档（新保存为 `dsh.analysis-ui/v2`，兼容读取 v1）呈现在真实 Turn 下的独立 Chat 节点与原生右侧 tab 中。
+本模块把已保存的分析文档（新保存为 `dsh.analysis-ui/v2`，兼容读取 v1）呈现在原生右侧 Tab 中，并在真实 Turn 的 Chat 节点保留入口。
 插件拥有 Catalog/Renderer、阅读状态、报告目录与版本历史视图；Marivo 拥有分析语义与来源事实，
 Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 消费已保存文档及交付链路提供的当前 Turn 草稿和候选，
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
@@ -15,25 +15,27 @@ Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader �
 
 ## 报告位置与阅读状态
 
-新报告固定在 Chat，首次候选、后续修订和正式保存复用稳定的 report view。固定图标按钮的悬停和聚焦提示为“在边栏查看”；点击后报告只在边栏显示，Chat 不保留正文、标题或入口链接。只有原生 Tab inventory 确认关闭才恢复正文；切换、隐藏和 React 卸载不等于关闭。目录与历史入口始终导航到右侧，重复点击由原生资源地址去重。
+报告正文固定在右侧 Tab，首次候选、后续修订和正式保存复用稳定的 report view。前台会话首次出现可展示候选时自动打开并选中 Tab；关闭或切换 Tab 后，后续更新不重新打开或抢焦点。Chat 保留可手动打开的入口；历史回放和后台会话不自动导航。目录与历史入口始终导航到右侧，重复点击由原生资源地址去重。
 
-可见的报告标题由 program 中的正文负责，Chat 工具栏只保留“在边栏查看”按钮，AnalysisSurface 不再自动添加主标题。`AnalysisDocument.title` 继续用于目录、原生 Tab、离线 HTML 的页面标题及报告的无障碍名称；没有正文标题时不补写。TextContent 的 Markdown 保留作者声明的 h1–h6 层级。生成动效独立显示，保存后不保留空标题行；右侧报告操作占用独立一行，避免遮挡正文。
+可见的报告标题由 program 中的正文负责，AnalysisSurface 不再自动添加主标题。`AnalysisDocument.title` 继续用于目录、原生 Tab、离线 HTML 的页面标题及报告的无障碍名称；没有正文标题时不补写。TextContent 的 Markdown 保留作者声明的 h1–h6 层级。生成动效独立显示，保存后不保留空标题行；右侧报告操作占用独立一行，避免遮挡正文。
 
-客户端 ReportViews 维护已准入文档和读者状态，Tabs 选择、表格排序/分页及表格横向滚动按稳定语句身份保留，包括移动、保存和关闭回到 Chat。报告外层滚动由各自 Host 容器负责。新会话、Workspace 或连接 generation 不继承旧状态。Tab 的 Build 地址支持已保存内容重开；临时阅读状态不持久写入报告。
+客户端 ReportViews 维护已准入文档和读者状态，Tabs 选择、表格排序/分页及表格横向滚动按稳定语句身份保留，包括生成期间的更新和保存。报告外层滚动由各自 Host 容器负责。新会话、Workspace 或连接 generation 不继承旧状态。Tab 的 Build 地址支持已保存内容重开；临时阅读状态不持久写入报告。
 
-固定 Build 的 contentReview 在报告正文外显示：required 提示数据已变更、静态叙述待核对；旧 v1 缺少该字段，unknown 明示未记录复核状态；not-needed 不显示提示。Chat、当前和历史 Tab、离线 HTML 使用同一 reader 与相应版本元数据，普通展示编辑不自动清除 required。该状态不证明业务结论或分析正确性。
+同一阅读实例中的交付回执只应用一次，Chat 重放旧回执不覆盖后续修订。Turn 结束后草稿失效；已有正式版本的报告恢复最后保存的 Build，未保存修订不再读取，Chat 保留草稿失效提示。
+
+固定 Build 的 contentReview 在报告正文外显示：required 提示数据已变更、静态叙述待核对；旧 v1 缺少该字段，unknown 明示未记录复核状态；not-needed 不显示提示。当前和历史 Tab、离线 HTML 使用同一 reader 与相应版本元数据，普通展示编辑不自动清除 required。该状态不证明业务结论或分析正确性。
 
 ## 统一 AnalysisSurface 与候选预览
 
-AnalysisSurface 使用固定 Catalog/Renderer 呈现 OpenUI Lang program；Chat 候选、保存结果和右侧报告 Tab
+AnalysisSurface 使用固定 Catalog/Renderer 呈现 OpenUI Lang program；候选、草稿和保存结果
 是准确调用及保存版本的薄适配器。候选与已保存文档共用 Renderer；Native 前缀通过 isStreaming 解析，不完整资源显示占位。
 基版本经现有 RPC 核验后可读；生成期 patch 前缀只合并为候选；完整校验成功后才更新草稿或保存，失败保持旧成功版本。
 候选保留 Tabs、展开、已准入快照表格的排序/分页与本地图表浏览；不调用业务读取、源码读取、语义导航、提问、导出、刷新或保存。
 TextContent 的 Markdown 链接在候选中仅显示标签，正式 reader 才提供导航，不使用整页 `inert` 阻止阅读。
 Surface 接收文档及已保存资源读取回调，领域组件通过普通 React context 取资源，不访问 Store、RPC、MCP 或 URL。
-阅读状态属于所在视图，位置切换可以重挂。Stack、Card 和 TabItem 内容的具名子组件使用 statementId 及同名出现次数作为 React key；同层增删和重排不改变保留组件的身份，inline 节点仍按位置识别。改变组件类型或跨父容器移动允许重挂。
+阅读状态属于所在视图。Stack、Card 和 TabItem 内容的具名子组件使用 statementId 及同名出现次数作为 React key；同层增删和重排不改变保留组件的身份，inline 节点仍按位置识别。改变组件类型或跨父容器移动允许重挂。
 
-Chat 与右侧 Tab 的报告草稿使用同一 Renderer 和 Session/Turn 草稿状态。Native program 前缀在生成期间基于上一成功草稿合并为临时候选；工具执行期 Host 可逐项交付新资源，引用和组件配置匹配后立即在原位置显示，未就绪的资源局部等待。候选与已校验修订分开；成功修订在同一视图更新，失败或取消保留最后成功内容。报告顶部的轻量折线动效表示生成，已准入草稿的端点缓慢呼吸；资源和修订更新不触发整份报告淡入。正式保存后指示器消失，在当前阅读位置原位切换到 reader。普通生成和草稿状态不显示文字横幅；状态名称保留给辅助技术，真实失败仍有明确错误提示。遵循 prefers-reduced-motion，折线静态显示且禁用内容过渡。历史、导出和「就此提问」使用正式版本的固定 Build。
+右侧 Tab 的报告候选和草稿使用同一 Renderer 和 Session/Turn 草稿状态。Native program 前缀在生成期间基于上一成功草稿合并为临时候选；工具执行期 Host 可逐项交付新资源，引用和组件配置匹配后立即在原位置显示，未就绪的资源局部等待。候选与已校验修订分开；成功修订在同一视图更新，失败或取消保留最后成功内容。报告顶部的轻量折线动效表示生成，已准入草稿的端点缓慢呼吸；资源和修订更新不触发整份报告淡入。正式保存后指示器消失，在当前阅读位置原位切换到 reader。普通生成和草稿状态不显示文字横幅；状态名称保留给辅助技术，真实失败仍有明确错误提示。遵循 prefers-reduced-motion，折线静态显示且禁用内容过渡。历史、导出和「就此提问」使用正式版本的固定 Build。
 
 `resourcePatch` 区分 omitted、incomplete、complete：完整调用省略时继承基版本；完整 patch 按 put/remove 增量合并，保留未提及资源，替换项仅接入声明匹配的 Host 准入资源。
 已有草稿的参数范围尚未确定时保留当前基版本，不再扫描资源配置依赖图；patch 明确后将已有定义和新语句依次交给 OpenUI streaming parser。适配层规范化分号/换行边界；program 字段仍在接收时只追加已由边界结束的语句，避免 `root = Sta` 一类尚未形成调用的前缀覆盖已有树。字段完整后交给上游解析其余语句，未闭合替换保留原定义。初次生成无基版本时允许部分文字和有效兄弟先出现。
@@ -127,7 +129,7 @@ Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原�
 
 `SnapshotFilter` 以保存原值提供单选或多选，同一控件内为 OR、视图绑定的多个控件之间为 AND。只有同资源的普通 Dataset 表格、line/area/bar 和 Frame observation 表格及普通图表支持绑定；auto 在原始快照上解析。未绑定的视图、静态正文和 KPI 保持原值，筛选不发起 Host 请求或重新计算。表格、图表和数据详情消费相同原始行索引；排序、分页和点引用保留保存行身份，图表保留系列顺序与缺口。改变筛选条件时表格回到第一页，零匹配期间也保留有效排序。
 
-筛选状态归属阅读实例和固定 Build：同一实例在 Chat 和侧栏之间移动时保留；独立重开、切换 Build 或离线打开从各自默认值开始。候选及草稿控件禁用，仅显示默认投影。候选替换未就绪时，已可读的组件保留上次的快照、视图和筛选投影，首次加载的组件显示局部等待。本地选择不写入历史或导出文件。严格 Catalog build 校验保持不变，不承诺跨 Catalog 的旧报告迁移。
+筛选状态归属阅读实例和固定 Build：同一实例在生成和保存期间保留；独立重开、切换 Build 或离线打开从各自默认值开始。候选及草稿控件禁用，仅显示默认投影。候选替换未就绪时，已可读的组件保留上次的快照、视图和筛选投影，首次加载的组件显示局部等待。本地选择不写入历史或导出文件。严格 Catalog build 校验保持不变，不承诺跨 Catalog 的旧报告迁移。
 
 ## 来源与范围详情
 

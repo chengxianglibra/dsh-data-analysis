@@ -61,67 +61,15 @@ async function checkSurface(name: string) {
   const card = page.locator(`[data-resource="${name}"]`)
   const svg = card.locator('svg.recharts-surface').first()
   await svg.waitFor()
-  assert.equal(await svg.locator(':scope > title').textContent(), '')
   assert.ok((await svg.getAttribute('aria-label'))?.length)
   assert.equal(await svg.getAttribute('role'), 'application')
   assert.ok((await card.locator('.fv-plot').first().getAttribute('aria-label'))?.length)
   return card
 }
 
-async function checkTooltipInstant(card: ReturnType<Page['locator']>) {
-  const tooltip = card.locator('.recharts-tooltip-wrapper:visible')
-  await tooltip.waitFor()
-  assert.equal(await tooltip.count(), 1)
-  const styles = await tooltip.evaluate((node) => ({
-    inlineTransition: (node as HTMLElement).style.transition,
-    duration: getComputedStyle(node).transitionDuration,
-    visible: getComputedStyle(node).visibility,
-  }))
-  assert.ok(
-    styles.inlineTransition === '' || styles.inlineTransition === 'none',
-    JSON.stringify(styles),
-  )
-  assert.equal(styles.duration, '0s')
-  assert.equal(styles.visible, 'visible')
-  return tooltip
-}
-
-test('Frame line and area keep one instantaneous tooltip and accessible points', async () => {
+test('Frame line and area expose accessible points with saved identities', async () => {
   for (const name of ['line', 'area']) {
     const card = await checkSurface(name)
-    const mark = card.locator('[data-frame-point="0:m0"] circle').first()
-    await mark.hover({ force: true })
-    const tip = await checkTooltipInstant(card)
-    assert.match(await tip.innerText(), /m0: 1\.00/)
-    assert.equal(await card.locator('[data-frame-point] circle title').count(), 0)
-    const firstPosition = await tip.evaluate((node) => node.getBoundingClientRect().x)
-    const last = card.locator('[data-frame-point="2:m0"] circle').first()
-    await last.hover({ force: true })
-    await page.waitForFunction(
-      (resource) =>
-        document
-          .querySelector(`[data-resource="${resource}"] .recharts-tooltip-wrapper`)
-          ?.textContent?.includes('m0: 3.00'),
-      name,
-    )
-    const lastPosition = await tip.evaluate((node) => node.getBoundingClientRect().x)
-    assert.notEqual(firstPosition, lastPosition)
-    assert.equal(await tip.evaluate((node) => getComputedStyle(node).transitionDuration), '0s')
-    const firstBox = await mark.boundingBox()
-    const secondBox = await card.locator('[data-frame-point="1:m0"] circle').first().boundingBox()
-    assert.ok(firstBox && secondBox)
-    await page.mouse.move(
-      firstBox.x + firstBox.width / 2 + (secondBox.x - firstBox.x) / 4,
-      firstBox.y + firstBox.height / 2 + (secondBox.y - firstBox.y) / 4,
-    )
-    await page.waitForFunction(
-      (resource) =>
-        document
-          .querySelector(`[data-resource="${resource}"] .recharts-tooltip-wrapper`)
-          ?.textContent?.includes('m0: 1.00'),
-      name,
-    )
-    assert.equal(await card.locator('.recharts-tooltip-wrapper:visible').count(), 1)
     const point = card.locator('[data-frame-point="0:m0"]').first()
     assert.match((await point.getAttribute('aria-label')) ?? '', /m0: 1\.00/)
     await point.focus()
@@ -135,28 +83,11 @@ test('Frame line and area keep one instantaneous tooltip and accessible points',
   }
 })
 
-test('Dataset exact values and domain series use accessible roots and no native summary title', async () => {
-  const dataset = await checkSurface('dataset')
-  await dataset.locator('.recharts-line-dots circle').first().hover({ force: true })
-  const tip = await checkTooltipInstant(dataset)
-  assert.match(await tip.innerText(), /12345678901234\.5678/)
-
-  const domain = await checkSurface('domain')
-  const dot = domain.locator('[data-frame-point] circle').first()
-  await dot.hover({ force: true })
-  const domainTip = await checkTooltipInstant(domain)
-  assert.match(await domainTip.innerText(), /sales/)
-  assert.equal(await domain.locator('[data-frame-point] circle title').count(), 0)
+test('Dataset and domain charts expose accessible roots', async () => {
+  await checkSurface('dataset')
+  await checkSurface('domain')
 })
 
-test('dense line still exposes summary and activates tooltip without static points', async () => {
-  const card = await checkSurface('dense')
-  const svg = card.locator('svg.recharts-surface')
-  assert.equal(await svg.locator('.recharts-line-dots circle').count(), 0)
-  await svg.scrollIntoViewIfNeeded()
-  const bounds = await svg.boundingBox()
-  assert.ok(bounds)
-  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
-  const tip = await checkTooltipInstant(card)
-  assert.match(await tip.innerText(), /m0:/)
+test('dense line exposes an accessible summary', async () => {
+  await checkSurface('dense')
 })

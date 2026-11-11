@@ -26,18 +26,13 @@ const receipt: PresentationReceipt = {
 
 test('model-facing receipt text keeps identity and omits Workspace paths and digests', () => {
   const parsed = parsePresentationReceipt(receipt)
-  for (const [surface, label] of [
-    ['tool', 'chat'],
-    ['tab', 'tab'],
-  ] as const) {
-    const text = presentationReceiptText(parsed, surface)
-    assert.match(text, /^Revenue by region\n/)
-    assert.match(text, /Monthly revenue compared with the prior period\./)
-    assert.match(text, /Ref: mr1:s:[A-Za-z0-9_-]+/)
-    assert.ok(text.includes(`Surface: ${label}`))
-    for (const forbidden of ['/', 'sha256', 'Workspace:'])
-      assert.ok(!text.includes(forbidden), forbidden)
-  }
+  const text = presentationReceiptText(parsed)
+  assert.match(text, /^Revenue by region\n/)
+  assert.match(text, /Monthly revenue compared with the prior period\./)
+  assert.match(text, /Ref: mr1:s:[A-Za-z0-9_-]+/)
+  assert.ok(text.includes('Reader: right sidebar'))
+  for (const forbidden of ['/', 'sha256', 'Workspace:'])
+    assert.ok(!text.includes(forbidden), forbidden)
 })
 
 test('HTML assets are rejected rather than admitted as optional receipt files', () => {

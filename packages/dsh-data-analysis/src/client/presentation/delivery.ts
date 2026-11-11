@@ -390,13 +390,18 @@ export const marivoAnalysisSurfaceDefinition = {
     const deliveries = state.deliveries.filter(
       (item) => item.delivery.surface === 'tool' && (boundary === null || item.seq <= boundary),
     )
-    const drafts = end
-      ? []
-      : (state.drafts ?? []).filter(
-          (item) =>
-            item.delivery.surface === 'tool' &&
-            !state.deliveries.some((saved) => saved.delivery.draftId === item.delivery.draftId),
-        )
+    // Retain draft identity after the Turn ends so the chat entry can explain
+    // that an unsaved draft has expired. It cannot be read after the boundary.
+    const drafts = (state.drafts ?? []).filter(
+      (item) =>
+        item.delivery.surface === 'tool' &&
+        (boundary === null || item.seq <= boundary) &&
+        !state.deliveries.some(
+          (saved) =>
+            (boundary === null || saved.seq <= boundary) &&
+            saved.delivery.draftId === item.delivery.draftId,
+        ),
+    )
     if (!deliveries.length && !drafts.length && (end || state.firstSeq === undefined)) {
       return (end || state.drafts?.length) && current
         ? { ...current, visibility: 'hidden' as const }

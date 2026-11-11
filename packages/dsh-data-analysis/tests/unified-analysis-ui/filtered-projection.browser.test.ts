@@ -116,10 +116,8 @@ window.renderFilter(undefined);`,
     )
     await page.locator('tbody tr[data-row-index="2"] [data-column-id="value"] button').click()
     const point = page.locator('[data-frame-point="2:value"]').first()
-    await point.hover()
-    const pointBox = await point.boundingBox()
-    assert.ok(pointBox)
-    await page.mouse.click(pointBox.x + pointBox.width / 2, pointBox.y + pointBox.height / 2)
+    await point.focus()
+    await point.press('Enter')
     assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'selected')), [
       { row: 2, field: 'value' },
       { row: 2, field: 'value' },

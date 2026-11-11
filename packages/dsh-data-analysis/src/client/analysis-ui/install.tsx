@@ -2,7 +2,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ConnectionGenerationState } from '@deepseek-ai/dsh-client-connection/client'
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
-import { PanelRightOpenIcon } from 'lucide-react'
 import {
   type ComponentType,
   useEffect,
@@ -20,9 +19,10 @@ import {
   ANALYSIS_SURFACE_NODE_KEY,
   analysisDraftForNode,
   analysisSurfacesForNode,
+  parseDraftDelivery,
 } from '../presentation/delivery.ts'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
-import { Button, IconButton } from '../ui/controls.tsx'
+import { Button } from '../ui/controls.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
 import { analysisToolDelivery } from './candidate.ts'
 import { savedCodeReader } from './candidate-view.tsx'
@@ -66,21 +66,12 @@ export function installAnalysisTool(
   const getWorkspaces = () => ctx.workspaces.list.getSnapshot()
   const Body = localized(
     ctx,
-    function ReportBody({
-      viewId,
-      sessionId,
-      inTab = false,
-    }: {
-      viewId: string
-      sessionId: string
-      inTab?: boolean
-    }) {
+    function ReportBody({ viewId, sessionId }: { viewId: string; sessionId: string }) {
       const t = useCopy()
       const generation = useSyncExternalStore(subscribe, getGeneration)
       const workspaces = useSyncExternalStore(subscribeWorkspaces, getWorkspaces)
       useSyncExternalStore(views.subscribe, views.getSnapshot)
       const view = views.get(viewId)
-      const [error, setError] = useState(false)
       const lifetime = useRef<AbortController | null>(null)
       const allowed =
         view &&
@@ -110,7 +101,6 @@ export function installAnalysisTool(
         return lifetime.current.signal
       }
       if (!allowed) return <p role="alert">{t('marivo.presentation.ui-read-failed')}</p>
-      if (!inTab && view.tabId) return null
       const receipt = view.saved?.receipt
       const recordId = receipt ? analysisRecordId(receipt.reportId, receipt.buildId) : undefined
       const actions: Omit<AnalysisResourceContext, 'readResource'> =
@@ -133,45 +123,8 @@ export function installAnalysisTool(
             }
           : {}
       return (
-        <section
-          className="mv-ui"
-          data-analysis-view={viewId}
-          data-analysis-placement={inTab ? 'sidebar' : 'chat'}
-        >
+        <section className="mv-ui" data-analysis-view={viewId} data-analysis-placement="sidebar">
           <UIStyleSheet />
-          {!inTab && (
-            <div
-              className="mv-report-toolbar"
-              style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-                gap: '1rem',
-                position: 'sticky',
-                top: 0,
-                zIndex: 1,
-                background: 'var(--background)',
-                padding: '.5rem',
-              }}
-            >
-              <IconButton
-                variant="ghost"
-                type="button"
-                label={t('marivo.presentation.ui-view-sidebar')}
-                onClick={() => {
-                  try {
-                    move(view)
-                    setError(false)
-                  } catch {
-                    setError(true)
-                  }
-                }}
-              >
-                <PanelRightOpenIcon aria-hidden="true" />
-              </IconButton>
-            </div>
-          )}
-          {error && <p role="alert">{t('marivo.presentation.ui-read-failed')}</p>}
           <ReportView view={view} views={views} rpc={rpc} actions={actions} />
         </section>
       )
@@ -187,7 +140,7 @@ export function installAnalysisTool(
         views
           .forTurn(props.sessionId, delivery.turn)
           .find((view) => view.saved?.receipt.buildId === delivery.receipt.buildId))
-    if (view?.tabId) return null
+    if (view && delivery?.surface === 'tool') return null
     return delivery ? (
       <Button variant="outline" onClick={() => open(props.sessionId, delivery.receipt)}>
         {t('marivo.presentation.ui-open-tab')}
@@ -202,11 +155,59 @@ export function installAnalysisTool(
       (props: ToolCallViewProps) => <Tool {...props} />,
     ),
   )
+  const Entry = localized(ctx, function ReportEntry({ view }: { view: ReportViewState }) {
+    const t = useCopy()
+    const [error, setError] = useState(false)
+    const expired = Boolean(view.settled && !view.saved)
+    const running =
+      !view.settled && (view.candidate?.phase === 'preparing' || view.candidate?.phase === 'start')
+    const unsavedDraft =
+      !view.settled &&
+      Boolean(view.draft && (!view.saved || view.saved.draftId !== view.draft.draftId))
+    const unsaved = !view.saved || running || unsavedDraft
+    const title =
+      (unsaved ? view.candidate?.title : undefined) ??
+      view.saved?.receipt.title ??
+      t('marivo.presentation.ui-draft-tab')
+    return (
+      <div className="mv-ui flex flex-wrap items-center gap-2" data-analysis-entry={view.id}>
+        <UIStyleSheet />
+        <span>{title}</span>{' '}
+        {unsaved && (
+          <span className="text-sm text-muted-foreground" role="status">
+            {t(
+              expired
+                ? 'marivo.presentation.ui-draft-expired'
+                : running
+                  ? 'marivo.presentation.ui-generating'
+                  : 'marivo.presentation.ui-draft',
+            )}
+          </span>
+        )}{' '}
+        <Button
+          variant="outline"
+          disabled={expired}
+          onClick={() => {
+            try {
+              move(view)
+              setError(false)
+            } catch {
+              setError(true)
+            }
+          }}
+        >
+          {t('marivo.presentation.ui-open-tab')}
+        </Button>
+        {(error || view.openError) && <p role="alert">{t('marivo.presentation.ui-open-failed')}</p>}
+      </div>
+    )
+  })
   const Surface = localized(
     ctx,
     function AnalysisSurfaceNode(
       props: Pick<ChatNodeViewProps<'marivo-analysis-surface'>, 'node' | 'sessionId'>,
     ) {
+      const t = useCopy()
       const generation = useSyncExternalStore(subscribe, getGeneration)
       const workspaces = useSyncExternalStore(subscribeWorkspaces, getWorkspaces)
       useSyncExternalStore(views.subscribe, views.getSnapshot)
@@ -255,10 +256,27 @@ export function installAnalysisTool(
               ? deliveries.some((d) => d.receipt.buildId === view.saved?.receipt.buildId)
               : props.node.data.boundary === null),
         )
+      const expiredDrafts =
+        props.node.data.boundary === null
+          ? []
+          : (props.node.data.drafts ?? [])
+              .map((item) => parseDraftDelivery(item.delivery))
+              .filter(
+                (item) =>
+                  item?.dshSessionId === props.sessionId &&
+                  item.turn === props.node.data.turn &&
+                  item.workspaceId === workspace?.workspaceId &&
+                  !deliveries.some((delivery) => delivery.draftId === item.draftId),
+              )
       return (
         <>
           {active.map((view) => (
-            <Body key={view.id} viewId={view.id} sessionId={props.sessionId} />
+            <Entry key={view.id} view={view} />
+          ))}
+          {expiredDrafts.map((draft) => (
+            <p key={draft?.draftId} role="status">
+              {t('marivo.presentation.ui-draft-expired')}
+            </p>
           ))}
           {NextSteps && <NextSteps sessionId={props.sessionId} turn={props.node.data.turn} />}
         </>
