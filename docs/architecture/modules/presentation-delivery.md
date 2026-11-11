@@ -43,7 +43,8 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 每次 preview/save 整批原子准入：任一资源读取、视图或完整文档失败，均保留最后成功 revision、document、current 和 history；临时资源流不能成为成功草稿。调用者可显式提交已就绪子集，未提交项保持旧数据，不能自动剔除已失败资源。结果中的 changed/reused 区分真正替换与复用；同一固定引用即使更换来源记录也不冒充新计算，同路径图片继续复用。reader 的 reuseGroups 按准确固定引用分组，不按 codeRef 或相同值推断；writer 的 unchangedAliases 提示仍保留旧数据的共享别名，不自动扩大更新范围。
 
 语法、缺失资源及视图校验失败的回执包含 `applied:false`、可确定的错误位置或资源名，以及已有基准时的
-`currentRef`。修复后向该基准提交本次完整修改，沿用已有固定资源。草稿上下文缺失或冲突时通过
+`currentRef`。视图参数错误同时附带相关固定结果的有界配置元数据和可用候选。图形轴引用 Frame 的轴名，表格列引用快照列 ID；
+`rowLimit` 适用于横向分类条，`comparisonLabels` 引用快照中可唯一确定的比较别名。修复后向该基准提交本次完整修改，沿用已有固定资源。草稿上下文缺失或冲突时通过
 `marivo_report_read` 恢复。草稿过期后可用历史回执中的固定输出重新构建。
 
 新 Build 将 contentReview 持久写入 `presentation.json`：已有资源真正替换且存在非空 TextContent、TextCallout 的 title/description 或 AccordionItem 的 trigger 时为 required，无静态正文时为 not-needed。旧 v1 未记录状态，读取解释为 unknown；普通 edit 继承 required，不把模型声明当成已复核证明。提示显示在报告正文之外，当前/历史重开及离线 HTML 均使用对应 Build 的事实。
@@ -79,6 +80,7 @@ includeCode 按 codeRef 去重返回 definition.sources，逐项标明 available
 报告视图以 Session/Turn/首次 call 建立稳定身份，草稿后续调用通过 draftId 关联；Workspace 路径与连接 generation 共同限定读写归属。真实 Turn 的 Chat 节点保留轻量分析视图入口，正文仅在右侧 Tab 展示；原生 tool view 保留错误说明或已保存视图入口。[下一步推荐](analysis-next-steps.md)位于 Chat 回合尾部。
 
 首次 Native 参数候选、已校验草稿修订和最终 Build 由同一报告视图更新。前台会话首次出现可展示候选时自动打开并选中原生 Tab；此操作会展开侧栏并切换当前 Tab。用户关闭或切换 Tab 后，后续更新不再次打开或抢焦点；可从 Chat 入口手动重开。草稿保存后同一 Tab 展示准确 Build。
+同一 Turn 的新建请求在产生成功草稿前被拒绝时，后续独立尝试可复用失败的临时入口和 Tab。已接受草稿继续按 draftId 关联。
 
 Tab 与报告视图身份由客户端和原生地址管理，不写入报告内容、草稿、receipt 或 Workspace 文件。为避免抢焦点，非活动的 live Tab 在用户再次选中时才转换为准确 Build 地址；转换前刷新依赖会话投影重建，若历史不完整而无法确定身份，需从 Chat 的已保存入口或分析视图目录重开。历史回放与后台会话不自动打开 Tab；已保存报告按准确 Build 地址读取，草稿不承诺跨 Host 重启恢复，失效时明确提示。分析视图目录、历史和工具结果入口打开右侧 Tab。失败保留最后成功文档；Workspace 失效或连接重置撤销旧归属，迟到读取不能恢复它。
 

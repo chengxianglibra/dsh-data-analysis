@@ -70,7 +70,7 @@ test('dense bars retain saved nulls', async () => {
   const html = await renderer.render(snapshot, { view: { chart: 'bar' } })
   assert.equal((html.match(/<g data-mark="missing"/g) ?? []).length, count)
   assert.match(html, /data-missing-key=""[^>]*><span[^>]*>× <\/span>NA/)
-  assert.match(html, /<title>[^<]+ · revenue: NA<\/title>/)
+  assert.match(html, /data-mark="missing"><desc>r0 · revenue: NA<\/desc>/)
 })
 
 test('grouped bars retain saved nulls', async () => {

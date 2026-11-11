@@ -49,6 +49,10 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
         .reverse()
         .find((item): item is DraftDelivery => item.kind === 'marivo.presentation.draft')
       const step = plan.step++
+      const longSection = Array.from(
+        { length: 24 },
+        (_, index) => `Paragraph ${index + 1} in the draft reader.`,
+      ).join('\n\n')
       const input = {
         stage: step === 2 ? 'save' : 'preview',
         ...(step > 0
@@ -68,13 +72,12 @@ export async function installProbe(ctx: Context, workspaceRoot: string, outputRo
           ? {
               title: `${plan.mode === 'ptc' ? 'PTC' : 'Streaming'} draft`,
               locale: 'en-US',
-              program:
-                'root = Stack([intro, sections]);\nsections = Tabs([TabItem("summary", "Summary", [stable]), TabItem("details", "Details", [detail])]);\ndetail = TextContent("Reading state retained");\nintro = TextContent("STREAM first content before tool execution");\nstable = TextContent("Retained confirmed section");',
+              program: `root = Stack([intro, sections, longSection, end]);\nsections = Tabs([TabItem("summary", "Summary", [stable]), TabItem("details", "Details", [detail])]);\ndetail = TextContent("Reading state retained");\nintro = TextContent("STREAM first content before tool execution");\nstable = TextContent("Retained confirmed section");\nlongSection = TextContent(${JSON.stringify(longSection)});\nend = TextContent("End of the analysis view");`,
             }
           : step === 1
             ? {
                 program:
-                  'intro = TextContent("STREAM updated content before tool execution");\nextra = TextContent("New completed section");\nroot = Stack([intro, sections, extra]);',
+                  'intro = TextContent("STREAM updated content before tool execution");\nextra = TextContent("New completed section");\nroot = Stack([intro, sections, extra, longSection, end]);',
               }
             : {}),
       }

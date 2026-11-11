@@ -229,6 +229,31 @@ test('refresh-data atomically rejects a mixed batch and preserves revision, curr
   assert.equal(edited.contentReview, 'required')
 })
 
+test('a failed draft revision returns the current ref and the valid column IDs', async (t) => {
+  const f = await fixture(t)
+  const preview = await f.write({
+    stage: 'preview',
+    resourcePatch: { put: { result: f.resource() } },
+    program: 'root = DatasetView("result", {chart:"table",columns:["value"]});',
+  })
+  const prior = f.drafts.get('session')
+  await assert.rejects(
+    f.write({
+      stage: 'preview',
+      ref: preview.ref,
+      program: 'root = DatasetView("result", {chart:"table",columns:["missing"]});',
+    }),
+    (error: Error) => {
+      assert.match(error.message, /analysis-columns-invalid/)
+      assert(error.message.includes(`"currentRef":"${preview.ref}"`))
+      assert.match(error.message, /"applied":false/)
+      assert.match(error.message, /"columns":\[{"id":"value","type":"decimal"}\]/)
+      return true
+    },
+  )
+  assert.equal(f.drafts.get('session'), prior)
+})
+
 test('auto shape changes are rejected while explicit table row changes remain valid', async (t) => {
   const f = await fixture(t)
   const base = await f.write({ stage: 'save', resourcePatch: { put: { data: f.resource() } } })

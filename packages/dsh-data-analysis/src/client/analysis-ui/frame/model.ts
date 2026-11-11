@@ -275,6 +275,29 @@ function dateParts(iso: string, timezone: string) {
   }
 }
 type Unit = Extract<FrameGrain, { kind: 'builtin' }>['unit']
+const civilDateTime =
+  /^(\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))(?:[T ](\d\d:\d\d)(?::(\d\d)(?:\.\d+)?)?(Z|[+-]\d\d(?::?\d\d)?)?)?$/
+
+function calendarClock(label: string, grain?: FrameGrain) {
+  if (grain?.kind !== 'builtin' || !['hour', 'minute', 'second'].includes(grain.unit))
+    return undefined
+  // Calendar labels are saved civil times. Keep their offset for repeated
+  // local hours and leave the original coordinate available to the data view.
+  const [, date, minute, second, offset] = civilDateTime.exec(label) ?? []
+  if (!date || !minute) return undefined
+  const time = grain.unit === 'second' && second ? `${minute}:${second}` : minute
+  return {
+    label: `${date.slice(5)} ${time}`,
+    title: `${date} ${time}${offset ? ` ${offset}` : ''}`,
+  }
+}
+
+export function chartMemberLabel(s: Snapshot, axis: FrameAxis, row: number): string {
+  const label = memberLabel(s, axis, row)
+  const grain = axis.variant?.kind === 'calendar' ? axis.variant.grain : undefined
+  return calendarClock(label, grain)?.title ?? label
+}
+
 /** Tick text by grain: day MM-DD, month YYYY-MM; never computed from row positions. */
 export function instantText(iso: string, timezone: string, unit: Unit | 'full' | 'date'): string {
   const p = dateParts(iso, timezone)
@@ -301,9 +324,36 @@ export function instantText(iso: string, timezone: string, unit: Unit | 'full' |
       return `${p.y}-${p.m}-${p.d}`
     case 'full':
       return `${p.y}-${p.m}-${p.d} ${p.h}:${p.mi}`
+    case 'second':
+      return `${p.m}-${p.d} ${p.h}:${p.mi}:${p.sec}`
     default:
       return `${p.m}-${p.d} ${p.h}:${p.mi}`
   }
+}
+
+function calendarChartTick(label: string, grain?: FrameGrain) {
+  const clock = calendarClock(label, grain)
+  if (clock) return clock
+  if (grain?.kind !== 'builtin' || ['hour', 'minute', 'second'].includes(grain.unit))
+    return undefined
+  const date = civilDateTime.exec(label)?.[1]
+  if (!date) return undefined
+  if (grain.unit === 'day') return { label: date.slice(5), title: date }
+  let period: string
+  switch (grain.unit) {
+    case 'month':
+      period = date.slice(0, 7)
+      break
+    case 'quarter':
+      period = `${date.slice(0, 4)}-Q${Math.ceil(Number(date.slice(5, 7)) / 3)}`
+      break
+    case 'year':
+      period = date.slice(0, 4)
+      break
+    default:
+      period = instantText(`${date}T00:00:00Z`, 'UTC', grain.unit)
+  }
+  return { label: period, title: period }
 }
 
 export interface Tick {
@@ -327,16 +377,11 @@ function periodTick(t: Translator, item: Period, variant?: FrameAxisVariant): Ti
     const label = item.label === null ? '—' : String(item.label)
     // Builtin labels are saved civil strings; abbreviate them without timezone conversion.
     const grain = variant?.kind === 'calendar' ? variant.grain : undefined
-    const abbreviated =
-      grain?.kind === 'builtin' && grain.unit === 'day' && /^\d{4}-\d{2}-\d{2}/.test(label)
-        ? label.slice(5, 10)
-        : grain?.kind === 'builtin' && grain.unit === 'month' && /^\d{4}-\d{2}/.test(label)
-          ? label.slice(0, 7)
-          : label
+    const tick = calendarChartTick(label, grain)
     return {
       key: JSON.stringify(item.key),
-      label: abbreviated,
-      title: `${label} · ${periodDetail(t, item)}`,
+      label: tick?.label ?? label,
+      title: `${tick?.title ?? label} · ${periodDetail(t, item)}`,
       incomplete: item.selection !== 'full',
     }
   }
@@ -357,6 +402,12 @@ function periodTick(t: Translator, item: Period, variant?: FrameAxisVariant): Ti
         ? String(item.label)
         : instantText(item.nominalStart, item.timezone, 'day')
   const incomplete = item.start !== item.nominalStart || item.end !== item.nominalEnd
+  const tick = calendarChartTick(String(item.label ?? ''), grain)
+  const nominal = tick || incomplete ? undefined : dateParts(item.nominalStart, item.timezone)
+  const civil = nominal
+    ? `${nominal.y}-${nominal.m}-${nominal.d}T${nominal.h}:${nominal.mi}:${nominal.sec}${nominal.offset.slice(3) || 'Z'}`
+    : ''
+  const nominalTick = tick ?? calendarChartTick(civil, grain)
   return {
     key: JSON.stringify(item.key),
     label,
@@ -367,7 +418,7 @@ function periodTick(t: Translator, item: Period, variant?: FrameAxisVariant): Ti
           p2: full(item.nominalStart),
           p3: full(item.nominalEnd),
         })
-      : range,
+      : (nominalTick?.title ?? range),
     incomplete,
   }
 }
@@ -399,14 +450,17 @@ export function timeTicks(t: Translator, s: Snapshot, axis: FrameAxis) {
     const key = axisKey(s, axis, row)
     if (index.has(key)) continue
     const first = s.frame.coordinates[axis.keys[0]!.slotId]?.values[row]
+    const member = memberLabel(s, axis, row)
+    const tick = calendarChartTick(member, variant?.kind === 'calendar' ? variant.grain : undefined)
     const label =
-      variant?.kind === 'calendar' && variant.grain.kind === 'named'
-        ? memberLabel(s, axis, row)
+      tick?.label ??
+      (variant?.kind === 'calendar' && variant.grain.kind === 'named'
+        ? member
         : typeof first === 'string' && Number.isFinite(Date.parse(first))
           ? instantText(first, timezone, unit)
-          : memberLabel(s, axis, row)
+          : member)
     index.set(key, ticks.length)
-    ticks.push({ key, label, title: memberLabel(s, axis, row), incomplete: false })
+    ticks.push({ key, label, title: tick?.title ?? member, incomplete: false })
   }
   return { ticks, tickOf: (row: number) => index.get(axisKey(s, axis, row)) ?? -1 }
 }
@@ -555,6 +609,8 @@ function periodText(p: Period | null, grain?: FrameGrain): string {
   if (p.kind === 'interval') return intervalText(p)
   if (p.label !== null) {
     const label = String(p.label)
+    const clock = calendarClock(label, grain)
+    if (clock) return clock.title
     // Only standard civil period starts with an exact captured grain admit abbreviation.
     if (grain?.kind === 'builtin' && grain.step === 1 && /^\d{4}-\d{2}-01$/.test(label)) {
       const date = new Date(`${label}T00:00:00Z`)

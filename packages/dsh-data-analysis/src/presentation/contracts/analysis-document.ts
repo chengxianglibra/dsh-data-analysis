@@ -139,26 +139,29 @@ export class AnalysisViewError extends Error {
   readonly resourceName: string
   readonly phase = 'report-validation'
   readonly recovery: { nextAction: string; currentRef?: string; applied?: false }
+  readonly details?: string
   constructor(
     code: string,
     path: string,
     hint: string,
     resourceName: string,
     context?: { currentRef?: string; applied: false },
+    details?: string,
   ) {
     const recovery = { ...context, nextAction: hint }
     super(
-      `${code} at ${path}: ${hint}; error=${JSON.stringify({ code, phase: 'report-validation', path, recovery })}`,
+      `${code} at ${path}: ${hint}; error=${JSON.stringify({ code, phase: 'report-validation', path, recovery })}${details ? ` ${details}` : ''}`,
     )
     this.name = 'AnalysisViewError'
     this.code = code
     this.path = path
     this.resourceName = resourceName
     this.recovery = recovery
+    this.details = details
   }
 }
 const viewHints: Record<string, string> = {
-  'analysis-columns-invalid': 'table columns must be distinct column names of this resource.',
+  'analysis-columns-invalid': 'table columns must be distinct column IDs of this resource.',
   'analysis-metric-requires-complete-single-row':
     'metric needs a complete single-row snapshot and an existing value name.',
   'analysis-view-invalid': 'view or display does not match the component signature.',
@@ -184,9 +187,9 @@ function viewError(
   node: ElementNode,
   path: string,
   candidates?: string[],
+  hint = viewHints[code] ?? '',
 ): AnalysisViewError {
   const relative = path.startsWith('/view') || path.startsWith('/display') ? path : `/view${path}`
-  const hint = viewHints[code] ?? ''
   // A candidate list extends the sentence, so a trailing hint period would read as `. ;`.
   const suffix = candidates?.length
     ? `${hint.endsWith('.') ? hint.slice(0, -1) : hint}; candidates: ${candidates.join(', ')}`
@@ -234,6 +237,31 @@ export function validateAnalysisResources(
     if (resolved.ok) {
       if (source.snapshot.kind === 'frame') {
         const error = validateFrameDisplay(source.snapshot, resolved.view, display.data)
+        if (error === '/display/rowLimit')
+          throw viewError(
+            'analysis-view-invalid',
+            node,
+            error,
+            undefined,
+            'Omit rowLimit here. It applies only to horizontal category bars.',
+          )
+        if (error === '/display/comparisonLabels') {
+          const facts = source.snapshot.frame.sections.interpretation
+          const aliases =
+            facts.status === 'captured' ? facts.comparisons.map(({ alias }) => alias) : []
+          throw viewError(
+            'analysis-view-invalid',
+            node,
+            error,
+            aliases
+              .filter(
+                (alias) => alias !== null && aliases.indexOf(alias) === aliases.lastIndexOf(alias),
+              )
+              .slice(0, 8)
+              .map((alias) => JSON.stringify(alias)),
+            'Omit comparisonLabels or use each eligible saved comparison alias once.',
+          )
+        }
         if (error) throw viewError('analysis-view-invalid', node, error)
       }
       continue

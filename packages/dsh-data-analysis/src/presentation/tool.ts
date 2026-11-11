@@ -461,6 +461,7 @@ export function createMarivoPresentTool(
               error.recovery.nextAction,
               error.resourceName,
               { currentRef: request.ref, applied: false },
+              error.details,
             )
           if (error instanceof PresentationRecoveryError)
             throw new PresentationRecoveryError(error.code, error.recovery.nextAction, {

@@ -230,9 +230,8 @@ test('overflowing Frame tables describe the keyboard-scrollable region', async (
 
 test('chart marks are keyboard-selectable', async () => {
   const card = page.locator('[data-resource="good"]')
-  const first = card.locator('svg.recharts-surface').getByRole('button').first()
-  await first.focus()
-  await page.keyboard.press('Enter')
+  const first = card.locator('svg.recharts-surface [data-frame-point="0:m0"]').first()
+  await first.press('Enter')
   const selected = page.getByRole('menu')
   await selected.getByRole('menuitem', { name: 'Ask about this' }).click()
   assert.deepEqual(await page.evaluate(() => Reflect.get(window, 'pointSelections')), [

@@ -44,7 +44,9 @@ function render(expired=false){const node={kind:'marivo-analysis-surface',target
  chat.render(slots['marivo-analysis-surface']({node,sessionId:'s'}));}
 const revision={...candidate,callId:'revision',basedOnRecordId:'marivo-ui:r:b',title:'Revised revenue'};
 window.fixture={allow:()=>{fail=false},expire:()=>render(true),
- base:()=>{views.accept(saved,'call',generation,'/workspace');deliveries=[{seq:4,delivery:saved,callId:'call'}];render()},
+ retry:(callId)=>views.observeReady({...candidate,callId,title:callId},'/workspace'),
+ reject:()=>{const current=views.get(view.id).candidate;views.observeReady({...current,phase:'failed'},'/workspace');},
+ base:()=>{const callId=views.get(view.id).candidate.callId;views.accept(saved,callId,generation,'/workspace');deliveries=[{seq:4,delivery:saved,callId}];render()},
  revision:()=>views.observe(revision,'/workspace'),
  failRevision:()=>views.observe({...revision,phase:'failed',...(views.get(view.id).draft?{draftId:draft.draftId}:{})},'/workspace'),
  previewRevision:()=>views.accept(draft,'revision',generation,'/workspace'),
@@ -93,6 +95,17 @@ render();`,
     await page.getByRole('button', { name: 'Open analysis view in sidebar' }).click()
     await page.locator('#right [data-analysis-placement="sidebar"]').waitFor()
     assert.equal(await page.getByRole('alert').count(), 0)
+    const entry = page.locator('#chat [data-analysis-entry]')
+    const viewId = await entry.getAttribute('data-analysis-entry')
+    for (const attempt of ['Retry axis', 'Retry columns', 'Retry row limit']) {
+      await page.evaluate((title) => {
+        Reflect.get(window, 'fixture').reject()
+        Reflect.get(window, 'fixture').retry(title)
+      }, attempt)
+      await page.getByText(attempt, { exact: true }).waitFor()
+      assert.equal(await entry.count(), 1)
+      assert.equal(await entry.getAttribute('data-analysis-entry'), viewId)
+    }
     await page.evaluate('window.fixture.base()')
     await page.getByText('Saved revenue', { exact: true }).waitFor()
     await page.evaluate('window.fixture.revision()')

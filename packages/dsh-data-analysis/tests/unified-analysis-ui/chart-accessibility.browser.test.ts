@@ -19,14 +19,22 @@ before(async () => {
 import { createRoot } from 'react-dom/client';
 import { AnalysisRenderer } from './src/client/analysis-ui/surface.tsx';
 import { datasetSnapshot } from './tests/unified-analysis-ui/dataset-fixtures.ts';
-import { observeTime, compareCalendar } from './tests/unified-analysis-ui/frame-fixtures.ts';
+import { frame, observeTime, compareCalendar, token, value, observed, categoryAxis } from './tests/unified-analysis-ui/frame-fixtures.ts';
 const resource = (snapshot) => ({ kind: 'snapshot', declaration: {
   kind: snapshot.kind === 'frame' ? 'frame-snapshot' : 'dataset-snapshot', snapshotRef: 'ref'
 }, snapshot, binding: { workspaceId: 'w' } });
+const keys = ['2026-11-10T05:00:00.000000+08:00','2026-11-10T06:00:00.000000+08:00'];
+const hourly = frame({ axes: [{name:'hour', type:'datetime', keys, variant:{kind:'calendar',timezone:'Asia/Shanghai',grain:{kind:'builtin',unit:'hour',step:1}}}],
+  values:[value('m0',2,observed())], periods:[{target:{kind:'axis',axisToken:token('hour')}, totalCount:2,hasMore:false,
+    items:keys.map(key=>({kind:'calendar',key:[key],label:key,timezone:'Asia/Shanghai',selection:'full',cutoff:null}))}] });
+const heatmap = frame({axes:[{name:'hour',type:'datetime',keys,variant:{kind:'calendar',timezone:'Asia/Shanghai',grain:{kind:'builtin',unit:'hour',step:1}}},categoryAxis(2)],
+  values:[value('m0',2,observed())]});
+const dataset = datasetSnapshot([[keys[0],'1'],['2026-11-10T05:00:00.012300+08:00','2']],[
+  {id:'timestamp',label:'Timestamp',type:'datetime',nullable:false},{id:'value',label:'Value',type:'decimal',nullable:false}]);
 const resources = {line: resource(observeTime(3)), area: resource(observeTime(3)),
-  dense: resource(observeTime(2001)), dataset: resource(datasetSnapshot()),
+  bar: resource(hourly), heatmap: resource(heatmap), dense: resource(observeTime(2001)), dataset: resource(dataset),
   domain: resource(compareCalendar(6))};
-const program = 'root = Stack([line, area, dense, dataset, domain]);\\nline = AnalysisFrameView("line", {chart: "line"});\\narea = AnalysisFrameView("area", {chart: "area"});\\ndense = AnalysisFrameView("dense", {chart: "line"});\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "category", values: ["value"]}});\\ndomain = AnalysisFrameView("domain", {chart: "comparison"});';
+const program = 'root = Stack([line, area, bar, heatmap, dense, dataset, domain]);\\nline = AnalysisFrameView("line", {chart: "line"});\\narea = AnalysisFrameView("area", {chart: "area"});\\nbar = AnalysisFrameView("bar", {chart: "bar"});\\nheatmap = AnalysisFrameView("heatmap", {chart: "heatmap",encoding:{x:"hour",y:"region",value:"m0"}});\\ndense = AnalysisFrameView("dense", {chart: "line"});\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "timestamp", values: ["value"]}});\\ndomain = AnalysisFrameView("domain", {chart: "comparison"});';
 window.selections = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program, title: 'Chart tooltip', locale: 'en-US', resources,
@@ -104,16 +112,36 @@ test('time chart ticks use the theme secondary text color', async () => {
   )
 })
 
-test('time hover retains the saved period in a cursor capsule', async () => {
-  const card = page.locator('[data-resource="line"]')
-  await card.locator('.recharts-line-dots circle').first().hover()
-  const cursor = card.locator('[data-time-cursor]')
-  await cursor.waitFor()
-  assert.ok((await cursor.locator('text').textContent())?.length)
+test('hourly bars show one hover tooltip at the same grain as the tick', async () => {
+  const card = await checkSurface('bar')
+  const bar = card.locator('[data-mark="bar"]').first()
+  await bar.hover()
+  const tooltip = card.locator('.recharts-tooltip-wrapper')
+  await tooltip.getByText('2026-11-10 05:00 +08:00 · Full period', { exact: true }).waitFor()
+  assert.equal(await tooltip.count(), 1)
+  assert.equal(await bar.locator('title').count(), 0)
+  assert.equal(await card.locator('[data-time-cursor] text').count(), 0)
+  assert.equal(await card.locator('[data-tick="11-10 05:00"] text').textContent(), '11-10 05:00')
+  assert.match(
+    (await card.locator('[data-frame-point="0:m0"]').getAttribute('aria-label')) ?? '',
+    /2026-11-10 05:00 \+08:00/,
+  )
+})
+
+test('heatmap hover uses the declared hour and one tooltip', async () => {
+  const card = await checkSurface('heatmap')
+  const cell = card.locator('[data-mark="cell"]').first()
+  await cell.hover()
+  const tooltip = card.locator('.recharts-tooltip-wrapper')
+  await tooltip.getByText('2026-11-10 05:00 +08:00 · r0', { exact: true }).waitFor()
+  assert.equal(await cell.locator('title').count(), 0)
 })
 
 test('Dataset and domain charts expose accessible roots', async () => {
-  await checkSurface('dataset')
+  const dataset = await checkSurface('dataset')
+  const timestamp = await dataset.locator('svg.recharts-surface').first().getAttribute('aria-label')
+  assert.match(timestamp ?? '', /2026-11-10T05:00:00\+08:00/)
+  assert.match(timestamp ?? '', /2026-11-10T05:00:00\.0123\+08:00/)
   await checkSurface('domain')
 })
 

@@ -343,7 +343,7 @@ function TimeChartPlot({
           />
           <ExactTooltip
             textAt={tip}
-            cursorTicks={ticks}
+            showCursor
             detailsAt={(index) => ({
               label: ticks[index]?.title ?? '',
               rows: [
@@ -432,7 +432,7 @@ function TimeChartPlot({
                       if (compactMissing)
                         return (
                           <g data-mark="missing">
-                            <title>{`${ticks[p.index]?.title ?? ''} · ${line.label}: NA`}</title>
+                            <desc>{`${ticks[p.index]?.title ?? ''} · ${line.label}: NA`}</desc>
                             <path
                               d={`M${x - 3},${y - 3} l6,6 m0,-6 l-6,6`}
                               fill="none"
@@ -473,7 +473,6 @@ function TimeChartPlot({
                           onMouseEnter={() => setActiveMark(`${line.key}:${p.index}`)}
                           onMouseLeave={() => setActiveMark(undefined)}
                         >
-                          <title>{title}</title>
                           <Rectangle
                             x={p.x}
                             y={p.y}
@@ -787,7 +786,6 @@ function HBarSideValues({
         const y = area.y + ((index + 0.5) * area.height) / rows.length
         const mark = (
           <text key={row} x={x} y={y} dominantBaseline="central" fill="currentColor" fontSize={11}>
-            <title>{text}</title>
             {text}
           </text>
         )
@@ -926,7 +924,7 @@ function HBarChartPlot({
         }
       >
         <ComposedChart
-          title={label}
+          aria-label={label}
           desc={label}
           data={referenceData}
           layout="vertical"
@@ -1019,7 +1017,6 @@ function HBarChartPlot({
                       onMouseEnter={() => setActiveBar(`${name}:${p.index}`)}
                       onMouseLeave={() => setActiveBar(undefined)}
                     >
-                      <title>{title}</title>
                       <Rectangle {...p} width={Math.max(p.width, 1)} radius={2} fill={color(vi)} />
                     </g>
                   </SelectableMark>
@@ -1354,9 +1351,7 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
             <span>
               {t('marivo.presentation.ui-chart-null-values', { p0: data.length - finite.length })}
             </span>
-            <span title={displayed(s, cellOf(s, minPoint.index, view.value), col)}>
-              {displayed(s, cellOf(s, minPoint.index, view.value), col)}
-            </span>
+            <span>{displayed(s, cellOf(s, minPoint.index, view.value), col)}</span>
             <span aria-hidden="true" className="inline-flex gap-0.5 items-center">
               {[0, 1, 2, 3, 4].map((level) => (
                 <span
@@ -1370,15 +1365,13 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
                 />
               ))}
             </span>
-            <span title={displayed(s, cellOf(s, maxPoint.index, view.value), col)}>
-              {displayed(s, cellOf(s, maxPoint.index, view.value), col)}
-            </span>
+            <span>{displayed(s, cellOf(s, maxPoint.index, view.value), col)}</span>
           </div>
         ) : undefined
       }
     >
       <ScatterChart
-        title={label}
+        aria-label={label}
         desc={label}
         margin={{ top: 16, right: 16, bottom: 24, left: 8 }}
         accessibilityLayer
@@ -1440,7 +1433,6 @@ export function Heatmap({ model: s, view }: ChartProps<'heatmap'>) {
                 onMouseEnter={() => setActive({ x: xOf.get(row)!, y: yOf.get(row)! })}
                 onMouseLeave={() => setActive(undefined)}
               >
-                <title>{tip(row)}</title>
                 <HeatCell
                   input={input}
                   columns={xs.length}

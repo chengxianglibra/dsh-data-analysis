@@ -110,6 +110,11 @@ export class ReportViews {
     // Until the arguments identify a draft or a complete standalone request,
     // assigning a call to a view can accidentally merge different reports.
     if (!candidate.preview && !candidate.draft && !candidate.delivery) return undefined
+    if (
+      ['failed', 'cancelled'].includes(candidate.phase) &&
+      !this.#calls.has(reportViewId(candidate.sessionId, candidate.turn, candidate.callId))
+    )
+      return undefined
     return this.observe(candidate, workspacePath)
   }
   openingFailed(id: string, failed: boolean) {
@@ -118,8 +123,31 @@ export class ReportViews {
   }
   observe(candidate: AnalysisCandidate, workspacePath: string) {
     const call = reportViewId(candidate.sessionId, candidate.turn, candidate.callId)
-    const views = this.forTurn(candidate.sessionId, candidate.turn)
+    const owns = (view: ReportViewState) =>
+      view.generation === candidate.generation &&
+      view.workspaceId === candidate.workspaceId &&
+      view.workspacePath === workspacePath
+    const views = this.forTurn(candidate.sessionId, candidate.turn).filter(owns)
     const draftId = candidate.draftId ?? candidate.draft?.draftId
+    const standalone =
+      candidate.preview &&
+      !candidate.draftId &&
+      !candidate.basedOnRecordId &&
+      !['failed', 'cancelled'].includes(candidate.phase)
+    // A rejected new report has only a provisional call identity. A new
+    // standalone attempt can reuse its entry and tab before any draft exists.
+    const retry = standalone
+      ? views.find(
+          (view) =>
+            !view.saved &&
+            !view.draft &&
+            !view.settled &&
+            view.candidate &&
+            !view.candidate.draftId &&
+            !view.candidate.basedOnRecordId &&
+            ['failed', 'cancelled'].includes(view.candidate.phase),
+        )
+      : undefined
     const old =
       this.#items.get(this.#calls.get(call) ?? call) ??
       views.find((view) =>
@@ -131,13 +159,13 @@ export class ReportViews {
               ? analysisRecordId(view.saved.receipt.reportId, view.saved.receipt.buildId) ===
                 candidate.basedOnRecordId
               : !candidate.preview && !view.saved && Boolean(view.draft),
-      )
-    const current =
-      old?.generation === candidate.generation &&
-      old.workspaceId === candidate.workspaceId &&
-      old.workspacePath === workspacePath
-        ? old
-        : undefined
+      ) ??
+      retry
+    const current = old && owns(old) ? old : undefined
+    const retrying = Boolean(current && current === retry)
+    if (retrying && retry?.candidate) {
+      this.#calls.delete(reportViewId(candidate.sessionId, candidate.turn, retry.candidate.callId))
+    }
     const startingRevision =
       current?.saved &&
       candidate.basedOnRecordId ===
@@ -167,6 +195,7 @@ export class ReportViews {
         scroll: new Map(),
       },
       ...current,
+      ...(retrying ? { resourceStream: undefined } : {}),
       ...(startingRevision
         ? {
             resourceStream: undefined,

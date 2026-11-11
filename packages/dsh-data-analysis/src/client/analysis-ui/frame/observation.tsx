@@ -423,7 +423,6 @@ export function CorrelationPlot({
           aria-label={label}
           style={{ display: 'block', width: '100%', height: 60 }}
         >
-          <title>{label}</title>
           <defs>
             <linearGradient id={scaleId} x1="0" x2="1" y1="0" y2="0">
               <stop offset="0%" stopColor="var(--border)" />
@@ -478,7 +477,7 @@ export function CorrelationPlot({
       }
     >
       <ScatterChart
-        title={label}
+        aria-label={label}
         desc={label}
         margin={{ top: 12, right: 32, bottom: 8, left: 8 }}
         accessibilityLayer
@@ -513,7 +512,6 @@ export function CorrelationPlot({
               return (
                 <DomainPointMark point={{ row, field: name, label: tip(row, name) }}>
                   <g>
-                    <title>{tip(row, name)}</title>
                     <circle cx={p.cx} cy={p.cy} r={4} fill={color(vi)} data-mark="filled" />
                   </g>
                 </DomainPointMark>

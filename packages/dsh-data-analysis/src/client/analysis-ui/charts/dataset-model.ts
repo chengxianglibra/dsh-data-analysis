@@ -19,7 +19,16 @@ export function datasetChartModel(
         id,
         name: id,
         keys: data.rows.map((row) => JSON.stringify(row[index])),
-        labels: data.rows.map((row) => formatCell(row[index] ?? null, column)),
+        labels: data.rows.map((row) => {
+          const label = formatCell(row[index] ?? null, column)
+          // Dataset timestamps have no bucket grain. Trim only insignificant
+          // zeros, leaving distinct instants distinct in the display.
+          return column.type === 'datetime'
+            ? label
+                .replace(/(\.\d*?[1-9])0+(?=Z|[+-]\d\d)/i, '$1')
+                .replace(/\.0+(?=Z|[+-]\d\d)/i, '')
+            : label
+        }),
       }
     }),
     valueLabels: Object.fromEntries(data.columns.map((c) => [c.id, c.label])),

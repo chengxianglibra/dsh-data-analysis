@@ -193,7 +193,7 @@ test('heatmap leaves NULL cells empty and selects only saved numeric values', as
   assert.equal(count(html, /data-mark="empty"/), 1)
   assert.equal(count(html, /data-mark="cell"/), 3)
   assert.equal(count(html, /role="button" tabindex="0"/), 3)
-  assert.match(html, /<title>[^<]*: 1,234,567\.89<\/title>/)
+  assert.match(html, /aria-label="[^"]*: 1,234,567\.89" data-frame-point=/)
   assert.doesNotMatch(html, /Row avg|Column avg/)
 })
 
@@ -278,8 +278,8 @@ test('heatmap scale shows saved bounds and omits a scale when all values are mis
   const html = await r().render(snapshot)
   assert.match(html, /data-heatmap-scale="sequential"/)
   assert.match(html, /m0 \(USD\)/)
-  assert.match(html, /title="-\$2\.00"/)
-  assert.match(html, /title="\$5\.00"/)
+  assert.match(html, />-\$2\.00<\/span>/)
+  assert.match(html, />\$5\.00<\/span>/)
   for (const row of snapshot.data.rows) row[index] = null
   const empty = await r().render(snapshot)
   assert.doesNotMatch(empty, /data-heatmap-scale=/)

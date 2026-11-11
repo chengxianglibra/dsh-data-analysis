@@ -4,8 +4,8 @@ import type { ChartModel } from '../charts/model.ts'
 import {
   axisKey,
   axisOf,
+  chartMemberLabel,
   displayFrameCell,
-  memberLabel,
   partitions,
   periodsOf,
   rowsOf,
@@ -54,7 +54,7 @@ export function frameChartModel(
         id: axis.token,
         name: axis.name,
         keys: rows.map((row) => axisKey(s, axis, row)),
-        labels: rows.map((row) => memberLabel(s, axis, row)),
+        labels: rows.map((row) => chartMemberLabel(s, axis, row)),
         ...(time
           ? {
               ticks: {

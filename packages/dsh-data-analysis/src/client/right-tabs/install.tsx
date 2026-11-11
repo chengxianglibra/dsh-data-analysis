@@ -2,12 +2,20 @@
 
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  type UIEvent,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { AnalysisCandidates } from '../analysis-ui/candidate.ts'
 import { savedCodeReader } from '../analysis-ui/candidate-view.tsx'
 import { installAnalysisTool } from '../analysis-ui/install.tsx'
 import { SavedAnalysisSurface } from '../analysis-ui/lazy-surface.tsx'
-import { ReportViews } from '../analysis-ui/report-views.ts'
+import { type ReportReadingState, ReportViews } from '../analysis-ui/report-views.ts'
 import {
   appendComponentReference,
   installComponentReferenceSource,
@@ -64,6 +72,19 @@ export const inject = [
   'uiWorkspace',
 ]
 const labels = workspaceDirectories
+
+function useReportScroll(reading: ReportReadingState | undefined, panelId: string, ready = true) {
+  const ref = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    if (ready && reading && ref.current) ref.current.scrollTop = reading.scroll.get(panelId) ?? 0
+  }, [reading, panelId, ready])
+  return {
+    ref,
+    onScroll: (event: UIEvent<HTMLElement>) => {
+      if (ready) reading?.scroll.set(panelId, event.currentTarget.scrollTop)
+    },
+  }
+}
 
 /** Default browser integration. Layout belongs to Harness; mutable content belongs to occurrences. */
 export function installRightTabs(ctx, { diagnostics = false } = {}) {
@@ -249,6 +270,20 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         signal,
       ),
   )
+  function LiveReportPage({ view, sessionId, tabId, panelId }) {
+    const t = useCopy()
+    const scroll = useReportScroll(view?.reading, panelId, !view?.saved)
+    return (
+      <section className="mv-ui rt-page bg-background" data-rt-tab={tabId} {...scroll}>
+        <style>{rightTabStyles}</style>
+        {view ? (
+          <ReportBody viewId={view.id} sessionId={sessionId} />
+        ) : (
+          <p role="status">{t('marivo.presentation.ui-draft-unavailable')}</p>
+        )}
+      </section>
+    )
+  }
   const reportTabId = definitionId(reportKind)
   ctx.effect(() =>
     ctx.sidebarRightTabs.register({
@@ -265,8 +300,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     ctx.slots.register(
       { name: 'sidebar.right.pane.tab', key: reportTabId, locale: 'marivo.presentation' },
       localized(ctx, function LiveReportTab({ sessionId, useTabInfo }) {
-        const t = useCopy()
-        const { tab } = useTabInfo()
+        const { tab, panel } = useTabInfo()
         useSyncExternalStore(reportViews.subscribe, reportViews.getSnapshot)
         const view = viewForAddress(tab.navigation.address)
         useEffect(() => {
@@ -296,10 +330,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             )
           }
         }, [view, sessionId, tab])
-        return view ? (
-          <ReportBody viewId={view.id} sessionId={sessionId} />
-        ) : (
-          <p role="status">{t('marivo.presentation.ui-draft-unavailable')}</p>
+        return (
+          <LiveReportPage view={view} sessionId={sessionId} tabId={tab.id} panelId={panel.id} />
         )
       }),
     ),
@@ -383,6 +415,15 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     const state = useSyncExternalStore(page.subscribe, page.getSnapshot)
     const report = useSyncExternalStore(page.reader.subscribe, page.reader.getSnapshot)
     const activeReportView = viewForAddress(tab.navigation.address)
+    const scroll = useReportScroll(
+      activeReportView?.reading,
+      panelId,
+      Boolean(
+        report.analysisDocument &&
+          (!activeReportView?.saved ||
+            activeReportView.document?.buildId === activeReportView.saved.receipt.buildId),
+      ),
+    )
     const revisionInProgress = Boolean(
       (activeReportView?.candidate &&
         (!['failed', 'cancelled'].includes(activeReportView.candidate.phase) ||
@@ -432,6 +473,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     return (
       <section
         className="mv-ui rt-page bg-background"
+        {...scroll}
         data-rt-tab={tab.id}
         data-rt-panel={panelId}
         data-rt-kind={page.target.kind}
@@ -705,7 +747,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       }
     }, [sessionId, tab])
     if (!page && liveReport?.sessionId === sessionId)
-      return <ReportBody viewId={liveReport.id} sessionId={sessionId} />
+      return (
+        <LiveReportPage view={liveReport} sessionId={sessionId} tabId={tab.id} panelId={panel.id} />
+      )
     return error ? (
       <p role="alert">{t(error)}</p>
     ) : page && page.sessionId === sessionId && page.signal === tab.signal ? (

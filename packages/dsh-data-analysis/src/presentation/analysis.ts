@@ -375,7 +375,17 @@ export async function createAnalysisDocument(
           ? error.resourceName
           : /^analysis-label-unknown at \/labels\/([^/ :]+)/.exec(error.message)?.[1]
       const relevant = name && resources[name] ? { [name]: resources[name] } : {}
-      error.message += ` Result metadata: ${JSON.stringify(analysisResultSummary(relevant))}. Use the result metadata and any supplied candidates to correct the indicated parameter; Frame axis inputs use axes[].name, not column IDs or tokens. Do not rerun analysis to recover metadata.`
+      const details = `Result metadata: ${JSON.stringify(analysisResultSummary(relevant))}. Correct the indicated parameter using the metadata and candidates. Frame chart axes use axes[].name. Table columns use columns[].id. Reuse the fixed analysis result.`
+      if (error instanceof AnalysisViewError)
+        throw new AnalysisViewError(
+          error.code,
+          error.path,
+          error.recovery.nextAction,
+          error.resourceName,
+          undefined,
+          details,
+        )
+      error.message += ` ${details}`
     }
     throw error
   }

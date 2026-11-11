@@ -40,8 +40,8 @@ test('heatmap retains sparse axis members and distinguishes missing cells from z
   assert.equal(count(html, /data-mark="cell"/), 3)
   assert.equal(count(html, /role="button" tabindex="0"/), 3)
   assert.match(html, /data-heatmap-scale=/)
-  assert.match(html, /title="0/)
-  assert.match(html, /<title>[^<]*: 0\.00<\/title>/)
+  assert.match(html, />0\.00<\/span>/)
+  assert.match(html, /aria-label="[^"]*: 0\.00" data-frame-point=/)
   assert.doesNotMatch(html, /Row avg|Column avg/)
 })
 

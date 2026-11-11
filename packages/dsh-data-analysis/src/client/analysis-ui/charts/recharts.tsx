@@ -204,10 +204,10 @@ export function ChartFrame({
 export function ExactTooltip({
   textAt,
   detailsAt,
-  cursorTicks,
+  showCursor,
 }: {
   textAt: (index: number) => string
-  cursorTicks?: Tick[]
+  showCursor?: boolean
   detailsAt?: (index: number) => {
     label: string
     rows: { label: string; value: string; color: string }[]
@@ -215,7 +215,7 @@ export function ExactTooltip({
 }) {
   return (
     <ChartTooltip
-      cursor={cursorTicks ? <TimeCursor ticks={cursorTicks} /> : false}
+      cursor={showCursor ? <TimeCursor /> : false}
       isAnimationActive={false}
       content={({ active, payload }) => {
         if (!active || !payload?.length) return null
@@ -260,23 +260,11 @@ export function ExactTooltip({
     />
   )
 }
-/** Recharts supplies the active time coordinate; the capsule uses the saved tick label. */
-function TimeCursor({
-  ticks,
-  points,
-  payloadIndex,
-}: {
-  ticks: Tick[]
-  points?: { x: number; y: number }[]
-  payloadIndex?: string | number
-}) {
+function TimeCursor({ points }: { points?: { x: number; y: number }[] }) {
   const id = `time-cursor-${useId().replace(/:/g, '')}`
   const start = points?.[0]
   const end = points?.[1]
-  const index = Number(payloadIndex)
-  const tick = Number.isInteger(index) ? ticks[index] : undefined
-  if (!start || !end || !tick) return null
-  const width = Math.min(160, Math.max(30, tick.label.length * 7 + 12))
+  if (!start || !end) return null
   return (
     <g pointerEvents="none" data-time-cursor="">
       <defs>
@@ -286,17 +274,6 @@ function TimeCursor({
         </linearGradient>
       </defs>
       <line x1={start.x} x2={end.x} y1={start.y} y2={end.y} stroke={`url(#${id})`} />
-      <rect
-        x={end.x - width / 2}
-        y={end.y + 3}
-        width={width}
-        height={18}
-        rx={4}
-        fill="var(--foreground)"
-      />
-      <text x={end.x} y={end.y + 16} textAnchor="middle" fill="var(--background)" fontSize={10}>
-        {tick.label}
-      </text>
     </g>
   )
 }
