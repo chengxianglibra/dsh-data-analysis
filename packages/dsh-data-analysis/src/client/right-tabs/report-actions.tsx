@@ -74,7 +74,6 @@ export function ReportActions({
                   : 'marivo.presentation.export-html',
               )}
             </DropdownMenu.Item>
-            <p className="rt-actions-note">{t('marivo.presentation.export-html-scope')}</p>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>

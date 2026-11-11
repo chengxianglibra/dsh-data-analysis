@@ -69,7 +69,6 @@ window.renderExport('current');
   await page.getByRole('menuitem', { name: 'History' }).click()
   assert.equal(await page.evaluate(() => (window as any).historyClicks), 1)
   await menu.click()
-  await page.getByText(/including data not currently visible/).waitFor()
   // Change version while the first module request is pending.
   await button.click()
   await moduleRequested
@@ -105,4 +104,55 @@ window.renderExport('current');
   await page.getByRole('button', { name: 'Dismiss export notification' }).click()
   assert.equal(await page.getByRole('alert').count(), 0)
   assert.equal(await page.evaluate(() => (window as any).anchorClicks), 2)
+})
+
+test('report actions align with the title without covering long content', async (t) => {
+  const bundle = await build({
+    stdin: {
+      resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
+      loader: 'tsx',
+      contents: `
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {CopyProvider} from './src/client/i18n/context.tsx';
+import {translator} from './src/client/i18n/copy.ts';
+import {AnalysisSurface} from './src/client/analysis-ui/surface.tsx';
+import {ReportActions} from './src/client/right-tabs/report-actions.tsx';
+import {rightTabStyles} from './src/client/right-tabs/styles.ts';
+const documentValue={title:'Report',locale:'en-US',recordId:'r',reportId:'r',buildId:'b',contentReview:'not-needed',resources:{},program:'root = Stack([title, body]);\\ntitle = TextContent("# A long report title that wraps across several lines in a narrow analysis pane");\\nbody = TextContent("Report body");'};
+createRoot(document.getElementById('root')).render(<CopyProvider t={translator('en-US')}><section className="mv-ui rt-page"><style>{rightTabStyles}</style><div className="rt-report-surface"><div className="rt-toolbar"><ReportActions document={documentValue} isCurrent={()=>true} onHistory={()=>{}} refreshLocked={false} onRefreshData={async()=> 'accepted'}/></div><AnalysisSurface document={documentValue}/></div></section></CopyProvider>);
+`,
+    },
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    write: false,
+    loader: {
+      '.module.css': 'local-css',
+      '.woff2': 'dataurl',
+      '.woff': 'dataurl',
+      '.ttf': 'dataurl',
+    },
+    define: { 'process.env.NODE_ENV': '"production"' },
+    logLevel: 'silent',
+  })
+  const browser = await chromium.launch()
+  t.after(() => browser.close())
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
+  await page.setContent(
+    '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div>',
+  )
+  await page.addScriptTag({ content: bundle.outputFiles[0]?.text })
+  const title = page.getByRole('heading', { name: /A long report title/ })
+  const menu = page.getByRole('button', { name: 'Analysis view actions' })
+  await title.waitFor()
+  const titleBounds = await title.boundingBox()
+  const buttonBounds = await menu.boundingBox()
+  assert(titleBounds && buttonBounds)
+  assert(titleBounds.x + titleBounds.width <= buttonBounds.x, 'title must not overlap the actions')
+  assert(titleBounds.y < buttonBounds.y + buttonBounds.height, 'title starts alongside the actions')
+  assert(buttonBounds.y < titleBounds.y + 40, 'actions start alongside the title')
+  await menu.click()
+  assert.equal(await page.getByRole('menuitem').count(), 3)
+  await page.getByRole('menuitem', { name: 'History' }).waitFor()
 })

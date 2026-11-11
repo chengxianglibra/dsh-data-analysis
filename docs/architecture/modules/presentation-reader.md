@@ -17,7 +17,7 @@ Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader �
 
 分析视图正文固定在右侧 Tab，首次候选、后续修订和正式保存复用稳定的 report view。前台会话首次出现可展示候选时自动打开并选中 Tab；关闭或切换 Tab 后，后续更新不重新打开或抢焦点。Chat 保留可手动打开的入口；历史回放和后台会话不自动导航。目录与历史入口始终导航到右侧，重复点击由原生资源地址去重。
 
-可见的视图标题由 program 中的正文负责，AnalysisSurface 不再自动添加主标题。`AnalysisDocument.title` 继续用于目录、原生 Tab、离线 HTML 的页面标题及视图的无障碍名称；没有正文标题时不补写。TextContent 的 Markdown 保留作者声明的 h1–h6 层级。生成动效独立显示，保存后不保留空标题行；右侧视图操作占用独立一行，避免遮挡正文。
+可见的视图标题由 program 中的正文负责，AnalysisSurface 不再自动添加主标题。`AnalysisDocument.title` 继续用于目录、原生 Tab、离线 HTML 的页面标题及视图的无障碍名称；没有正文标题时不补写。TextContent 的 Markdown 保留作者声明的 h1–h6 层级。生成动效独立显示，保存后不保留空标题行；右侧视图操作与正文首行并排，首个内容块为操作保留空间。
 
 客户端 ReportViews 维护已准入文档和读者状态，Tabs 选择、表格排序/分页及表格横向滚动按稳定语句身份保留，包括生成期间的更新和保存。报告外层滚动由各自 Host 容器负责。新会话、Workspace 或连接 generation 不继承旧状态。Tab 的 Build 地址支持已保存内容重开；临时阅读状态不持久写入报告。
 

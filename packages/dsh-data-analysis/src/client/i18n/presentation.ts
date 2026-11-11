@@ -162,8 +162,6 @@ export const zh = {
   'marivo.presentation.export-html-started': 'HTML 下载已开始。',
   'marivo.presentation.export-html-failed': '导出失败，请重试。',
   'marivo.presentation.export-html-dismiss': '关闭导出提示',
-  'marivo.presentation.export-html-scope':
-    '文件包含此版本的已保存快照，包括未在当前视图显示的数据；快照可能不完整。分享前请确认内容。',
   'marivo.presentation.ui-open-tab': '在右侧打开分析视图',
   'marivo.presentation.ui-loading': '正在读取已保存快照…',
   'marivo.presentation.ui-preparing': '正在准备分析视图…',
@@ -426,8 +424,6 @@ export const en = {
   'marivo.presentation.export-html-started': 'HTML download started.',
   'marivo.presentation.export-html-failed': 'Export failed. Try again.',
   'marivo.presentation.export-html-dismiss': 'Dismiss export notification',
-  'marivo.presentation.export-html-scope':
-    'The file contains this version’s saved snapshots, including data not currently visible. Snapshots may be incomplete. Review the content before sharing.',
   'marivo.presentation.ui-open-tab': 'Open analysis view in sidebar',
   'marivo.presentation.ui-loading': 'Reading saved snapshot…',
   'marivo.presentation.ui-preparing': 'Preparing analysis view…',
