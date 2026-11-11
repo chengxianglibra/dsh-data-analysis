@@ -10,6 +10,23 @@ import {
 import { z } from 'zod/v4'
 import { analysisCatalogSchema, analysisRootComponents } from './analysis-catalog.ts'
 
+type AnalysisProgramCode =
+  | 'analysis-program-incomplete'
+  | 'analysis-program-invalid-statement'
+  | 'analysis-program-invalid'
+
+export class AnalysisProgramError extends Error {
+  readonly code: AnalysisProgramCode
+  readonly details: { line?: number; column?: number; unresolved?: string[]; detail?: string }
+
+  constructor(code: AnalysisProgramCode, details: AnalysisProgramError['details']) {
+    super(details.detail ? `${code}: ${details.detail}` : code)
+    this.name = 'AnalysisProgramError'
+    this.code = code
+    this.details = details
+  }
+}
+
 const parser = createParser(analysisCatalogSchema)
 type Schema = {
   $ref?: string
@@ -34,12 +51,21 @@ const validators = Object.fromEntries(
  * Validate every fragment before its tolerant parser can silently discard it.
  */
 export function analysisStatements(source: string): string {
-  if (autoClose(source).wasIncomplete) throw new Error('analysis-program-incomplete')
   const statements: string[] = []
   let start = 0
   let quote = ''
   let escaped = false
   const brackets: string[] = []
+  const invalid = (
+    position: number,
+    code: 'analysis-program-incomplete' | 'analysis-program-invalid-statement',
+  ): never => {
+    const prefix = source.slice(0, position)
+    throw new AnalysisProgramError(code, {
+      line: prefix.split('\n').length,
+      column: position - prefix.lastIndexOf('\n'),
+    })
+  }
   for (let i = 0; i <= source.length; i++) {
     const c = source[i]
     if (quote) {
@@ -52,31 +78,38 @@ export function analysisStatements(source: string): string {
     else if (c && '([{'.includes(c)) brackets.push(c)
     else if (c && ')]}'.includes(c)) {
       if (brackets.pop() !== '([{'.charAt(')]}'.indexOf(c)))
-        throw new Error('analysis-program-invalid-statement')
+        invalid(i, 'analysis-program-invalid-statement')
     } else if ((c === ';' || c === '\n' || c === undefined) && !brackets.length) {
-      const raw = source.slice(start, i).trim()
+      const fragment = source.slice(start, i)
+      const raw = fragment.trim()
+      const position = start + fragment.length - fragment.trimStart().length
       start = i + 1
       if (!raw) continue
       if (!/^[A-Za-z_][A-Za-z0-9_]*\s*=\s*[^=]/.test(raw))
-        throw new Error('analysis-program-invalid-statement')
-      const parsed = split(tokenize(raw))
-      if (parsed.length !== 1) throw new Error('analysis-program-invalid-statement')
-      parseExpression(parsed[0]!.tokens)
-      // The public expression parser is tolerant of trailing tokens. A grouped
-      // expression must reach this suffix; otherwise some input was ignored.
-      const expression = raw.slice(raw.indexOf('=') + 1)
-      const checked = parseExpression(tokenize(`(${expression}) + __analysis_statement_end`))
-      if (
-        checked.k !== 'BinOp' ||
-        checked.op !== '+' ||
-        checked.right.k !== 'Ref' ||
-        checked.right.n !== '__analysis_statement_end'
-      )
-        throw new Error('analysis-program-invalid-statement')
+        invalid(position, 'analysis-program-invalid-statement')
+      try {
+        const parsed = split(tokenize(raw))
+        if (parsed.length !== 1) invalid(position, 'analysis-program-invalid-statement')
+        parseExpression(parsed[0]!.tokens)
+        // The public parser tolerates trailing tokens. The grouped expression must reach the suffix.
+        const expression = raw.slice(raw.indexOf('=') + 1)
+        const checked = parseExpression(tokenize(`(${expression}) + __analysis_statement_end`))
+        if (
+          checked.k !== 'BinOp' ||
+          checked.op !== '+' ||
+          checked.right.k !== 'Ref' ||
+          checked.right.n !== '__analysis_statement_end'
+        )
+          invalid(position, 'analysis-program-invalid-statement')
+      } catch {
+        invalid(position, 'analysis-program-invalid-statement')
+      }
       statements.push(raw)
     }
   }
-  if (!statements.length) throw new Error('analysis-program-invalid-statement')
+  if (quote || brackets.length || autoClose(source).wasIncomplete)
+    invalid(source.length, 'analysis-program-incomplete')
+  if (!statements.length) invalid(0, 'analysis-program-invalid-statement')
   return statements.join('\n')
 }
 
@@ -84,14 +117,18 @@ export function mergeAnalysisProgram(base: string, patch: string): string {
   const admitted = analysisStatements(patch)
   const changes = split(tokenize(admitted))
   if (new Set(changes.map((statement) => statement.id)).size !== changes.length)
-    throw new Error('analysis-patch-duplicate-statement')
+    throw new AnalysisProgramError('analysis-program-invalid', {
+      detail: 'analysis-patch-duplicate-statement',
+    })
   const merged = mergeStatements(analysisStatements(base), admitted)
   const retained = new Set(split(tokenize(merged)).map((statement) => statement.id))
   // The official merger garbage-collects unreachable statements before Catalog
   // validation. Reject discarded edits instead of acknowledging a silent no-op.
   for (const statement of changes)
     if (parseExpression(statement.tokens).k !== 'Null' && !retained.has(statement.id))
-      throw new Error(`analysis-patch-unreachable-statement: ${statement.id}`)
+      throw new AnalysisProgramError('analysis-program-invalid', {
+        detail: `analysis-patch-unreachable-statement: ${statement.id}`,
+      })
   return merged
 }
 
@@ -170,10 +207,19 @@ export function parseAnalysisProgram(program: string): ElementNode {
     result.mutationStatements.length ||
     !result.root
   )
-    throw new Error(`Invalid analysis program: ${JSON.stringify(result.meta)}`)
-  if (!analysisRootComponents.includes(result.root.typeName))
-    throw new Error('Invalid analysis root')
-  checkSlots(result.root)
-  validators[result.root.typeName]!.parse(propsOnly(result.root))
+    throw new AnalysisProgramError('analysis-program-invalid', {
+      unresolved: result.meta.unresolved.slice(0, 16),
+      detail: JSON.stringify(result.meta).slice(0, 2048),
+    })
+  try {
+    if (!analysisRootComponents.includes(result.root.typeName))
+      throw new Error('Invalid analysis root')
+    checkSlots(result.root)
+    validators[result.root.typeName]!.parse(propsOnly(result.root))
+  } catch (error) {
+    throw new AnalysisProgramError('analysis-program-invalid', {
+      detail: error instanceof Error ? error.message.slice(0, 2048) : undefined,
+    })
+  }
   return result.root
 }

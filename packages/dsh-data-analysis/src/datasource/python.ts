@@ -17,6 +17,7 @@ import {
   pythonResultVariables,
   readPythonResultOutput,
 } from '../python-result-references.ts'
+import { pythonResultsMeta } from '../python-results-context.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import {
@@ -141,12 +142,12 @@ const pythonOutputSchema = {
           type: 'object',
           additionalProperties: true,
           description:
-            'Resource-name map, present only after successful declared reference export. Each value is PythonResult: {resource: {kind:"analysis-frame", ref:{schema:"marivo.frame_ref/v2",store_id,session_id,artifact_id}, codeRef?:{executionId,sha256}} | {kind:"dataframe", ref:{schema:"marivo.dataframe_ref/v2",project_root,result_id}, codeRef?:{executionId,sha256}}, sourceStatus:"recorded"|"unavailable", sourceError?:string, metadata:{status:"captured",kind:"frame"|"dataset",columns:string[],values:string[],axes:{token,name,role}[],coverage:{totalRows:number|null,business:"unknown"}}|{status:"unavailable",reason:"budget"|"read-failed"|"identity-mismatch"}}. recorded requires resource.codeRef; unavailable omits codeRef and requires sourceError. Each entry is strictly validated. Pass resource unchanged to the report writer.',
+            'Named fixed outputs. Each entry provides a complete resource, metadata and sourceStatus. Pass resource unchanged to the report writer. Outputs can be available even when the execution or other exports failed.',
         },
         resultCaptureError: {
           type: 'string',
           description:
-            'Reference export failed independently of successful user code; results is absent. Do not replay analysis.',
+            'One or more outputs could not be exported. Use any available results and inspect existing effects before retrying.',
         },
         codeCaptureError: {
           type: 'string',
@@ -199,13 +200,13 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        "Run user code once in a foreground Python process in the bound Runtime and Workspace. Use project=required for Marivo datasource access, project analysis or result persistence; project=none is the default for ordinary files. Project preparation precedes credentials and follows this call's Host execution policy. New computations must be self-contained; derived computations explicitly read fixed inputs and persist new outputs. Prefer AnalysisFrame for supported governed analysis. Export persisted references through resultVariables and pass results[name].resource directly to the report writer. Reuse unchanged resource declarations across compatible views. Memory ends with the call; stdout is not a reference channel. Follow returned credential handoffs and never read or pass secret values through code, environment, output or logs. Execution, reference export, metadata and source recording have independent outcomes. Do not replay successful analysis to recover missing metadata or source; timeout does not prove remote query cancellation or absence of saved results.",
+        'Run user code once in the bound Runtime and Workspace. Declare reusable outputs with resultVariables and pass results[name].resource unchanged to the report writer. Derived computations explicitly read fixed inputs. Use project=required for Marivo datasource access, project analysis or result exports; project=none defaults to ordinary files. Execution, result export and source recording have independent outcomes. Memory ends with the call; use returned resources to continue. Follow credential handoffs and keep secrets out of code and output.',
       parameters: {
         code: {
           type: 'string',
           required: true,
           description:
-            "Python code, never credential values. A new computation must run in a fresh process and include its explicit input reads, computation and persistence; do not depend on another call's variables or temporary tables. Shared source files, governed definitions and exact saved results can be reused. Fixed-result reads do not refresh data; reuse the original resource declaration when displaying an unchanged result. codeRef records an exporting execution, not proof of original production. Consult current Runtime Help for Session lifetime and persistence, and release resources according to their public contracts.",
+            'Python code, never credential values. Include explicit input reads and computation. Assign each declared output to a variable. Consult current Runtime Help for Session lifetime and persistence.',
         },
         datasources: {
           type: 'array',
@@ -229,12 +230,13 @@ export function registerMarivoPythonTool(
           type: 'object',
           additionalProperties: true,
           description:
-            'Optional resource name -> Python variable name; requires project=required and supports up to 16 outputs. Each variable must hold an exact persisted reference dictionary, such as saved_frame.ref.to_dict() or mv.persist_dataframe(df).to_dict(). Only identifiers, no expressions. Returns results[name] with a complete report resource, source status and bounded metadata independently of stdout. One resource may support multiple views. Metadata failure does not invalidate reference export or replay analysis. Omit for scripts without persisted report results.',
+            'Optional resource name -> Python variable name (up to 16, project=required). Assign a computed AnalysisFrame, pandas DataFrame or exact fixed reference. The plugin saves declared in-memory outputs and reuses fixed references. Call compute() explicitly for a pending Frame. Use results[name].resource to continue, including after partial failure.',
         },
       },
       output: {
         schema: pythonOutputSchema,
         render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+        presentationMeta: (_args, value) => pythonResultsMeta(value),
       },
       async execute(args, exec) {
         const calledAt = performance.now()
@@ -425,7 +427,13 @@ export function registerMarivoPythonTool(
               }
           const stderr = exported.stderr
           const succeeded = result.exitCode === 0 && !result.timedOut && !result.aborted
-          const resultCaptureError = succeeded ? exported.resultCaptureError : undefined
+          const completed =
+            result.exitCode !== null &&
+            !result.timedOut &&
+            !result.aborted &&
+            !result.sandbox?.denied &&
+            !result.sandbox?.runnerFailed
+          const resultCaptureError = completed ? exported.resultCaptureError : undefined
           const credentialValues = prepared.values
           // Defense at the result seam as well as before Harness collection/spill.
           const redact = (text: string) =>
@@ -489,6 +497,7 @@ export function registerMarivoPythonTool(
                 : result.exitCode === null
                   ? 'unknown'
                   : 'nonzero-exit'
+          if (completed && exported.resultRefs) prepared.assertCurrent()
           return JSON.parse(
             JSON.stringify({
               exitCode: result.exitCode,
@@ -500,20 +509,25 @@ export function registerMarivoPythonTool(
               sandbox: result.sandbox ?? null,
               ...(project ? { project } : {}),
               ...(codeCaptureError ? { codeCaptureError } : {}),
-              ...(exported.resultRefs && succeeded
+              ...(exported.resultRefs && completed
                 ? {
                     results: pythonResults(
                       exported.resultRefs,
                       exported.resultMetadata,
                       codeRef,
-                      codeCaptureError,
+                      succeeded
+                        ? codeCaptureError
+                        : 'The execution failed after assigning this fixed output; no execution source was recorded.',
                     ),
                   }
                 : {}),
               ...(resultCaptureError ? { resultCaptureError } : {}),
               execution: summary(
                 reason,
-                codeCaptureError ??
+                (!succeeded && exported.resultRefs && completed
+                  ? 'Reuse the returned fixed outputs. Inspect the failed part before retrying.'
+                  : undefined) ??
+                  codeCaptureError ??
                   resultCaptureError ??
                   (reason === 'succeeded' ? null : CHECK_EFFECTS),
               ),

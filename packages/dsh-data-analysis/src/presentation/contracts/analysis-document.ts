@@ -138,9 +138,15 @@ export class AnalysisViewError extends Error {
   readonly path: string
   readonly resourceName: string
   readonly phase = 'report-validation'
-  readonly recovery: { nextAction: string }
-  constructor(code: string, path: string, hint: string, resourceName: string) {
-    const recovery = { nextAction: hint }
+  readonly recovery: { nextAction: string; currentRef?: string; applied?: false }
+  constructor(
+    code: string,
+    path: string,
+    hint: string,
+    resourceName: string,
+    context?: { currentRef?: string; applied: false },
+  ) {
+    const recovery = { ...context, nextAction: hint }
     super(
       `${code} at ${path}: ${hint}; error=${JSON.stringify({ code, phase: 'report-validation', path, recovery })}`,
     )

@@ -26,6 +26,7 @@ import { resultReferenceKey } from './contracts/result-reference.ts'
 import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
 import { presentationSha256, readReportFile } from './files.ts'
+import { PresentationRecoveryError } from './recovery.ts'
 import { readMarivoResult } from './result-reader.ts'
 import { analysisResultSummary } from './result-summary.ts'
 
@@ -155,8 +156,12 @@ export async function createAnalysisDocument(
         : ['AnalysisFrameView', 'DatasetView'].includes(node.typeName)
           ? node.props.ref
           : undefined
-    if (ref !== undefined && (typeof ref !== 'string' || !declarations[ref]))
-      throw new Error('analysis-resource-missing')
+    if (ref !== undefined && (typeof ref !== 'string' || !Object.hasOwn(declarations, ref)))
+      throw new PresentationRecoveryError(
+        'analysis-resource-missing',
+        'Include the missing resource in resourcePatch.put using its existing fixed declaration, or correct the reference in the program.',
+        typeof ref === 'string' ? { resource: ref } : {},
+      )
   }
   const resources: AnalysisDocument['resources'] = {}
   const pending = entries.filter(([name, declaration]) => {

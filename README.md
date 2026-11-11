@@ -103,9 +103,9 @@ npx @deepseek-ai/dsh web
 
 分析视图通过 `marivo_report_write` 呈现结论、图表、精确数据和限制。你可以指定报告或看板的组织方式，也可以指定只要文字或文件。视图保存后，Chat 通常只简述关键发现和影响解读的限制。
 
-AnalysisFrame 显式 `persist()` 后，将 `saved.ref.to_dict()` 作为 `analysis-frame` 资源提交；插件通过绑定 Python Runtime 读取，无需 HTTP 服务。DataFrame 使用 `mv.persist_dataframe(table).to_dict()`，将完整字典作为 `dataframe` 资源提交；引用须属于当前 Workspace。
+通过 `marivo_python.resultVariables` 声明已计算的 AnalysisFrame、DataFrame 或已有固定引用。插件保存声明的内存输出，并返回可直接交给 `marivo_report_write` 的 `results[name].resource`。后续图表和报告可复用当前 Workspace 的固定结果。
 
-需要查看结果关联的执行脚本时，在 `marivo_python.resultVariables` 中声明引用变量，将返回的 `results[name].resource` 原样交给分析视图工具，插件关联 kind 和 codeRef；stdout 保持任意文本。codeRef 仅证明该次执行导出过此引用，不保证是最初生成脚本或可用于重算。更新数据时，助手先审阅绑定脚本、数据源和输出声明，再显式生成新结果并替换同名资源，通过 `mode:"refresh-data"` 保留原布局、正文和显示标签，逐批原子校验；正文中的静态数字不会自动改写，待复核状态随视图版本保存。
+插件根据引用确定 kind，在成功保存来源时关联 codeRef。stdout 用于日志。codeRef 仅证明该次执行导出过此引用，不保证是最初生成脚本或可用于重算。更新数据时，助手先审阅绑定脚本、数据源和输出声明，再显式生成新结果并替换同名资源，通过 `mode:"refresh-data"` 保留原布局、正文和显示标签，逐批原子校验；正文中的静态数字不会自动改写，待复核状态随视图版本保存。
 
 - **检查数据**：精确排序、本地翻页，并就数据点或整个结果继续提问。截断预览注明范围，不作为完整单值展示。
 - **查看依据**：Frame 显示结构与来源身份；DataFrame 集中展示捕获范围、执行脚本和已声明的数据源。

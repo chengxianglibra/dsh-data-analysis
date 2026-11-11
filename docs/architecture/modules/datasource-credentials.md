@@ -41,7 +41,16 @@ Agent 依据绑定 Runtime 的 live Help 通过 `marivo_python` 修改非秘密�
 成功 `marivo_python` 会在 Host 的 `$DSH_HOME/dsh-data-analysis/python-executions/` 按 Workspace 隔离，
 原子保存本次提交的 Python 原文。声明结果导出成功后，Host 在 `results[name].resource.codeRef` 关联同次执行记录；模型不再配对顶层 codeRef、resultRefs 或 resultMetadata。
 读写位置由 Host 决定，不从 Workspace 接受作者自报的执行记录文件。
-可选 resultVariables 将 1–16 个资源名映射到准确持久引用变量名，要求 project=required，不自动计算或持久化任意内存对象。worker 在代码成功结束后导出引用字典，经临时控制文件和 launcher 生成的首个控制帧返回；Host 严格校验引用、输出名及 32 KiB 预算，再登记到 v4 执行记录，保存 Session/call/root-call 和输出变量声明。stdout 完全不参与引用发现；普通脚本无须声明输出。控制帧在进入工具结果前移除，用户 stderr 保留；非零退出、超时与取消不返回成功资源。导出失败单独返回 resultCaptureError，不伪造空 results、不改变原代码成功状态或自动重放。能够确认输入问题时，诊断指出声明的输出、变量和引用字典要求；不回显变量值或任意异常。引用结构仍由 Host 校验，控制通道或序列化原因不明时保留通用不可用说明；诊断不恢复已结束进程的变量或生产来源。
+可选 `resultVariables` 将 1–16 个资源名映射到 Python 变量名，要求 `project:"required"`。
+变量可持有已经计算的 AnalysisFrame、可持久化的 pandas DataFrame 或准确固定引用。worker 在进程退出前
+逐项导出。已固定的引用原样复用，内存结果通过 Marivo 公开 API 持久化，待计算的 Frame 返回导出错误。
+引用通过临时控制文件和 launcher 的首个控制帧返回，Host 校验输出名、引用和 32 KiB 预算。
+stdout 用于日志。普通非零退出仍可返回已导出的结果，执行状态保持失败，来源状态为 unavailable。
+超时或取消的结果未确认。逐项导出错误通过 `resultCaptureError` 返回，已导出的资源继续可用。
+
+Host 在 Harness 的 Tool Result metadata 保存命名结果引用和有界列摘要。插件在模型上下文准备阶段，
+从当前 Session 的历史回执补回不在当前 surface 的近期输出，核对 Workspace 的 canonical project root，
+并按可见回执去重。此过程读取的是 Harness 会话记录，展示阶段通过绑定 Runtime 读取对应的固定结果。
 
 每个成功输出的 `results[name]` 包含 `resource`、`sourceStatus` 和有界 `metadata`。resource 复用报告 writer 的轻量公开声明 schema，为 `{kind:"analysis-frame",ref,codeRef?}` 或 `{kind:"dataframe",ref,codeRef?}`；kind 由经过验证的引用 schema 决定，可原样用于 resourcePatch.put。sourceStatus 与 metadata 不放入声明。来源保存失败时保留有效资源并省略 codeRef，返回 sourceStatus=unavailable 与 sourceError；元数据失败仅将 metadata 标记 unavailable。执行、引用导出、元数据和来源记录的成功分别表达，不因此重跑业务代码。控制帧解析后按本次 credential snapshot 检查字符串：引用包含凭据值时只拒绝引用导出，不先写入来源记录；元数据包含凭据值时将该项 metadata 标记 unavailable，不替换或伪造引用身份，错误不回显值。
 

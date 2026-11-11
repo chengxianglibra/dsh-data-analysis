@@ -10,10 +10,12 @@ import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { createAnalysisDocument, validateRefreshShape } from './analysis.ts'
 import {
   type AnalysisDocument,
+  AnalysisViewError,
   analysisPresentInput,
   analysisRecordId,
   parseAnalysisRecordId,
 } from './contracts/analysis-document.ts'
+import { AnalysisProgramError } from './contracts/analysis-program.ts'
 import {
   frameReadSummary,
   type ReportSourceSummary,
@@ -80,7 +82,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Create or update an analysis view in the right sidebar. When data preparation is ongoing, preview early, update the same draft as results become ready, and save once. Ready results and changes can save directly. Send only changed resources and named program statements. Preview and save return an opaque ref and may include final changes. Drafts expire at Turn end or Host restart. Use marivo_report_read to recover editing context or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources. deliveryJson is for Host delivery.',
+      'Create or update an analysis view in the right sidebar. Reuse matching fixed outputs. When data preparation is ongoing, preview early, update the same draft as results become ready, and save once. Ready results and changes can save directly. Send only changed resources and named program statements. A rejected patch does not apply; correct it and resubmit with the same fixed resources and latest ref. Drafts expire at Turn end or Host restart. Use marivo_report_read to recover editing context or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources.',
     parameters: {
       stage: {
         type: 'string',
@@ -267,6 +269,7 @@ export function createMarivoPresentTool(
             'analysis-draft-conflict',
             'Read marivo_report_read({draft:true}) and reconcile the intended edit with the latest draft before using its identifiers. Do not blindly replay a stale patch.',
             {
+              applied: false,
               currentRef: draftReportRef({
                 workspaceId: identity.id,
                 sessionId,
@@ -444,6 +447,28 @@ export function createMarivoPresentTool(
             ),
           }
           return value
+        } catch (error) {
+          if (error instanceof AnalysisProgramError)
+            throw new PresentationRecoveryError(
+              error.code,
+              'Correct the OpenUI program and resubmit the same program and resource changes.',
+              { currentRef: request.ref, applied: false, ...error.details },
+            )
+          if (error instanceof AnalysisViewError)
+            throw new AnalysisViewError(
+              error.code,
+              error.path,
+              error.recovery.nextAction,
+              error.resourceName,
+              { currentRef: request.ref, applied: false },
+            )
+          if (error instanceof PresentationRecoveryError)
+            throw new PresentationRecoveryError(error.code, error.recovery.nextAction, {
+              ...(request.ref ? { currentRef: request.ref } : {}),
+              ...error.recovery,
+              applied: false,
+            })
+          throw error
         } finally {
           resourceStream.finish(streamSucceeded)
         }

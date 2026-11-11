@@ -42,6 +42,10 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 
 每次 preview/save 整批原子准入：任一资源读取、视图或完整文档失败，均保留最后成功 revision、document、current 和 history；临时资源流不能成为成功草稿。调用者可显式提交已就绪子集，未提交项保持旧数据，不能自动剔除已失败资源。结果中的 changed/reused 区分真正替换与复用；同一固定引用即使更换来源记录也不冒充新计算，同路径图片继续复用。reader 的 reuseGroups 按准确固定引用分组，不按 codeRef 或相同值推断；writer 的 unchangedAliases 提示仍保留旧数据的共享别名，不自动扩大更新范围。
 
+语法、缺失资源及视图校验失败的回执包含 `applied:false`、可确定的错误位置或资源名，以及已有基准时的
+`currentRef`。修复后向该基准提交本次完整修改，沿用已有固定资源。草稿上下文缺失或冲突时通过
+`marivo_report_read` 恢复。草稿过期后可用历史回执中的固定输出重新构建。
+
 新 Build 将 contentReview 持久写入 `presentation.json`：已有资源真正替换且存在非空 TextContent、TextCallout 的 title/description 或 AccordionItem 的 trigger 时为 required，无静态正文时为 not-needed。旧 v1 未记录状态，读取解释为 unknown；普通 edit 继承 required，不把模型声明当成已复核证明。提示显示在报告正文之外，当前/历史重开及离线 HTML 均使用对应 Build 的事实。
 
 组件不读取任意 URL。错误资源、取消或必要读取失败都不发布 current。新资源使用 `analysis-frame` / `dataframe` 和 Marivo 固定引用；历史 snapshot 声明保留原 Host provenance，

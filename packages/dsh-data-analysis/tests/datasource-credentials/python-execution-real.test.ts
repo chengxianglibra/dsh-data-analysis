@@ -1,7 +1,16 @@
 /** Opt-in acceptance: real Harness + bound Python, isolated files, no model or database calls. */
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test, { type TestContext } from 'node:test'
@@ -11,7 +20,11 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import BashLocal from '@deepseek-ai/dsh-bash-local'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
-import LlmRuntime, { ToolCallId } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, {
+  createToolResultMessage,
+  createUserMessage,
+  ToolCallId,
+} from '@deepseek-ai/dsh-llm'
 import NodePtcRuntime from '@deepseek-ai/dsh-ptc-runtime-node'
 import LocalSandbox from '@deepseek-ai/dsh-sandbox-local'
 import SandboxPolicy from '@deepseek-ai/dsh-sandbox-policy'
@@ -39,6 +52,7 @@ import { readAnalysisRecord } from '../../src/presentation/reports.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import type { PythonCodeRef } from '../../src/python-execution.ts'
+import { restorePythonResults } from '../../src/python-results-context.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 import { Store } from './fixtures.ts'
 
@@ -232,6 +246,46 @@ test('real Harness refreshes Frame and DataFrame report data with traceable scri
       arguments: args,
     })
     assert(!result.isError, JSON.stringify(result))
+    if (name === 'marivo_python' && sequence === 1) {
+      const event = h.agent.session.append(
+        'tool/result',
+        {
+          turn: 0,
+          step: sequence,
+          message: createToolResultMessage({ callId, content: result.content, isError: false }),
+          meta: result.meta,
+        },
+        { surfaceOp: 'append' },
+      )
+      const signal = new AbortController().signal
+      assert.equal(await restorePythonResults(h.agent.session, [], () => h.root, signal), undefined)
+      h.agent.session.append(
+        'user/message',
+        createUserMessage({
+          content: [{ type: 'text', text: 'Compacted' }],
+          source: { kind: 'user' },
+        }),
+        {
+          surfaceOp: { op: 'replace', startSeq: event.seq, endSeq: event.seq },
+          sourceEventSeqs: [event.seq],
+        },
+      )
+      const restored = await restorePythonResults(h.agent.session, [], () => h.root, signal)
+      assert(restored?.source?.kind === 'marivo-python-results')
+      assert(restored.source.events.includes(event.seq))
+      const content = restored.content[0]
+      assert(content?.type === 'text')
+      const handoff = z.object({
+        results: z.record(z.string(), z.object({ resource: analysisResourceDeclaration })),
+      })
+      const groups = handoff.array().parse(JSON.parse(content.text.split('\n')[1]!))
+      assert.deepEqual(groups[0], handoff.parse(result.value))
+      assert.equal(
+        await restorePythonResults(h.agent.session, [restored], () => h.root, signal),
+        undefined,
+      )
+      assert.equal(await restorePythonResults(h.agent.session, [], () => h.home, signal), undefined)
+    }
     return result.value as Record<string, unknown>
   }
   const code = String.raw`
@@ -242,15 +296,13 @@ import pandas as pd
 import marivo.analysis as mv
 amount = int(Path("amount.txt").read_text())
 session = mv.session.get_or_create("refresh-" + uuid4().hex)
-frame = session.values(columns={"amount": "CNY"}, rows=(((), {"amount": amount}),)).persist(description="Refresh amount")
-dataframe = mv.persist_dataframe(pd.DataFrame({"amount": [amount]}))
-frame_ref = frame.ref.to_dict()
-data_ref = dataframe.to_dict()
+frame = session.values(columns={"amount": "CNY"}, rows=(((), {"amount": amount}),)).compute()
+dataframe = pd.DataFrame({"amount": [amount]})
 print("Arbitrary report log; reference discovery must not parse this text")
 print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
 `
   await writeFile(path.join(h.root, 'amount.txt'), '100')
-  const resultVariables = { frame: 'frame_ref', data: 'data_ref' }
+  const resultVariables = { frame: 'frame', data: 'dataframe' }
   const producer = await invoke('marivo_python', {
     code,
     datasources: [],
@@ -289,6 +341,7 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
   )
   assert.match(String(producer.stdout), /Arbitrary report log/)
   assert.equal(producer.stderr, '__DSH_MARIVO_RESULTS_V1__:user text\n')
+  await unlink(path.join(h.root, 'amount.txt'))
   const saved = await invoke(writer.name, {
     stage: 'save',
     resourcePatch: { put: resources },
@@ -364,6 +417,50 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
     'Revenue',
   )
   assert.equal(h.starts, 2)
+})
+
+test('real Python exports completed outputs after an exception and leaves pending Frames unevaluated', {
+  skip,
+}, async (t) => {
+  const h = await harness(t)
+  const result = await h.agent.ctx.tools.execute({
+    agent: h.agent,
+    signal: new AbortController().signal,
+    callId: ToolCallId('partial-outputs'),
+    name: 'marivo_python',
+    arguments: {
+      project: 'required',
+      datasources: [],
+      resultVariables: { pending: 'pending', ready: 'ready', missing: 'missing' },
+      code: `
+import marivo.analysis as mv
+session = mv.session.get_or_create("partial-outputs")
+pending = session.values(columns={"amount": "CNY"}, rows=(((), {"amount": 42}),))
+ready = pending.compute()
+raise ValueError("after computing ready")
+`,
+    },
+  })
+  assert(!result.isError, JSON.stringify(result))
+  const value = z
+    .object({
+      execution: z.object({ reason: z.string() }),
+      resultCaptureError: z.string(),
+      results: z.record(
+        z.string(),
+        z.object({
+          resource: analysisResourceDeclaration,
+          sourceStatus: z.string(),
+        }),
+      ),
+    })
+    .parse(result.value)
+  assert.equal(value.execution.reason, 'nonzero-exit')
+  assert.deepEqual(Object.keys(value.results), ['ready'])
+  assert.equal(value.results.ready?.sourceStatus, 'unavailable')
+  assert.match(value.resultCaptureError, /"pending"/)
+  assert.match(value.resultCaptureError, /"missing"/)
+  assert(result.meta)
 })
 
 test('real empty Workspace keeps file work zero-init and prepares persisted exports exactly once', {

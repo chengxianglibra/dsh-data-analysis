@@ -26,6 +26,7 @@ import {
   registerMarivoPresentTool,
   registerMarivoUiReadTool,
 } from './presentation/index.ts'
+import { restorePythonResults } from './python-results-context.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const ROUTING_PROMPT = [
@@ -35,6 +36,7 @@ const ROUTING_PROMPT = [
   'Use marivo_help for current Marivo API contracts, including upstream marivo help examples. It uses the verified Runtime; report failures without switching installations.',
   'Run analysis and create, edit, or remove datasource definitions with marivo_python in the bound Workspace. Use marivo_help and the live Runtime contracts for datasource authoring. Put only non-secret configuration and credential references in code; use Harness credential forms for secret values, never chat or code. Use marivo_datasource_test when a connection test is requested or useful.',
   'Deliver analysis views with marivo_report_write and requested files with Harness native present. State the actual delivery status.',
+  'Declare computed outputs supporting your answer with marivo_python resultVariables. Reuse matching fixed outputs from prior calls for charts and reports; refresh only when the task calls for new data. A rejected preview can be repaired with the same resources.',
 ].join('\n')
 
 export type MarivoPluginEnvironmentResolver = (
@@ -118,6 +120,7 @@ export function createMarivoAgentInstallation(
     }
     const helpSource = options.helpBridgeSource ?? (async () => (await resolveBridgeSet()).help)
     const datasourceSource = async () => (await resolveBridgeSet()).datasource
+    const workspace = () => resolvePresentationWorkspace(ctx, String(agent.session.id))
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
     const savedWrites = new SavedWriteProofs()
     controller.addDisposer(() => savedWrites.close())
@@ -134,17 +137,11 @@ export function createMarivoAgentInstallation(
         ),
       )
       controller.addDisposer(() => credentialService.disposeAgent(agent))
-      controller.addDisposer(
-        registerMarivoUiReadTool(
-          agent.ctx,
-          () => resolvePresentationWorkspace(ctx, String(agent.session.id)),
-          presentationDrafts,
-        ),
-      )
+      controller.addDisposer(registerMarivoUiReadTool(agent.ctx, workspace, presentationDrafts))
       controller.addDisposer(
         registerMarivoPresentTool(
           agent.ctx,
-          () => resolvePresentationWorkspace(ctx, String(agent.session.id)),
+          workspace,
           agent.session,
           presentationDrafts,
           async () => resolveMarivoEnvironmentSource(source),
@@ -156,7 +153,7 @@ export function createMarivoAgentInstallation(
         installNextStepsAgent(
           ctx,
           agent,
-          () => resolvePresentationWorkspace(ctx, String(agent.session.id)),
+          workspace,
           options.nextStepsPublish ?? (() => {}),
           savedWrites,
         ),
@@ -168,6 +165,23 @@ export function createMarivoAgentInstallation(
           order: 180,
           text: ROUTING_PROMPT,
         }),
+      )
+      controller.addDisposer(
+        agent.ctx.on(
+          'agent/pre-step',
+          async ({ signal }, next) => {
+            const decision = await next()
+            if (decision.kind === 'reject') return decision
+            const restored = await restorePythonResults(
+              agent.session,
+              decision.messages,
+              () => workspace().path,
+              signal,
+            )
+            return restored ? { ...decision, messages: [...decision.messages, restored] } : decision
+          },
+          true,
+        ),
       )
       installed.set(agent, controller)
     } catch (error) {

@@ -55,6 +55,65 @@ if (os.path.abspath(sys.executable) != expected["pythonExecutable"] or
 resolver = SnapshotResolver(payload)
 code = payload.pop("code")
 sys.stdin = open(os.devnull)
+
+def export_results(namespace):
+    import importlib.util
+
+    def fixed_ref(value):
+        if isinstance(value, dict):
+            return value
+        import marivo.analysis as mv
+        import pandas as pd
+
+        if isinstance(value, (mv.FrameReference, mv.DataFrameReference)):
+            return value.to_dict()
+        if isinstance(value, mv.AnalysisFrame):
+            try:
+                return value.ref.to_dict()
+            except Exception:
+                pass
+            # read_page rejects pending expressions and cannot read a source.
+            value.read_page(columns=(), limit=1)
+            return value.persist().ref.to_dict()
+        if isinstance(value, pd.DataFrame):
+            return mv.persist_dataframe(value, project_root=payload["project_root"]).to_dict()
+        raise TypeError("Unsupported result variable")
+
+    references, errors, captured = {}, {}, {}
+    for name, variable in payload["result_variables"].items():
+        if variable not in namespace:
+            errors[name] = "missing-variable"
+            continue
+        try:
+            value = namespace[variable]
+            if id(value) not in captured:
+                reference = fixed_ref(value)
+                if len(json.dumps(reference, allow_nan=False).encode()) > 16384:
+                    raise ValueError("Result reference exceeds its budget")
+                captured[id(value)] = reference
+            references[name] = captured[id(value)]
+        except Exception:
+            errors[name] = "not-fixed"
+
+    output = {"status": "collected", "references": references, "errors": errors}
+    if references:
+        try:
+            spec = importlib.util.spec_from_file_location("_dsh_result_metadata", str(Path(payload["projection_root"]) / "result_metadata.py"))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            output["metadata"] = {name: module.result_metadata(ref) for name, ref in references.items()}
+            if len(json.dumps(output).encode()) > 32768:
+                output["metadata"] = {name: {"status": "unavailable", "reason": "budget"} for name in references}
+        except Exception:
+            output["metadata"] = {name: {"status": "unavailable", "reason": "read-failed"} for name in references}
+    text = json.dumps(output, allow_nan=False)
+    for value in resolver.values.values():
+        if value:
+            text = text.replace(value, "[REDACTED]")
+    encoded = text.encode("utf-8")
+    if len(encoded) <= 32768:
+        Path(payload["result_file"]).write_bytes(encoded)
+
 try:
     with md.credential_scope(resolver=resolver):
         for name, grant in resolver.grants.items():
@@ -64,39 +123,14 @@ try:
             if definition(description) != grant["definition"]:
                 raise RuntimeError("Marivo datasource definition changed; execution cancelled")
         namespace = {"__name__": "__main__"}
-        exec(compile(code, "<marivo_python>", "exec"), namespace)
-        if payload.get("result_variables"):
-            try:
-                references = {}
-                output = {"status": "ok", "references": references}
-                for name, variable in payload["result_variables"].items():
-                    if variable not in namespace:
-                        output = {"status": "unavailable", "name": name, "reason": "missing-variable"}
-                        break
-                    if not isinstance(namespace[variable], dict):
-                        output = {"status": "unavailable", "name": name, "reason": "not-dictionary"}
-                        break
-                    references[name] = namespace[variable]
-                if output["status"] == "ok":
-                    try:
-                        import importlib.util
-                        spec = importlib.util.spec_from_file_location("_dsh_result_metadata", str(Path(payload["projection_root"]) / "result_metadata.py"))
-                        module = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(module)
-                        output["metadata"] = {name: module.result_metadata(ref) for name, ref in references.items()}
-                        if len(json.dumps(output).encode()) > 32768:
-                            output["metadata"] = {name: {"status": "unavailable", "reason": "budget"} for name in references}
-                    except Exception:
-                        output["metadata"] = {name: {"status": "unavailable", "reason": "read-failed"} for name in references}
-                text = json.dumps(output, allow_nan=False)
-                for value in resolver.values.values():
-                    if value:
-                        text = text.replace(value, "[REDACTED]")
-                encoded = text.encode("utf-8")
-                if len(encoded) <= 32768:
-                    Path(payload["result_file"]).write_bytes(encoded)
-            except Exception:
-                pass  # Export failure does not change the successful user-code outcome.
+        try:
+            exec(compile(code, "<marivo_python>", "exec"), namespace)
+        finally:
+            if payload.get("result_variables"):
+                try:
+                    export_results(namespace)
+                except Exception:
+                    pass  # Keep the original user-code outcome.
 finally:
     resolver.values.clear()
     payload.clear()

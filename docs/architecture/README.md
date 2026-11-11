@@ -73,7 +73,7 @@ Help 使用启动时验证的 shared Runtime，不为读取 API Help 初始化 W
 
 每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，报告或看板在准备组件数据之前加载 `dsh-data-analysis-presentation`；已有普通单结果可直接展示。需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。可选 Runtime Skill 以实际安装为准，当前 Marivo 0.6.4 包未提供 `marivo-service`。
 
-默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_report_write`、`marivo_report_read`、`marivo_next_steps`。持久化 Frame、Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API，不另加 convenience wrapper。
+默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_report_write`、`marivo_report_read`、`marivo_next_steps`。Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API。插件通过相同的公开契约固定显式声明的执行输出。
 
 ### 配置与执行
 
@@ -82,7 +82,7 @@ Harness Credentials 是秘密值权威；Marivo 的公开 description、Datasour
 Agent 在对话中使用 Marivo 公开 API 变更数据源定义；缺凭证时 Host 表单绑定原调用与所属 Session，保存后续接，取消或身份变化结束旧操作。`marivo_python` 在一次调用内等待所有声明的数据源就绪，取得 fresh snapshot，通过 stdin 和 `md.credential_scope` 注入，再交给 Harness Shell 前台执行。秘密值不进入 Agent 参数、argv 或环境，输出在 Host spill 前脱敏。
 
 纯文件分析使用 `datasources: []`，仍保留 Runtime/Workspace identity、取消与执行代码记录。
-需要保留 DataFrame 时显式使用 `mv.persist_dataframe`，再将完整引用交给 `marivo_report_write`；Host 只读取当前 Workspace 的固定结果，Reader 使用内嵌投影。每次调用是独立 Python 进程，临时表和内存状态不会跨调用保留；文件结果不会自动获得 Marivo Evidence 或 lineage。
+需要保留结果时用 `resultVariables` 声明输出，插件固定已计算的 AnalysisFrame 或 DataFrame，已有准确引用可直接导出。将返回的完整 resource 交给 `marivo_report_write`，Host 读取当前 Workspace 的固定结果，Reader 使用内嵌投影。每次调用是独立 Python 进程，临时表和内存状态不会跨调用保留；文件结果不会自动获得 Marivo Evidence 或 lineage。
 
 `marivo_python` 使用 Host `ShellExecutor.execute(spec).result()` 完成前台调用。用户要求交付已有 CSV、TSV、XLSX 等表格文件时，文件分析 Skill 指导 Agent 在确认文件后调用 Harness 原生 `present`；文件卡片、Session 文件声明及只读表格预览由 Harness 拥有。插件的 `marivo_report_write` 承载需要在分析 UI 中核对的表格；原生 `.xls` 预览不扩大 Marivo 的分析格式范围。
 

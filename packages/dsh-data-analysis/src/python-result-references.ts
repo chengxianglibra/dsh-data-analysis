@@ -105,13 +105,19 @@ const resultOutput = z.discriminatedUnion('status', [
     metadata: z.unknown().optional(),
   }),
   z.strictObject({
+    status: z.literal('collected'),
+    references: z.record(resultName, z.unknown()),
+    errors: z.record(resultName, z.enum(['missing-variable', 'not-fixed'])),
+    metadata: z.unknown().optional(),
+  }),
+  z.strictObject({
     status: z.literal('unavailable'),
     name: resultName,
     reason: z.enum(['missing-variable', 'not-dictionary']),
   }),
 ])
 const RESULT_CAPTURE_ERROR =
-  'Python completed, but its declared result references were not exported. Inspect existing effects and the declared reference variables; do not rerun successful code merely to recover export metadata.'
+  'One or more declared outputs could not be exported. Reuse returned resources and inspect existing effects before retrying.'
 
 /** References returned by one successful invocation, not proof of how it computed them. */
 export const pythonResultRecord = z.strictObject({
@@ -153,7 +159,7 @@ export function readPythonResultOutput(
     stderr: remainder,
     resultCaptureError:
       name && Object.hasOwn(variables, name) && !containsSecret([name, variables[name]], secrets)
-        ? `${RESULT_CAPTURE_ERROR} Output ${JSON.stringify(name)}, variable ${JSON.stringify(variables[name])}: ${reason} Expected an exact persisted reference dictionary, such as saved.ref.to_dict() for a Frame.`
+        ? `${RESULT_CAPTURE_ERROR} Output ${JSON.stringify(name)}, variable ${JSON.stringify(variables[name])}: ${reason} Expected a computed Frame, pandas DataFrame or an exact fixed reference (frame_ref/v2 or dataframe_ref/v2).`
         : RESULT_CAPTURE_ERROR,
   })
   try {
@@ -169,35 +175,57 @@ export function readPythonResultOutput(
           ? 'Variable is not defined.'
           : 'Value is not a dictionary.',
       )
-    if (Object.keys(output.references).sort().join(',') !== Object.keys(variables).sort().join(','))
+    const errors = output.status === 'collected' ? output.errors : {}
+    const names = [...Object.keys(output.references), ...Object.keys(errors)]
+    if (names.sort().join(',') !== Object.keys(variables).sort().join(','))
       throw new Error('result-export-names')
     if (containsSecret(output.references, secrets)) throw new Error('result-export-sensitive')
-    const references = z.record(resultName, resultReference).safeParse(output.references)
-    if (!references.success) {
-      const name = references.error.issues[0]?.path[0]
-      return failure(typeof name === 'string' ? name : undefined, 'Reference is invalid.')
+    const references: Record<string, ResultReference> = Object.create(null)
+    const diagnostics: string[] = []
+    for (const name of names) {
+      const ref = resultReference.safeParse(output.references[name])
+      if (ref.success) {
+        references[name] = ref.data
+        continue
+      }
+      const reason = errors[name]
+      const detail =
+        reason === 'missing-variable'
+          ? 'Variable is not defined.'
+          : reason === 'not-fixed'
+            ? 'Use a computed Frame, a persistable DataFrame or an exact fixed reference.'
+            : 'Reference is invalid.'
+      if (!containsSecret([name, variables[name]], secrets))
+        diagnostics.push(
+          `${JSON.stringify(name)} (variable ${JSON.stringify(variables[name])}): ${detail}`,
+        )
     }
     const metadata = z.record(resultName, resultMetadata).safeParse(output.metadata)
     const validMetadata =
       metadata.success &&
-      Object.keys(metadata.data).sort().join(',') === Object.keys(variables).sort().join(',')
+      Object.keys(metadata.data).sort().join(',') ===
+        Object.keys(output.references).sort().join(',')
+    const missing = Object.keys(references).length !== names.length
     return {
       stderr: remainder,
-      resultRefs: references.data,
+      ...(Object.keys(references).length ? { resultRefs: { ...references } } : {}),
+      ...(missing ? { resultCaptureError: [RESULT_CAPTURE_ERROR, ...diagnostics].join(' ') } : {}),
       ...(output.metadata === undefined
         ? {}
         : {
             resultMetadata: validMetadata
               ? Object.fromEntries(
-                  Object.entries(metadata.data).map(([name, value]) => [
-                    name,
-                    containsSecret(value, secrets)
-                      ? { status: 'unavailable' as const, reason: 'read-failed' as const }
-                      : value,
-                  ]),
+                  Object.entries(metadata.data)
+                    .filter(([name]) => Object.hasOwn(references, name))
+                    .map(([name, value]) => [
+                      name,
+                      containsSecret(value, secrets)
+                        ? { status: 'unavailable' as const, reason: 'read-failed' as const }
+                        : value,
+                    ]),
                 )
               : Object.fromEntries(
-                  Object.keys(variables).map((name) => [
+                  Object.keys(references).map((name) => [
                     name,
                     { status: 'unavailable' as const, reason: 'read-failed' as const },
                   ]),

@@ -110,6 +110,7 @@ for (const fault of [
   'hook:tools/result:3',
   'hook:tools/ptc-dispatch-log:4',
   'prompt:marivo:routing',
+  'hook:agent/pre-step:9',
 ]) {
   for (const index of [0, 1])
     test(`existing Agent ${index} rolls back ${fault}`, async () => {

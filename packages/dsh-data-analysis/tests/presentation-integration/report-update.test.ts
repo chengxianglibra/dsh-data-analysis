@@ -187,7 +187,27 @@ test('preview revisions add data views without publishing until the draft is sav
   )
   await assert.rejects(
     f.execute({ ...draft('preview'), program: 'root = Image("Missing", "missing");' }),
-    /analysis-resource-missing/,
+    (error: Error) => {
+      assert.match(error.message, /analysis-resource-missing/)
+      assert.match(error.message, /"resource":"missing"/)
+      assert.match(error.message, /"applied":false/)
+      assert.match(error.message, /"currentRef":"mr1:d:/)
+      return true
+    },
+  )
+  await assert.rejects(
+    f.execute({
+      ...draft('preview'),
+      program: 'root = Stack([trend]);\ntrend = AnalysisFrameView("frame"];',
+      resourcePatch: { put: { frame: f.resources.frame } },
+    }),
+    (error: Error) => {
+      assert.match(error.message, /analysis-program-invalid-statement/)
+      assert.match(error.message, /"line":2/)
+      assert.match(error.message, /"applied":false/)
+      assert.match(error.message, /"currentRef":"mr1:d:/)
+      return true
+    },
   )
   assert.deepEqual(await f.service.draft(start, f.exec.signal), first)
   const results = await Promise.allSettled(
