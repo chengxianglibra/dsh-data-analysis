@@ -132,8 +132,7 @@ export function resolveDatasetView(
   }
   const cardinality = (name: string) =>
     new Set(rows.map((row) => JSON.stringify(row[ids.indexOf(name)]))).size
-  const seriesNames = (axis: string) =>
-    ids.filter((id) => id !== axis && unique([axis, id]) && cardinality(id) <= 8)
+  const seriesNames = (axis: string) => ids.filter((id) => id !== axis && unique([axis, id]))
   if (view.chart === 'heatmap') {
     const e = view.encoding
     if (!e) return fail('view-encoding-required', '/view/encoding')
@@ -172,8 +171,6 @@ export function resolveDatasetView(
     if (e.series) {
       const error = check(e.series, '/view/encoding/series', () => seriesNames(axis))
       if (error) return error
-      if (cardinality(e.series) > 8)
-        return fail('view-budget', '/view/encoding/series', seriesNames(axis))
     }
     for (const [i, name] of selected.entries()) {
       const alternatives = () => availableNames(ids.filter(numeric), selected, i)

@@ -61,7 +61,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   line/area/bar 必填 `encoding: {axis, values, series?}`，heatmap 必填 `{x, y, value}`，名称均为保存列 ID。
   数值列必须为 float64/int64/decimal 且可转换为有限绘图坐标，快照必须完整；axis/series 或 x/y 组合须唯一，重复时明确失败，聚合由原分析负责。
   axis 成员按保存行首次出现顺序排列，日期也仅作为已保存的离散点，不推断期间、缺期、时区或分析语义。
-  `encoding.series` 列的类别数最多为 8，`encoding.values` 可引用最多 64 列；这不是展开后绘图总序列数的统一上限。
+  `encoding.series` 不限制类别数，`encoding.values` 可引用最多 64 列；数据和文档仍受快照预算限制。
   heatmap 展开网格最多 100,000 格；对应预算超限在保存时拒绝。展开后的系列仍全部呈现，不因色板长度静默截断数据。
   默认 auto/table/metric 判定不变。metric 与图表提供数据图标和详细表格弹窗，支持排序、分页和精确值读取；
   table 直接使用当前表格，不重复显示数据图标。

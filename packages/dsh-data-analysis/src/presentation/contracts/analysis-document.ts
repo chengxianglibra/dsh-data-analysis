@@ -187,7 +187,7 @@ const viewHints: Record<string, string> = {
   'analysis-view-encoding-required':
     'provide explicit Dataset column mappings: axis/values/series or x/y/value.',
   'analysis-view-budget':
-    'use at most 8 series and 100,000 heatmap cells; prepare a smaller result in Python.',
+    'heatmap supports at most 100,000 cells; use fewer distinct x or y values.',
   'analysis-view-role-missing': 'this comparison or decomposition lacks the roles for this chart.',
   'analysis-view-axis-not-time': 'line/area axis must be a calendar or interval axis.',
   'analysis-view-pie-invalid-values':

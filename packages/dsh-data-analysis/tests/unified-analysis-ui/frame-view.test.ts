@@ -299,6 +299,19 @@ test('observation auto: time x category series, heatmap and matrix', () => {
   assert.equal(viewOf(f.records()).chart, 'table')
 })
 
+test('explicit Frame charts accept more than eight series', () => {
+  const snapshot = f.observeTimeCategory(12)
+  for (const chart of ['line', 'area', 'bar'] as const) {
+    assert.deepEqual(viewOf(snapshot, { chart, encoding: { axis: 'month', series: 'region' } }), {
+      chart,
+      axis: 't_month',
+      series: 't_region',
+      values: ['m0'],
+      broadcast: [],
+    })
+  }
+})
+
 test('share values use the 0-100% track on complete scalar or category Frames', () => {
   assert.deepEqual(viewOf(f.shareByRegion()), {
     chart: 'share',

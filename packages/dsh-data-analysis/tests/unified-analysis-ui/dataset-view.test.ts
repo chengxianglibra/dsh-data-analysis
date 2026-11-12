@@ -216,7 +216,7 @@ test('heatmap requires numeric saved values and a unique cell per pair, retainin
   assert.equal(resolveDatasetView(snapshot, view).ok, false)
 })
 
-test('Dataset drawing bounds reject excessive series and sparse Cartesian grids', () => {
+test('Dataset charts accept more than eight series while heatmap grids remain bounded', () => {
   const snapshot = datasetSnapshot(
     Array.from({ length: 320 }, (_, i) => [`x${i}`, `y${i}`, i]),
     [
@@ -225,14 +225,16 @@ test('Dataset drawing bounds reject excessive series and sparse Cartesian grids'
       { id: 'value', label: 'Value', type: 'float64', nullable: false },
     ],
   )
-  for (const view of [
-    { chart: 'bar', encoding: { axis: 'x', values: ['value'], series: 'y' } },
-    { chart: 'heatmap', encoding: { x: 'x', y: 'y', value: 'value' } },
-  ] satisfies FrameView[]) {
-    const result = resolveDatasetView(snapshot, view)
-    assert(!result.ok)
-    assert.equal(result.code, 'view-budget')
+  for (const chart of ['line', 'area', 'bar'] as const) {
+    const view = { chart, encoding: { axis: 'x', values: ['value'], series: 'y' } }
+    assert.equal(resolveDatasetView(snapshot, view).ok, true)
   }
+  const model = datasetChartModel(snapshot.data, ['x', 'y'])
+  assert.equal(groupRows(model, [axisOf(model, 'y')!]).length, 320)
+  const view: FrameView = { chart: 'heatmap', encoding: { x: 'x', y: 'y', value: 'value' } }
+  const result = resolveDatasetView(snapshot, view)
+  assert(!result.ok)
+  assert.equal(result.code, 'view-budget')
 })
 
 test('shared chart lookup retains Frame token precedence over an earlier matching display name', () => {
