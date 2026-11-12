@@ -264,7 +264,7 @@ export function registerMarivoPythonTool(
           type: 'object',
           additionalProperties: true,
           description:
-            'Optional resource name -> Python variable name (up to 16, project=required). Assign a computed AnalysisFrame, pandas DataFrame or exact fixed reference. The plugin saves declared in-memory outputs and reuses fixed references. Call compute() explicitly for a pending Frame. Use results[name].resource to continue, including after partial failure.',
+            'Optional resource name -> Python variable name (up to 16, project=required). Assign a computed AnalysisFrame, pandas DataFrame or exact fixed reference. Preserve AnalysisFrame outputs for AnalysisFrameView instead of converting them just for display. The plugin saves declared in-memory outputs and reuses fixed references. Call compute() explicitly for a pending Frame. Use results[name].resource to continue, including after partial failure.',
         },
       },
       output: {

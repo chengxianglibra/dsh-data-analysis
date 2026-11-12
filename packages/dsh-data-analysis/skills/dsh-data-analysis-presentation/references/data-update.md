@@ -6,7 +6,7 @@
 
 按缺口调用 `marivo_report_read({ref,version:"current",includeCode:true})`，读取结构化 definition、准确资源和来源。用户指定历史版本时读取 exact，并处理它与 current 的冲突。按准确引用复用组核对哪些别名属于本次更新，不自动扩大目标范围。
 
-需要持续计算时，以 saved ref 开始 refresh-data preview；结果已准备好可直接 save。显式读取原来源或准确固定输入，计算并持久化所需结果，通过 `project:"required"` 的 Python 调用导出。缺脚本不授权猜测或重放；来源记录只说明导出执行，需审阅其真实输入和口径。
+需要持续计算时，以 saved ref 开始 refresh-data preview；结果已准备好可直接 save。显式读取原来源或准确固定输入，计算所需结果，通过 `project:"required"` 的 Python 调用直接声明已计算对象或固定引用，由工具完成必要的持久化。缺脚本不授权猜测或重放；来源记录只说明导出执行，需审阅其真实输入和口径。
 
 结果就绪后原样提交 `results[name].resource`。同次请求内的资源必须全部通过校验；任何失败均拒绝整批，不筛选成功项保存。可以显式提交已就绪子集，尚未计算的资源保留旧数据，答复说明未更新范围。已失败目标不能自动改称 pending。
 
@@ -19,7 +19,7 @@ let draft = await tools.marivo_report_write({
 });
 const execution = await tools.marivo_python({
   project: "required", datasources: datasourceNames,
-  code: reviewedCompleteScript, resultVariables: { result: "result_ref" },
+  code: reviewedCompleteScript, resultVariables: { result: "result" },
 });
 if (execution.execution.reason !== "succeeded" || !execution.results?.result) {
   throw new Error("Inspect execution/export state; do not replay successful code.");
@@ -31,7 +31,7 @@ draft = await tools.marivo_report_write({
 const saved = await tools.marivo_report_write({stage:"save", ref:draft.ref});
 ```
 
-实际资源名、输入、计算和范围按本次任务填写；示例不能代替分析脚本。
+reviewedCompleteScript 须在本次调用中读取明确输入，将已计算的 Frame、DataFrame 或固定引用赋给 result。实际资源名、输入、计算和范围按本次任务填写；示例不能代替分析脚本。
 
 ## 工具强制边界
 

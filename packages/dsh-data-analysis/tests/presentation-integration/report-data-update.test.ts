@@ -293,7 +293,12 @@ test('documented report examples preview independent components and refresh only
       new URL(`../../skills/dsh-data-analysis-presentation/references/${name}.md`, import.meta.url),
       'utf8',
     )
-    const rawCode = /```javascript\n([\s\S]*?)\n```/.exec(markdown)?.[1]
+    const section =
+      name === 'examples'
+        ? markdown.split('## 纯文件结果的增量交付\n')[1]?.split('\n## ')[0]
+        : markdown
+    assert.ok(section)
+    const rawCode = /```javascript\n([\s\S]*?)\n```/.exec(section)?.[1]
     const code =
       name === 'data-update'
         ? rawCode

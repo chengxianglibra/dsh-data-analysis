@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import type { Page } from 'playwright'
 import { analysisRecordId } from '../../src/presentation/contracts/analysis-document.ts'
+import { draftDeliverySchema } from '../../src/presentation/receipt.ts'
 import type * as runner from '../validate-file-analysis-real.ts'
 
 interface Options {
@@ -87,6 +88,26 @@ export async function verifyAnalysisViewRouting(o: Options) {
     })
     if (label === 'implicit-trend') {
       assert.equal(receipts.length, 1, 'The trend question should produce a saved analysis view')
+      const firstComputation = events.find(
+        (event) =>
+          (event.type === 'tool/call' || event.type === 'tool/ptc-dispatch') &&
+          event.data.name === 'marivo_python',
+      )
+      assert.ok(firstComputation, 'The trend answer must compute from the uploaded file')
+      const earlyDraft = events.some((event) => {
+        if (event.seq >= firstComputation.seq) return false
+        const candidates: unknown[] =
+          event.type === 'tool/result' && !event.data.message.isError
+            ? [event.data.meta]
+            : event.type === 'tool/ptc-dispatch' && !event.data.isError
+              ? event.data.content.map((item) => ('delivery' in item ? item.delivery : undefined))
+              : []
+        return candidates.some((value) => {
+          const parsed = draftDeliverySchema.safeParse(value)
+          return parsed.success && parsed.data.dshSessionId === sessionId
+        })
+      })
+      assert.ok(earlyDraft, 'A successful scope draft must precede the first analysis computation')
       const receipt = receipts[0]!
       const recordId = analysisRecordId(receipt.reportId, receipt.buildId)
       await page

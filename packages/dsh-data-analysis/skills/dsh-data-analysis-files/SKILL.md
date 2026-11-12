@@ -1,11 +1,11 @@
 ---
 name: dsh-data-analysis-files
-description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数据，回答问题、为报告准备组件数据或交付实际文件。普通文件计算无需先建立 Marivo datasource 或语义模型。
+description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数据，回答问题、准备分析视图数据或交付实际文件。普通文件计算无需先建立 Marivo datasource 或语义模型。
 ---
 
 # 文件分析
 
-负责文件身份、读取计算、分析核对与普通文件交付。先识别交付目标：普通答案在聊天中回答；报告或看板在准备数据前加载 `dsh-data-analysis-presentation`，尽早展示草稿并逐组件更新；实际文件按本 Skill 的交付参考处理。
+负责文件身份、读取计算、分析核对与普通文件交付。图表或交互有助于理解、比较或核对结果时，主动使用分析视图，不等用户明确要求报告；在准备数据前加载 `dsh-data-analysis-presentation`，分析中才确定时立即加载。新视图在首次分析计算前展示问题与范围，再随结果更新草稿。文字已足够且视图无额外价值时直接回答；尊重纯文字、纯文件要求。
 
 ## 输入与执行
 
@@ -27,13 +27,13 @@ Harness `read` 可预览文本，但计算仍需通过 `marivo_python` 从原路
 
 缺少基准或分支时，交付已有支持的答案并说明缺失范围及影响，不用其他成功比较替代。答案已有支持或阻塞已明确时停止，不为完善展示扩大分析。
 
-## 报告组件数据
+## 分析视图数据
 
-遵循展示 Skill：先展示已知问题与范围，再准备数据。相同固定结果可供多个视图使用，保留生产 codeRef；确需派生时显式读取准确固定输入并持久化新结果。新计算使用完整脚本，不依赖前次内存。结果就绪后及时更新同一草稿，同批已就绪内容可连贯提交，不等全部计算完成。任意 Python 和草稿写入当前由 Harness 串行调度，单组件展示失败保留已有草稿并继续其他可做工作。纯文件结果可使用 DatasetView，无需为 FrameView 强行建模；已有合适的 governed 分析时优先保留 AnalysisFrame。
+遵循展示 Skill 的增量流程，结果就绪后及时更新同一草稿。governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，使用 AnalysisFrameView，不要仅为展示转成 DataFrame。纯文件或外部结果可用 DatasetView，不为更换视图强行建模。
 
-在同次调用中将 `mv.persist_dataframe(result).to_dict()` 赋给变量，通过 `resultVariables` 导出该组件的引用。原样把 `results[name].resource` 交给 marivo_report_write；kind 和 codeRef 由插件关联，来源或元数据失败时保留有效资源并说明缺口。stdout 不用于发现引用。新计算的读取、计算和持久化放在同次调用，后续调用通过公开固定结果 API 读取准确引用，不能访问前次 result 变量。单纯重复展示保留原引用和 codeRef，无需再调用 Python。已有外部结果缺少脚本时明确说明，不为补记录重跑。
+新计算显式读取准确输入；通过 `project:"required"`、`resultVariables` 直接导出已计算的 Frame、pandas DataFrame 或准确固定引用。待计算 Frame 先显式 compute，工具负责必要的持久化。原样把 `results[name].resource` 交给 marivo_report_write，kind 和 codeRef 由插件关联；来源或 metadata 失败不使有效资源失效，不授权重跑。
 
-首次持久化和交付时按展示 Skill 读取其结果引用参考，持久化约束以 Marivo live Help 为准。在报告中说明输入文件与分析范围。刷新已保存报告时遵循展示 Skill 的仅资源替换流程，保持原布局和正文。
+相同固定结果可供多个视图使用，保留原 resource/codeRef。确需派生时显式读取准确固定输入并导出新结果，不依赖前次内存。stdout 不用于发现引用，外部结果缺脚本时说明缺口，不补执行记录。首次交接读展示 Skill 的结果导出参考，Marivo API 约束以 live Help 为准。视图说明输入与范围，刷新按仅资源替换流程保留布局和正文。
 
 ## 可复用语义与停止条件
 

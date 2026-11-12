@@ -8,7 +8,7 @@ Runtime/Workspace binding、执行记录及结果交付，不添加上传 Tool�
 
 入口是 [SKILL.md](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/SKILL.md)，仅保留接入规则；
 [示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-files/references/examples.md)分别展示 pandas 和原生 DuckDB。
-它随插件自带 Skill provider 分发，加载时不触发任何 Marivo Runtime Skill 的根 Help 披露。
+它随插件自带 Skill provider 分发，加载时不触发任何 Marivo Runtime Skill 的根 Help 披露。文件结果适合图表或交互理解、比较、核对时主动进入展示流程，无需用户明确要求报告；准备数据前加载展示 Skill，分析中才确定时立即加载。新视图在首次分析计算前展示问题与范围，结果就绪即更新同一草稿；尊重纯文字和纯文件要求。
 
 ## 执行与结果
 
@@ -21,7 +21,7 @@ Harness 可预览文本附件。分析按附件原路径读取数据；聊天中
 文件流程覆盖 CSV、JSON／JSON Lines、Parquet、Excel `.xlsx`。`.xlsx` 复用 DuckDB 官方扩展，首次获取
 需要联网；不新增 `openpyxl` 依赖，不承诺旧 `.xls`。这不限制 Skill 根据实际可用 reader 处理其他合适文件。
 
-是否生成分析视图、增量展示和聊天收尾遵循[展示 Skill](presentation-skill.md)。按数据依赖组织 Python 执行，一次调用可持久化并导出多个 DataFrame。经 `resultVariables` 导出的完整 `results[name].resource` 原样交给 `marivo_report_write`，由它组织说明和快照。纯文件计算无需强行建模，适用的 governed 分析优先保留 AnalysisFrame。调用规则见[展示交付](presentation-delivery.md)。
+是否生成分析视图、增量展示和聊天收尾遵循[展示 Skill](presentation-skill.md)。按数据依赖组织 Python 执行，一次调用可通过 resultVariables 直接声明多个已计算对象或固定引用，工具负责必要的持久化；待计算 Frame 先显式 compute。经 `resultVariables` 导出的完整 `results[name].resource` 原样交给 `marivo_report_write`，由它组织说明和快照。governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，用 AnalysisFrameView 展示，不为画图转成 DataFrame；纯文件或外部结果可用 DatasetView，无需强行建模。调用规则见[展示交付](presentation-delivery.md)。
 
 用户要求查看已有表格文件，或要求 CSV、TSV、JSON、PNG 等实际文件时，确认文件存在且可访问后调用当前可用的 Harness 原生 `present`。CSV、TSV、XLSX 的只读文件预览由 Harness 提供。最终文件优先写入绑定 Workspace，普通声明不获得 Report/Build 或 Evidence 身份。
 正文说明文件与分析范围，执行/codeRef 由 Host 绑定，不把文件结果声明成 Marivo Evidence。

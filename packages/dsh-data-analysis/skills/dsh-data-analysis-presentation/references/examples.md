@@ -1,8 +1,56 @@
 # 分析视图编写示例
 
-示例资源名、输入路径、列 ID 和结论须按实际任务替换。各视图使用准确固定结果，可以共享同一结果及生产 codeRef；以下纯文件示例使用 DatasetView，适用的 governed 分析优先使用后面的 Frame 组件。
+示例资源名、输入路径、列 ID 和结论须按实际任务替换。各视图使用准确固定结果，可以共享同一结果及生产 codeRef；优先保留适用的类型化分析并使用 AnalysisFrameView，纯文件和外部计算使用 DatasetView。
 
-## 从初始草稿到一次正式保存
+## AnalysisFrame 从早期草稿到正式保存
+
+用户想了解 GMV 的期间变化及地区贡献，无需明确说“生成报告”。问题和范围确认后先展示草稿；比较就绪后展示，再继续地区分解。下面是 Host 编排模板，Native 可按同样顺序逐次调用；计算代码由 marivo-analysis 和 live Help 确定。
+
+`comparisonScript` 与 `regionsScript` 分别是本次任务已按 live Help 准备的完整 Python 脚本，各自显式读取准确输入，将已计算的 AnalysisFrame 赋给 `result`。`comparisonDatasources` 与 `regionsDatasources` 声明各自实际访问的数据源；存在依赖时在后一脚本中显式读取前一调用的固定引用。不要原样执行这些占位变量。
+
+```javascript
+let draft = await tools.marivo_report_write({
+  stage: "preview", title: "GMV 变化分析",
+  program: 'root = Stack([heading, status]); heading = TextContent("GMV 的期间变化与地区贡献"); status = TextContent("正在核对约定期间的比较，尚未形成结论。");',
+});
+const comparison = await tools.marivo_python({
+  project: "required", datasources: comparisonDatasources,
+  code: comparisonScript, resultVariables: { comparison: "result" },
+});
+if (comparison.execution.reason !== "succeeded" || !comparison.results?.comparison) {
+  throw new Error("Inspect execution and export state; preserve the draft.");
+}
+draft = await tools.marivo_report_write({
+  stage: "preview", ref: draft.ref,
+  resourcePatch: { put: { comparison: comparison.results.comparison.resource } },
+  program: 'root = Stack([heading, comparison, status]); comparison = AnalysisFrameView("comparison", {chart:"comparison"}); status = TextContent("期间比较已就绪，正在分析地区贡献。");',
+});
+const regions = await tools.marivo_python({
+  project: "required", datasources: regionsDatasources,
+  code: regionsScript, resultVariables: { regions: "result" },
+});
+if (regions.execution.reason !== "succeeded" || !regions.results?.regions) {
+  throw new Error("Inspect execution and export state; preserve the comparison preview.");
+}
+draft = await tools.marivo_report_write({
+  stage: "preview", ref: draft.ref,
+  resourcePatch: { put: { regions: regions.results.regions.resource } },
+  program: 'root = Stack([heading, comparison, regions]); regions = AnalysisFrameView("regions", {chart:"decomposition"}); status = null;',
+});
+// Review results, coverage and limitations; add supported explanations before saving.
+const saved = await tools.marivo_report_write({ stage: "save", ref: draft.ref });
+```
+
+示例假设结果支持相应比较与分解，实际字段和可用形态按 metadata 核对。合并后的数据视图如下；保存前补上已有证据支持的解释、期间和实质限制，不从执行成功推断业务结论。随后按 Skill 完成推荐与聊天回复。
+
+```openui
+root = Stack([heading, comparison, regions]);
+heading = TextContent("GMV 的期间变化与地区贡献");
+comparison = AnalysisFrameView("comparison", {chart:"comparison"});
+regions = AnalysisFrameView("regions", {chart:"decomposition"});
+```
+
+## 纯文件结果的增量交付
 
 用户要查看 sales.csv 的类别汇总与原始明细。按计算依赖读取准确路径，相同结果可复用。先展示问题和范围，组件就绪后及时 preview。下面适用于 Code Mode 和 Native。当前任意 Python 与草稿写入按 Harness exclusive 调度；按就绪情况增量交付，同批已就绪相关视图可一并 preview，草稿写入使用最新 revision，不等待完整分析。
 
@@ -12,20 +60,18 @@ let draft = await tools.marivo_report_write({
   program: 'root = Stack([heading, status]);\nheading = TextContent("sales.csv：类别汇总与原始明细");\nstatus = TextContent("正在准备类别汇总，尚未形成结论。");',
 });
 function dataResource(result, name) {
-  if (result.execution.reason !== "succeeded" || result.resultCaptureError || !result.results?.[name]) {
+  if (result.execution.reason !== "succeeded" || !result.results?.[name]) {
     throw new Error("Inspect execution and capture status; do not replay blindly.");
   }
   return result.results[name].resource;
 }
 const categoryResult = await tools.marivo_python({
-  project: "required", datasources: [], resultVariables: { by_category: "category_ref" },
+  project: "required", datasources: [], resultVariables: { by_category: "result" },
   code: `import pandas as pd
-import marivo.analysis as mv
 path = "/actual/readable/sales.csv"
 source = pd.read_csv(path)
 result = source.groupby("category", dropna=False)["amount"].sum(min_count=1).reset_index()
-result = result.rename(columns={"amount": "value"})
-category_ref = mv.persist_dataframe(result).to_dict()`,
+result = result.rename(columns={"amount": "value"})`,
 });
 draft = await tools.marivo_report_write({
   stage: "preview", ref: draft.ref,
@@ -33,13 +79,11 @@ draft = await tools.marivo_report_write({
   program: 'root = Stack([heading, categories, status]);\ncategories = DatasetView("by_category", {chart:"table", columns:["category", "value"]});\nstatus = TextContent("类别汇总已准备，正在准备原始明细。");',
 });
 const detailResult = await tools.marivo_python({
-  project: "required", datasources: [], resultVariables: { detail: "detail_ref" },
+  project: "required", datasources: [], resultVariables: { detail: "result" },
   code: `import pandas as pd
-import marivo.analysis as mv
 path = "/actual/readable/sales.csv"
 source = pd.read_csv(path)
-result = source[["category", "amount"]].rename(columns={"amount": "value"})
-detail_ref = mv.persist_dataframe(result).to_dict()`,
+result = source[["category", "amount"]].rename(columns={"amount": "value"})`,
 });
 draft = await tools.marivo_report_write({
   stage: "preview", ref: draft.ref,
@@ -89,7 +133,7 @@ detail = Tabs([TabItem("selected", "减少最多的两项", [selected]), TabItem
 
 ## Frame 看板
 
-三个组件分别回答 GMV 期间比较、按日趋势与地区分解，按实际计算依赖读取 governed 输入并计算、持久化 Frame。按 live Help 构造分析，不在展示参考中复制计算 API。示例 daily 的时间轴名为 day，数值名为 gmv；按实际公开字段替换。每个结果就绪就 preview，下方为最终程序。
+三个组件分别回答 GMV 期间比较、按日趋势与地区分解，按实际计算依赖读取 governed 输入，计算 Frame 并通过 resultVariables 导出。按 live Help 构造分析，不在展示参考中复制计算 API。示例 daily 的时间轴名为 day，数值名为 gmv；按实际公开字段替换。每个结果就绪就 preview，下方为最终程序。
 
 ```openui
 root = Stack([heading, scope, charts, details]);

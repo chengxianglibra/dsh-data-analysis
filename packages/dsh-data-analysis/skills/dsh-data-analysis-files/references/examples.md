@@ -36,19 +36,17 @@ print(result.to_string(index=False))
 
 ## 单个报告组件的完整脚本
 
-报告任务先按展示 Skill 创建草稿。下面是一个类别汇总组件的完整调用代码；其他组件分别从准确输入读取，不依赖它的 source/result 变量。
+报告任务先按展示 Skill 创建草稿。下面是一个类别汇总组件的完整调用代码；其他计算从准确输入读取，不依赖它的 source/result 变量；同一结果的多个视图共享返回资源。
 
 ```python
-import marivo.analysis as mv
 import pandas as pd
 
 path = "/actual/readable/file.csv"
 source = pd.read_csv(path)
 result = source.groupby("category", dropna=False)["amount"].sum(min_count=1).reset_index()
-result_ref = mv.persist_dataframe(result).to_dict()
 ```
 
-通过独立 `marivo_python` 调用执行，传 `project:"required"`、`datasources:[]` 和 `resultVariables:{"result":"result_ref"}`。原样把 `results.result.resource` 作为 marivo_report_write 的资源，及时更新同一草稿，不等待其他组件全部完成。不从 stdout 解析引用。适用的 governed 分析优先用独立 AnalysisFrame，不从文件示例推断需要先建模。
+直接声明已计算的 DataFrame，由工具持久化并组装 resource。通过 `marivo_python` 调用执行，传 `project:"required"`、`datasources:[]` 和 `resultVariables:{"result":"result"}`。原样把 `results.result.resource` 作为 marivo_report_write 的资源，及时更新同一草稿，不等待其他组件全部完成。不从 stdout 解析引用。governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，用 AnalysisFrameView 展示，不从文件示例推断需要先建模。
 持久化的输入约束与原值精度以 Marivo live Help 为准；需要保留的业务 index 先显式变成列。
 结果由绑定 Python Runtime 读取，无需 HTTP 服务；展示不会自动重跑原分析。
 

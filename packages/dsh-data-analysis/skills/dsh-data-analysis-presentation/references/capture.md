@@ -1,4 +1,4 @@
-# 引用已持久化的分析结果
+# 导出与复用分析结果
 
 本页拥有插件的结果交接流程。Marivo 的持久化与读取 API 以绑定 Runtime live Help 为准。
 
@@ -6,23 +6,19 @@
 
 使用 `marivo_python`，访问项目、datasource 或持久化结果时传 `project:"required"`。插件准备当前 Workspace 根项目并返回准备状态，不需要初始化脚本。纯文件检查使用 `project:"none"` 和 `datasources:[]`。
 
-新计算在同次调用中显式读取输入、计算和持久化，不依赖前次进程内存。相同固定结果可供多个视图复用；按实际依赖组织执行，而非为每个视图重复计算。适用的 governed 分析保留 AnalysisFrame：
+新计算在同次调用中显式读取输入并完成计算，不依赖前次进程内存。governed 输入和受支持的类型化分析优先保留 AnalysisFrame，用 AnalysisFrameView 展示，不要仅为展示导出为 DataFrame。纯文件、外部计算或合适的明细可保留 DataFrame，用 DatasetView 展示。
 
-```python
-# frame is computed earlier in this call from explicit inputs.
-saved = frame.persist(description="本次分析结果")
-frame_ref = saved.ref.to_dict()
-```
+通过 `resultVariables` 将资源名映射到 Python 变量名：
 
-传 `resultVariables:{"overview":"frame_ref"}`。纯文件计算得到 DataFrame 时：
+| 变量内容 | 导出方式 |
+| --- | --- |
+| 已计算的 AnalysisFrame `frame` | `resultVariables:{"overview":"frame"}`；工具保留已有引用，或持久化内存结果 |
+| pandas DataFrame `table` | `resultVariables:{"detail":"table"}`；工具通过公开 API 持久化 |
+| 准确固定引用对象或字典 `saved_ref` | `resultVariables:{"overview":"saved_ref"}`；复用固定结果 |
 
-```python
-import marivo.analysis as mv
-# table is computed earlier in this call from explicit inputs.
-table_ref = mv.persist_dataframe(table).to_dict()
-```
+待计算的 Frame 必须先显式 compute，导出不会替模型执行分析。已有保存结果直接复用，不为导出重新计算。只有需要显式持久化参数或独立控制保存时才在代码中调用持久化 API，具体参数从 live Help 获取。
 
-传 `resultVariables:{"detail":"table_ref"}`。变量必须持有准确的持久引用字典。stdout 只作为日志，不用于发现引用。输出容量和字段约束由工具 schema 定义。
+stdout 只作为日志，不用于发现引用。容量与字段约束由工具 schema 定义。相同固定结果可供多个视图使用，不为不同展示重复计算。
 
 ## 原样交付
 
@@ -47,11 +43,11 @@ draft = await tools.marivo_report_write({
 
 codeRef 只证明该次执行导出过此引用，不能证明最初生产来源、完整 lineage 或分析正确性。外部既有结果可直接提供准确声明；缺少脚本时说明来源缺口，不为补记录执行读取脚本或重新计算。提供错误或无关 codeRef 会明确失败，不能把它当成可忽略警告。
 
-复用结果时保留完整 resource。派生计算显式读取准确固定输入并持久化新输出，使用新执行声明。用户要求刷新数据时显式生成新结果，不能用相同引用冒充刷新。
+复用结果时保留完整 resource。派生计算显式读取准确固定输入并导出新输出，使用新执行声明。用户要求刷新数据时显式生成新结果，不能用相同引用冒充刷新。
 
 ## 展示与来源边界
 
-Host 在绑定 Runtime 中通过 Marivo 公开 API 读取固定结果，生成并内嵌展示快照；展示不隐式 compute/persist，也不重放生产脚本。分析视图的布局与文字编辑可复用已保存快照。
+Host 在绑定 Runtime 中通过 Marivo 公开 API 读取固定结果，生成并内嵌展示快照；报告 writer 不隐式 compute/persist，也不重放生产脚本。分析视图的布局与文字编辑可复用已保存快照。
 
 投影最多 64 列、5000 行、100000 个单元格和 2 MiB；截断、精度、类型或 coverage 限制以本次结果与错误为准。`coverage.complete` 只证明输入结果被完整展示，不证明业务全量；过滤、Top N、分母及时间范围须在分析中核对。
 

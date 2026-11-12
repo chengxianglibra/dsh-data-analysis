@@ -396,6 +396,14 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
         values: ['amount'],
         axes: [],
         coverage: { totalRows: null, business: 'unknown' },
+        viewCandidates: {
+          columns: ['amount'],
+          axis: [],
+          timeAxis: [],
+          values: ['amount'],
+          numericValues: ['amount'],
+        },
+        coordinateColumns: [],
       },
       data: {
         status: 'captured',
@@ -404,6 +412,14 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
         values: [],
         axes: [],
         coverage: { totalRows: 1, business: 'unknown' },
+        viewCandidates: {
+          columns: ['amount'],
+          axis: ['amount'],
+          timeAxis: ['amount'],
+          values: ['amount'],
+          numericValues: ['amount'],
+        },
+        coordinateColumns: [],
       },
     },
   )
