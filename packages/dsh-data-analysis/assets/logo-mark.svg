@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">DSH Data Analysis</title>
+  <desc id="desc">A front-facing black sea lion silhouette with a green M on its chest.</desc>
+  <defs>
+    <mask id="face-cutouts" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#fff"/>
+      <ellipse cx="214" cy="112" rx="7" ry="9" fill="#000"/>
+      <ellipse cx="298" cy="112" rx="7" ry="9" fill="#000"/>
+      <ellipse cx="256" cy="149" rx="41" ry="33" fill="#000"/>
+      <g fill="none" stroke="#000" stroke-width="4.5" stroke-linecap="round">
+        <path d="M220 138c-11 0-21 2-30 6m30 4c-11 1-21 5-29 11"/>
+        <path d="M292 138c11 0 21 2 30 6m-30 4c11 1 21 5 29 11"/>
+      </g>
+    </mask>
+  </defs>
+  <path d="M256 62c-31 0-55 14-69 42-14 0-24 7-26 15-2 8 7 12 15 5-4 16-4 32-3 48 3 43-49 111-49 185 0 34-4 44-19 54-14 9-49 19-58 32-12 17 13 15 42 14 56-1 73-11 79-25 6-15 8-38 0-89 22 31 22 74 10 94 19 6 43 9 78 9s59-3 78-9c-12-20-12-63 10-94-8 51-6 74 0 89 6 14 23 24 79 25 29 1 54 3 42-14-9-13-44-23-58-32-15-10-19-20-19-54 0-74-52-142-49-185 1-16 1-32-3-48 8 7 17 3 15-5-2-8-12-15-26-15-14-28-38-42-69-42Z" fill="#111" mask="url(#face-cutouts)"/>
+  <path d="M241 129c0-5 7-7 15-7s15 2 15 7c0 4-5 6-9 9-3 2-4 5-6 5s-3-3-6-5c-4-3-9-5-9-9Z" fill="#111"/>
+  <path d="M256 141c-1 10-6 16-13 17-6 1-11-1-15-5m28-12c1 10 6 16 13 17 6 1 11-1 15-5" fill="none" stroke="#111" stroke-width="5" stroke-linecap="round"/>
+  <path d="M210 322v-72h19l27 32 27-32h19v72h-20v-42l-26 31-26-31v42Z" fill="#138462"/>
+</svg>

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo-horizontal.svg" alt="DSH Data Analysis" width="520">
+</p>
+
 # @chengxianglibra/dsh-data-analysis
 
 简体中文 | [English](README.en.md)

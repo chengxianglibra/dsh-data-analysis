@@ -46,6 +46,8 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "assets/logo-mark.svg",
+    "assets/logo-horizontal.svg",
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
     "skills/dsh-data-analysis-presentation/**",

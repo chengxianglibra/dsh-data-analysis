@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="packages/dsh-data-analysis/assets/logo-horizontal.svg" alt="DSH Data Analysis" width="520">
+</p>
+
 # DSH Data Analysis
 
 [简体中文](README.md) | English
