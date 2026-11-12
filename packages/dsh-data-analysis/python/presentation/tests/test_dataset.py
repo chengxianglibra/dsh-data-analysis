@@ -140,6 +140,7 @@ def test_timestamp_does_not_invent_timezone_or_drop_precision(value: object) -> 
     [
         "0000-01-01T00:00:00Z",
         "2026-01-01T24:00:00Z",
+        "2026-01-01T24:00:00+08:00",
         "2026-01-01T00:60:00Z",
         "2026-01-01T00:00:60Z",
         "2026-01-01T00:00:00+24:00",
@@ -151,6 +152,13 @@ def test_datetime_json_does_not_normalize_invalid_fields(value: str) -> None:
     data["rows"][0][5] = value
     with pytest.raises(PresentationDatasetError):
         validate_dataset(data)
+
+
+@pytest.mark.parametrize("value", ["2026-01-01T23:59:59Z", "2026-01-01T23:59:59+08:00"])
+def test_datetime_json_preserves_last_second_of_day(value: str) -> None:
+    data = shared("computed.dataset")
+    data["rows"][0][5] = value
+    assert validate_dataset(data)["rows"][0][5] == value
 
 
 @pytest.mark.parametrize("value", [[], {}, None, 1])

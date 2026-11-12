@@ -135,10 +135,13 @@ def _time(value: str, path: str, *, timestamp: bool) -> str:
     expression = DATETIME if timestamp else DATE
     if not expression.fullmatch(value):
         _fail(path, "Expected ISO date/time with explicit timestamp offset.")
-    if timestamp and not value.endswith("Z"):
-        hours, minutes = int(value[-5:-3]), int(value[-2:])
-        if hours > 23 or minutes > 59:
-            _fail(path, "Invalid timezone offset.")
+    if timestamp:
+        if int(value[11:13]) > 23:
+            _fail(path, "Invalid calendar date/time.")
+        if not value.endswith("Z"):
+            hours, minutes = int(value[-5:-3]), int(value[-2:])
+            if hours > 23 or minutes > 59:
+                _fail(path, "Invalid timezone offset.")
     try:
         if timestamp:
             datetime.fromisoformat(value.replace("Z", "+00:00"))
