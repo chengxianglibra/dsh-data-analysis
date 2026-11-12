@@ -51,7 +51,7 @@ export function RefLink({ refValue, objects, navigate, children }) {
 }
 
 /** Only link exact references declared for this field by the Catalog projection. */
-function LinkedText({ value, refs, objects, navigate }) {
+function LinkedText({ value, refs, objects, navigate, skipQuoted = false }) {
   if (!refs.size) return value || '—'
   const pattern = [...refs.keys()]
     .sort((a, b) => b.length - a.length)
@@ -60,7 +60,21 @@ function LinkedText({ value, refs, objects, navigate }) {
   const matcher = new RegExp(`(?<![\\p{L}\\p{N}_.:])(${pattern})(?![\\p{L}\\p{N}_.:])`, 'gu')
   const parts = []
   let offset = 0
+  let scanned = 0
+  let quote = null
+  let escaped = false
   for (const match of value.matchAll(matcher)) {
+    if (skipQuoted) {
+      // Display expressions may contain quoted literals that look like references.
+      while (scanned < match.index) {
+        const char = value[scanned++]
+        if (escaped) escaped = false
+        else if (quote && char === '\\') escaped = true
+        else if (quote && char === quote) quote = null
+        else if (!quote && (char === "'" || char === '"')) quote = char
+      }
+      if (quote) continue
+    }
     parts.push(value.slice(offset, match.index))
     parts.push(
       <RefLink
@@ -81,7 +95,7 @@ function LinkedText({ value, refs, objects, navigate }) {
 /** Link only Catalog-declared references and preserve the underlying formula for copying. */
 export function ExpressionText({ value, object, objects, navigate }) {
   const refs = new Map(object.relations.map(({ ref }) => [refKey(ref), ref]))
-  return <LinkedText value={value} refs={refs} objects={objects} navigate={navigate} />
+  return <LinkedText value={value} refs={refs} objects={objects} navigate={navigate} skipQuoted />
 }
 
 function StructuredValue({ value, refs, objects, navigate, context }) {

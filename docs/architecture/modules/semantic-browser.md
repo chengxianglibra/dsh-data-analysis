@@ -110,9 +110,9 @@ npm run validate:semantic-browser:web
 
 ## 指标计算口径
 
-定义页使用公共 Entry 的 captured `definition`：Metric 显示 `formula`，字段显示 `expression`，并展示
-`reductions`、`conditions`、`time_bindings`、`null_rules` 与 `facts`。不再消费旧 `semantic_definition/v1` 公式树，
-不自行解析或重建 Marivo 表达式。公式、空值规则、定义条件与源聚合使用当前对象及其递归 `dependencies` 中 Catalog 声明的完整对象引用，转换为可跳转的短名称；原始表达式可完整复制，未声明的文本保持原样。递归按对象身份去重，缺失对象的已声明引用仍显示为禁用链接。
+定义页使用公共 Entry 的 captured `definition`：Metric 显示 `formula` 和上游生成的英文 `explanation`，字段显示 `expression`，并展示
+`reductions`、`conditions`、`time_bindings`、`null_rules` 与 `facts`。计算说明与作者填写的业务定义分开呈现，不翻译或重新生成上游说明。
+不再消费旧 `semantic_definition/v1` 公式树，不自行解析或重建 Marivo 表达式。公式是展示记法，不是可执行语法或引用身份契约；其中新版短名称保留为文本，不能仅凭名称猜测跳转目标。公式、空值规则、定义条件与源聚合中符合边界的完整 Catalog 已声明对象引用可转换为跳转链接；表达式中引号内的文本不作为引用。原始表达式可完整复制，其他文本保持原样。引用对象列表提供依赖导航，递归按对象身份去重，缺失对象的已声明引用仍显示为禁用链接。
 
 引用对象列表沿公开 `dependencies` 关系递归收集有可展示计算信息的对象，最多 40 个，超限提示继续点击对象；对象项直接跳转，不在当前页展开重复定义。无法识别的空值规则保留原文，不推测其语义；多种规则的简要展示保留按分支查看的对应关系。
 唯一源聚合与已展示公式完全相同时不重复展示；其他源聚合和定义条件可展开查看。定义条件仅在展示时按原文完全匹配去重，保留首次出现顺序，不改写 Catalog 快照或合并语义相似的条件。

@@ -78,6 +78,7 @@ def project(entry):
             "ref": wire_ref(entry),
             "catalog_definition_fingerprint": provenance["definition_fingerprint"],
             "expression": definition.get("formula", definition.get("expression", "")),
+            "explanation": definition["explanation"] if entry.kind == "metric" else "",
             "facts": [display_field(name, definition[name])
                       for name in ("reductions", "conditions", "time_bindings", "null_rules", "facts")
                       if definition.get(name)],

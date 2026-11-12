@@ -192,6 +192,47 @@ test('formula references use short names while retaining exact identities and un
   assert.match(html, /metric:sales.a.total_extra/)
 })
 
+test('Marivo 0.6.6 display names remain text while declared identities remain navigable', () => {
+  const amount: SemanticRef = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'measure',
+    path: 'sales.orders.amount',
+  }
+  const paidAt: SemanticRef = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'time_dimension',
+    path: 'sales.orders.paid_at',
+  }
+  // Captured notation from Marivo 0.6.6: short names have no public identity mapping.
+  const expression = 'amount.sum(time=paid_at).per(paid_at).mean()'
+  const html = renderComputation(expression, [], [amount, paidAt])
+  const code = html.match(/<pre><code>(.*?)<\/code><\/pre>/)?.[1]
+  assert.equal(code, expression)
+  assert.match(
+    render('measure:sales.orders.amount', [amount]),
+    /title="measure:sales.orders.amount"/,
+  )
+  const refund: SemanticRef = { ...amount, path: 'sales.refunds.amount' }
+  const collision = '(orders.amount.sum(time=paid_at) - refunds.amount.sum(time=None))'
+  const collisionHtml = renderComputation(collision, [], [amount, refund, paidAt])
+  assert.equal(collisionHtml.match(/<pre><code>(.*?)<\/code><\/pre>/)?.[1], collision)
+})
+
+test('formula references inside quoted literals are not navigation links', () => {
+  const amount: SemanticRef = {
+    schema: 'marivo.semantic_ref/v1',
+    kind: 'measure',
+    path: 'sales.orders.amount',
+  }
+  const expression = String.raw`measure:sales.orders.amount + 'measure:sales.orders.amount' + "escaped \" measure:sales.orders.amount" + measure:sales.orders.amount`
+  const html = renderComputation(expression, [], [amount])
+  const code = html.match(/<pre><code>(.*?)<\/code><\/pre>/)?.[1]
+  assert.ok(code)
+  assert.equal((code.match(/<button/g) ?? []).length, 2)
+  assert.match(code, /title="measure:sales.orders.amount"/)
+  assert.equal((code.match(/measure:sales.orders.amount/g) ?? []).length, 6)
+})
+
 test('source aggregation is hidden only when its single value exactly repeats the formula', () => {
   const reduction = (values: string[]) => [
     { name: 'reductions', value: JSON.stringify(values), structured: true },

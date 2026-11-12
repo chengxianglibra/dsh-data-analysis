@@ -37,8 +37,8 @@ const credentialModel=new CredentialClientModel({call:async()=>({ok:true,value:{
  token:'warehouse',workspaceId:'w',name:'warehouse',backend:'clickhouse',properties:{host:'example.invalid',port:443},refs:['DB_PASSWORD'],fields:{password:'DB_PASSWORD'},version:'v1',credentials:{DB_PASSWORD:{configured:true,writable:true,source:'user'}}
 }]}})});
 await credentialModel.show('w');
-const object={ref:{schema:'marivo.semantic_ref/v1',kind:'metric',path:'sales.revenue'},name:'Revenue 收入',domain:'sales',definition:'Captured definition',guardrails:[],source:{file:'models/sales.py',line:1,symbol:'revenue'},fields:[],relations:[],computation:{schema:'dsh-data-analysis-computation/v1',ref:{schema:'marivo.semantic_ref/v1',kind:'metric',path:'sales.revenue'},catalog_definition_fingerprint:'c1',expression:${JSON.stringify(expression)},facts:[]}};
-const semanticModel=new SemanticBrowserModel({call:async()=>({ok:true,value:{formatVersion:1,workspaceId:'w',projectRoot:'/fixture',environmentFingerprint:'env',fingerprint:'c1',loadedAt:'2026-11-03T00:00:00Z',kinds:['metric'],objects:[object]}})});
+const object={ref:{schema:'marivo.semantic_ref/v1',kind:'metric',path:'sales.revenue'},name:'Revenue 收入',domain:'sales',definition:'Captured definition',guardrails:[],source:{file:'models/sales.py',line:1,symbol:'revenue'},fields:[],relations:[],computation:{schema:'dsh-data-analysis-computation/v1',ref:{schema:'marivo.semantic_ref/v1',kind:'metric',path:'sales.revenue'},catalog_definition_fingerprint:'c1',expression:${JSON.stringify(expression)},explanation:'',facts:[]}};
+const semanticModel=new SemanticBrowserModel({call:async()=>({ok:true,value:{formatVersion:2,workspaceId:'w',projectRoot:'/fixture',environmentFingerprint:'env',fingerprint:'c1',loadedAt:'2026-11-03T00:00:00Z',kinds:['metric'],objects:[object]}})});
 semanticModel.show('w');
 let settings={status:'ready',value:{pythonTimeoutMs:120000},user:{},revision:1,writable:true};
 const listeners=new Set();

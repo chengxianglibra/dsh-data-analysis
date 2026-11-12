@@ -15,7 +15,7 @@ import {
 export type { DisplayField } from './definition.ts'
 
 export const BROWSER_ENDPOINT = 'semantic-browser/catalog'
-export const CATALOG_FORMAT_VERSION = 1
+export const CATALOG_FORMAT_VERSION = 2
 export const CATALOG_MAX_BYTES = 32 * 1024 * 1024
 export const CATALOG_ERROR_SCHEMA = 'marivo.semantic_catalog_error/v1'
 const CATALOG_ERROR_MAX_CHARS = 16 * 1024

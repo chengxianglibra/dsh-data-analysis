@@ -17,7 +17,7 @@ export function object(name = 'revenue', kind = 'metric'): SemanticObjectView {
 }
 export function snapshot(workspaceId = 'a', objects = [object()]): CatalogSnapshot {
   return {
-    formatVersion: 1,
+    formatVersion: 2,
     workspaceId,
     projectRoot: '/project',
     environmentFingerprint: 'env',

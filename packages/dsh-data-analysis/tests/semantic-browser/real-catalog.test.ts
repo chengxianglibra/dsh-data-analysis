@@ -99,6 +99,7 @@ mv.session = forbidden
   const revenueDefinition = data.objects.find((item) => item.ref.path === 'sales.revenue')!
     .computation!
   assert.match(revenueDefinition.expression, /sum/)
+  assert.ok(revenueDefinition.explanation.length > 0)
   assert.ok(
     revenueDefinition.facts.some(
       (item) => item.name === 'time_bindings' && item.value.includes('ordered_at'),
@@ -116,6 +117,10 @@ mv.session = forbidden
   assert.match(
     data.objects.find((item) => item.ref.path === 'sales.orders.amount')!.computation!.expression,
     /amount/,
+  )
+  assert.equal(
+    data.objects.find((item) => item.ref.path === 'sales.orders.amount')!.computation!.explanation,
+    '',
   )
   assert.ok(
     data.objects

@@ -10,6 +10,7 @@ const payload = {
   ref,
   catalog_definition_fingerprint: 'catalog',
   expression: 'amount.sum(time=ordered_at)',
+  explanation: 'Sum amount by order date.',
   facts: [{ name: 'null_rules', value: 'Captured NULL behavior' }],
 }
 test('captured definition projection preserves text and enforces identity', () => {
@@ -29,6 +30,8 @@ test('projection rejects executable values, undeclared facts and unbounded conte
   for (const invalid of [
     { ...payload, expression: () => 1 },
     { ...payload, expression: 'x'.repeat(1024 * 1024 + 1) },
+    { ...payload, explanation: 'x'.repeat(1024 * 1024 + 1) },
+    { ...payload, explanation: null },
     { ...payload, facts: [{ name: 'password', value: 'secret' }] },
     { ...payload, facts: [...payload.facts, ...payload.facts] },
     { ...payload, facts: [{ name: 'null_rules', value: { code: 'x' } }] },
@@ -54,14 +57,18 @@ test('catalog format marker rejects old and unknown host formats', () => {
   const { formatVersion, fingerprint, kinds, objects } = snapshot()
   assert.equal(
     parseCatalogProjection({ formatVersion, fingerprint, kinds, objects }).formatVersion,
-    1,
+    2,
   )
   assert.throws(
     () => parseCatalogProjection({ fingerprint, kinds, objects }),
     /semantic-browser-version-mismatch/,
   )
   assert.throws(
-    () => parseCatalogProjection({ formatVersion: 2, fingerprint, kinds, objects }),
+    () => parseCatalogProjection({ formatVersion: 1, fingerprint, kinds, objects }),
+    /semantic-browser-version-mismatch/,
+  )
+  assert.throws(
+    () => parseCatalogProjection({ formatVersion: 3, fingerprint, kinds, objects }),
     /semantic-browser-version-mismatch/,
   )
 })

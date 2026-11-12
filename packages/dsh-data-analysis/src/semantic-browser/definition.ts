@@ -37,6 +37,7 @@ export interface ComputationDefinition {
   readonly ref: SemanticRef
   readonly catalog_definition_fingerprint: string
   readonly expression: string
+  readonly explanation: string
   readonly facts: readonly DisplayField[]
 }
 const factNames = new Set(['reductions', 'conditions', 'time_bindings', 'null_rules', 'facts'])
@@ -51,6 +52,7 @@ export function parseComputation(
     'ref',
     'catalog_definition_fingerprint',
     'expression',
+    'explanation',
     'facts',
   ])
   if (
@@ -73,6 +75,7 @@ export function parseComputation(
     ref,
     catalog_definition_fingerprint: fingerprint,
     expression: boundedText(r.expression, 1024 * 1024, true),
+    explanation: boundedText(r.explanation, 1024 * 1024, true),
     facts,
   }
 }

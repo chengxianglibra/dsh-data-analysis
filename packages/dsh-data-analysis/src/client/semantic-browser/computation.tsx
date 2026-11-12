@@ -1,6 +1,13 @@
 // @ts-nocheck -- JSX is bundled by the plugin client build.
 
-import { BracesIcon, ChevronDownIcon, CopyIcon, Layers2Icon, SigmaIcon } from 'lucide-react'
+import {
+  BracesIcon,
+  ChevronDownIcon,
+  CopyIcon,
+  FileTextIcon,
+  Layers2Icon,
+  SigmaIcon,
+} from 'lucide-react'
 import { useState } from 'react'
 import { refKey } from '../../semantic-reference/contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
@@ -298,6 +305,15 @@ function DefinitionNode({ object, objects, navigate }) {
         </div>
       )}
       <span role="status">{t(notice)}</span>
+      {!!definition.explanation && (
+        <div className="sb-fact sb-fact-row">
+          <FileTextIcon className="sb-fact-icon" aria-hidden="true" />
+          <span className="sb-fact-label">{t('marivo.semantic.calculation-explanation')}</span>
+          <div className="sb-fact-value" lang="en">
+            {definition.explanation}
+          </div>
+        </div>
+      )}
       {[...measureDefinitionFields(object), ...definition.facts]
         .filter((fact) => !repeatsExpression(fact, definition.expression))
         .sort((a, b) => factOrder.indexOf(a.name) - factOrder.indexOf(b.name))
@@ -397,6 +413,7 @@ export function ComputationCard({ object, objects, navigate }) {
   }
   const hasContent = (item) =>
     item.computation.expression ||
+    item.computation.explanation ||
     item.computation.facts.length ||
     measureDefinitionFields(item).length
   const visibleRelated = related.filter(hasContent)
