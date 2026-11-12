@@ -119,14 +119,15 @@ Analysis views use `marivo_report_write` to present conclusions, charts, exact v
 - **Ask a follow-up**: Select a chart point or supported cell in a DataFrame or Frame and add it to the question draft.
 - **Read the view**: The first preview in the foreground session opens and selects a right-hand tab. Reopen it from Chat after closing it; later updates do not repeatedly open the tab. Catalog and history entries also open on the right.
 - **Suggested next steps**: After analysis, Chat offers a row of temporary follow-up buttons. Clicking uses the native Harness composer to submit the question; existing drafts are preserved. Suggestions stay in Chat and disappear on reload, reconnection or session switch.
-- **Export offline**: Download the displayed version as a single HTML file from the analysis view tab. It includes the saved snapshots and supports offline viewing and local interactions; review its data before sharing.
+- **Export offline**: With object storage publishing disabled, download the displayed version as a single HTML file from the actions menu. It includes the saved snapshots and supports offline viewing and local interactions; review its data before sharing.
+- **Publish to object storage**: With `reportPublishing` enabled in the Harness plugin configuration, choose Publish to object storage in the actions menu to upload the displayed saved version and get its URL. The menu links to Credential management if credentials are missing. The assistant can also publish an exact saved version with `marivo_publish_report`.
 - **Delete a view**: Confirm deletion in the analysis view tab’s actions menu to permanently remove the view and all its historical versions, or ask the assistant to delete a saved view. Exported HTML and Marivo results are retained.
 
 Initial previews, revisions and final saving update the same analysis view. Subtle chart motion indicates generation and updates, then stops after saving; reduced motion preferences use a static indicator. When analysis is ongoing, the assistant shows a draft early, updates it as results become ready, and saves one version at completion. Native generation also displays program candidates. Failures and cancellation preserve the last successful content. When refreshing a saved view, the assistant retains its layout, components and body while replacing component data sources. Static text is preserved, and the layout within an auto chart may adapt to the data. Refresh rejects changes to the chart type.
 
 Analysis views support tables, complete single values, Native generation previews, and updates to an exact saved version.
 Updates reuse saved snapshots; failures and cancellation preserve the previous successful version.
-Frame views support charts selected from their structure. Analysis views do not provide global filters, in-page editing or object-storage publishing.
+Frame views support charts selected from their structure. Analysis views do not provide global filters or in-page editing.
 View history requires current v4 pointers, but the saved Catalog build need not match the current one. The current reader validates report contents and reports unsupported content as an error. Successful reading does not guarantee that component defaults or rendering semantics match the original version. Current v2/v3 pointers (including earlier saved views) and Frame v1 are no longer readable or updatable. Files stay on disk; capture a current snapshot and create a new analysis view to continue.
 
 ## Analysis timeout

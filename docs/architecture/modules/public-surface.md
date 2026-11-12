@@ -2,9 +2,9 @@
 
 ## 模型协议
 
-当前安装仅披露一套协议。报告工具为 marivo_report_read / marivo_report_write，输入使用 opaque ref；所有写入必填 stage，首次 mode 默认为 edit，refresh-data 强制整批原子校验。Python 的 project 默认为 none，项目访问与持久导出使用 required；results[name].resource 是唯一公共资源交接。推荐必填准确 saved ref，empty 与 declined 为正常完成，不结束 Harness Turn。
+报告读取与写入分别使用 `marivo_report_read` / `marivo_report_write`，输入使用 opaque ref；所有写入必填 stage，首次 mode 默认为 edit，refresh-data 强制整批原子校验。开启 `reportPublishing` 时，`marivo_publish_report` 使用准确 saved ref 发布指定版本。Python 的 project 默认为 none，项目访问与持久导出使用 required；results[name].resource 是唯一公共资源交接。推荐必填准确 saved ref，empty 与 declined 为正常完成，不结束 Harness Turn。
 
-旧工具名、旧参数和 Python 顶层 resultRefs/codeRef/resultMetadata 不再接受或返回。升级前排队的旧名称由 Harness 按未知工具在执行前拒绝，不自动翻译或重放副作用。恢复会话取得当前 schema 与新 Skill；Host receipt/RPC 内部 recordId 不作为模型参数协议。磁盘数据不删除或重写，v1 Build 保持只读支持，旧内容复核状态为 unknown，新写为 v2。
+旧工具名、旧参数和 Python 顶层 resultRefs/codeRef/resultMetadata 不再接受或返回。升级前排队的旧名称由 Harness 按未知工具在执行前拒绝，不自动翻译或重放副作用。恢复会话取得当前 schema 与新 Skill；Host receipt/RPC 内部 recordId 不作为模型参数协议。现行报告读写使用 `dsh.analysis-ui/v3` 文档和 v4 current 指针，详细契约见[展示交付](presentation-delivery.md)。
 
 ## Host 限制与选择
 
@@ -12,7 +12,7 @@ Harness 0.2.1-rc.2 的 execute 只返回 canonical JSON，presentationMeta 为 a
 
 该版本 JSON Schema 的 additionalProperties 仅支持 boolean，无法表达动态名称映射的 value schema。插件使用具体 TypeScript 类型、逐项运行时验证及准确字段说明；PTC 的动态 resources/results entry 仍投影为 JSON value。顶层 ref、状态、定义与元数据采用结构化对象，不需二次 JSON.parse。
 
-数据源合并是独立决策：同条件单次真实模型观察中，候选单入口虽减少 schema 字节，调用数未减少且委派 repair 误选 create，保留 configure/test 两入口。该观察不证明统计优劣。
+早期数据源合并实验曾保留 configure/test 两入口。单次真实模型观察中，候选单入口减少了 schema 字节，调用数相同，委派 repair 误选 create。当前数据源定义通过 `marivo_python` 和 Marivo 公开 API 管理，连接测试由 `marivo_datasource_test` 执行，见[数据源与凭证](datasource-credentials.md)。
 
 ## 稳定 npm 入口
 

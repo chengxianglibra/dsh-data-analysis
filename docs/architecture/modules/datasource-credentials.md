@@ -6,6 +6,8 @@ DSH Credentials 保存、解析和描述凭证；Marivo 定义 datasource、凭�
 
 会话标题旁的“数据源”入口以及空白会话快捷入口打开所属 Workspace 的右侧 Tab。页面只读展示数据源、引擎、连接属性、凭证字段与引用、配置状态、来源和可写性，支持刷新及凭证新增、更换、删除；已保存值不回显，替换和删除需要确认。原始引用可跨 Workspace 共享。数据源名称的状态表示凭证是否配置，不表示连接是否成功。
 
+「数据源与凭证」页面的「数据源」标签按数据源管理连接凭证。同级的「凭证管理」标签管理当前 Host 的[报告发布凭证](report-publishing.md#对象存储发布)，使用插件发布配置声明的 Harness 凭据引用。
+
 数据源定义由 Agent 在对话中依据 live Help 调用 Marivo 公开 API 创建、修改或删除；连接测试由对话中的 `marivo_datasource_test` 执行。密码和令牌只在凭证表单中输入，不通过聊天或代码传递。
 
 原始引用按 UTF-8 字节编码到 `DSH_DATA_ANALYSIS_CREDENTIAL_<HEX>`，区分大小写。只访问映射地址，不回退到同名 Host credential。继续拒绝 `MARIVO_*`、`DSH_DATA_ANALYSIS_*` 和 Host 自有 Shell facts。

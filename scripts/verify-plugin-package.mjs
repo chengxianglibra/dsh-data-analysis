@@ -207,6 +207,12 @@ try {
     'lib/presentation/tool.js',
     'lib/presentation/rpc.js',
     'lib/presentation/receipt.js',
+    'lib/report-publishing/adapters.js',
+    'lib/report-publishing/config.js',
+    'lib/report-publishing/credential-contract.js',
+    'lib/report-publishing/service.js',
+    'lib/client/analysis-ui/offline-export.js',
+    'lib/client/analysis-ui/offline-runtime.generated.js',
     'lib/semantic-reference/rpc.js',
     'lib/semantic-reference/bridge.js',
     'lib/semantic-reference/contracts.js',
@@ -260,8 +266,6 @@ try {
       fail(`packed plugin contains development-only file ${filename}`)
     }
     if (
-      filename.startsWith('lib/report-publishing/') ||
-      filename.startsWith('lib/types/report-publishing/') ||
       filename.startsWith('lib/presentation/build/') ||
       filename.startsWith('lib/presentation/assets/') ||
       /^lib\/types\/client\/presentation\/(?:reader|host-entry|portable-entry|chart-[a-z-]+)\.d\.ts$/.test(

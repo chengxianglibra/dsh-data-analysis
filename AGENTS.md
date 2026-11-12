@@ -41,7 +41,7 @@
 | 数据源配置、凭据与执行准入 | [数据源与凭证](docs/architecture/modules/datasource-credentials.md) |
 | Catalog 浏览与输入引用 | [语义浏览器](docs/architecture/modules/semantic-browser.md)、[语义对象引用输入](docs/architecture/modules/semantic-reference-input.md) |
 | 报告数据与保存 | [展示数据投影](docs/architecture/modules/presentation-projection.md)、[展示交付](docs/architecture/modules/presentation-delivery.md) |
-| 报告阅读、目录与版本历史 | [分析文档 reader](docs/architecture/modules/presentation-reader.md)；报告 tab 支持离线 HTML 导出，不提供对象存储发布，见[说明](docs/architecture/modules/report-publishing.md) |
+| 报告阅读、目录与版本历史 | [分析文档 reader](docs/architecture/modules/presentation-reader.md)；开启 `reportPublishing.enabled` 后，报告三点菜单以「发布到对象存储」替换本地 HTML 导出，缺凭据时引导至「数据源与凭证」页面的「凭证管理」tab，见[发布说明](docs/architecture/modules/report-publishing.md) |
 | 文件分析与展示流程 | [文件分析 Skill](docs/architecture/modules/file-analysis-skill.md)、[展示 Skill](docs/architecture/modules/presentation-skill.md)及其引用的随包 Skill |
 | 生命周期、兼容与分发 | [插件集成与交付](docs/architecture/modules/plugin-integration-delivery.md)；本地验证指南放在 `docs/testing/validation.md` |
 

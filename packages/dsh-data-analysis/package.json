@@ -109,6 +109,7 @@
     }
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1167.0",
     "@deepseek-ai/schemastery": "^3.18.1",
     "@noble/hashes": "2.4.0",
     "@openuidev/lang-core": "1.0.1",

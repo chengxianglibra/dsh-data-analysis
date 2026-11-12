@@ -2,6 +2,8 @@
 export const credentialStyles = `
 .mc-panel{min-width:0;width:100%;container-type:inline-size;--mc-accent:var(--dsw-alias-state-business-primary,#075bea)}
 .mc-shell,.mc-columns,.mc-main,.mc-form{display:flex;flex-direction:column;min-width:0}
+.mc-directory-content{min-width:0}
+.mc-directory-content>.mc-requests{margin-bottom:1rem}
 .mc-shell,.mc-columns,.mc-form-body{gap:1.5rem}
 .mc-form{gap:1rem;flex:1}
 .mc-form-body{display:flex;flex-direction:column;flex:1}

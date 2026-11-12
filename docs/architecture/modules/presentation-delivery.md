@@ -81,7 +81,7 @@ includeCode 按 codeRef 去重返回 definition.sources，逐项标明 available
 
 Tab 与报告视图身份由客户端和原生地址管理，不写入报告内容、草稿、receipt 或 Workspace 文件。为避免抢焦点，非活动的 live Tab 在用户再次选中时才转换为准确 Build 地址；转换前刷新依赖会话投影重建，若历史不完整而无法确定身份，需从 Chat 的已保存入口或分析视图目录重开。历史回放与后台会话不自动打开 Tab；已保存报告按准确 Build 地址读取，草稿不承诺跨 Host 重启恢复，失效时明确提示。分析视图目录、历史和工具结果入口打开右侧 Tab。失败保留最后成功文档；Workspace 失效或连接重置撤销旧归属，迟到读取不能恢复它。
 
-已保存版本可在分析视图 Tab 中下载离线 HTML；对象存储发布与 Reader 内编辑不受支持，见[分析视图 HTML 导出](report-publishing.md)。
+分析视图 Tab 的三点菜单按发布配置对当前显示的已保存版本提供离线 HTML 下载或对象存储发布。开启发布配置后，也可用 Tool 或 RPC 发布固定版本，见[分析视图 HTML 导出与发布](report-publishing.md)。
 
 ## 分析视图草稿与正式保存
 

@@ -10,7 +10,7 @@
 | Marivo | 分析语义、Catalog、固定结果、Frame 审计、source_reads 与分析 Session |
 | 本插件 | Runtime/Workspace binding、受控执行与凭据注入、实时 Help 披露、语义引用及只读投影、分析视图保存与呈现、打包验证 |
 
-插件使用公开实时接口，不复制 Marivo schema、API registry 或领域推理，不改变 Harness 原生生命周期。分析与展示保存是独立操作；展示保存成功不能证明分析正确。固定 Build 已保存版本可导出为离线 HTML；对象存储发布不受支持。
+插件使用公开实时接口，不复制 Marivo schema、API registry 或领域推理，不改变 Harness 原生生命周期。分析与展示保存是独立操作；展示保存成功不能证明分析正确。已保存的固定 Build 可离线下载，也可通过配置启用对象存储发布。
 
 ## 模块导航
 
@@ -31,7 +31,7 @@
 | 分析交互 | [下一步推荐](modules/analysis-next-steps.md) | 当前 Chat 临时推荐按钮、收尾与原生输入提交 |
 | 前端 | [插件私有 UI 组件](modules/custom-ui-components.md) | 主题角色、控件、结果外壳、容器布局与 Host 弹层接入 |
 | 前端 | [数据视图统一规格](modules/data-view-spec.md) | Frame / Dataset 的色彩、标题行、语义放置、标记、状态编码与弹窗 |
-| 分析视图 | [分析视图离线导出](modules/report-publishing.md) | 固定版本离线导出；对象存储发布不可用 |
+| 分析视图 | [分析视图 HTML 导出与发布](modules/report-publishing.md) | 固定版本的离线下载与 S3 发布 |
 | 插件交付 | [公开接口与破坏性迁移](modules/public-surface.md) | 模型协议、稳定扩展入口与逐项导出迁移 |
 | 插件交付 | [插件集成与交付](modules/plugin-integration-delivery.md) | 安装回滚、资源关闭、Host 接缝、兼容与分发 |
 
@@ -41,7 +41,7 @@
 统一分析 UI 通过 `marivo_report_write` 保存 `dsh.analysis-ui/v3` 文档。Frame 和 DataFrame 都通过 Marivo 公开持久引用，在绑定 Python Runtime 中直接读取；不启动 HTTP 服务。快照内嵌不可变 Build，AnalysisSurface
 统一在右侧 Tab 呈现候选、草稿与正式版本，Chat 保留分析视图入口。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
 并可在 Catalog 范围内显式指定图形。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。旧格式报告不进入报告目录；
-新格式支持离线 HTML 导出，不提供对象存储发布或页面编辑。详细契约见本目录中的投影、交付与 reader 模块文档。
+新格式支持离线 HTML 导出和按配置启用的 S3 发布。详细契约见本目录中的投影、交付与 reader 模块文档。
 
 ## 运行与数据流
 
@@ -112,7 +112,7 @@ Native 的公开 PartialArguments 提供真实 program 前缀；
 DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。Frame 和 Dataset 均支持选择已保存图点或支持的单元格后“就此提问”。
 两种数据视图使用 shadcn/ui 结果外壳与 Recharts 图形，领域层保留事实解释与原始行字段绑定；OpenUI Lang / Renderer 负责分析视图编排，
 报告组件的私有布局、主题和交互由[插件 UI 基础层](modules/custom-ui-components.md)统一承载。
-全局筛选、页面编辑、对象存储发布及旧报告 cell 的“加入提问”接口均不提供。
+全局筛选、页面编辑及旧报告 cell 的“加入提问”接口均不提供。
 
 ## 生命周期与失败原则
 

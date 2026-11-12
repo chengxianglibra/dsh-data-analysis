@@ -22,6 +22,9 @@ export const rightTabStyles = `
 .rt-export-notice>svg{width:1rem;height:1rem;flex:none;color:var(--primary)}
 .rt-export-notice-error>svg{color:var(--destructive)}
 .rt-export-notice button{width:1.75rem;height:1.75rem;flex:none;margin:-.375rem -.375rem -.375rem 0}
+.rt-publishing-details{display:flex;flex-direction:column;align-items:flex-start;gap:.25rem;min-width:0;overflow-wrap:anywhere}
+.rt-publishing-details a{color:var(--primary);text-decoration:underline}
+.rt-publishing-details button{width:auto;height:auto;margin:0;padding:0;white-space:normal;text-align:start}
 .rt-notice{display:flex;align-items:center;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem}
 .rt-page .pd-catalog{padding:0;overflow:auto}
 .rt-page .pd-history{position:static;max-height:300px;margin-bottom:1rem;width:100%}

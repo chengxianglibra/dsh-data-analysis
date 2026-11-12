@@ -1,5 +1,15 @@
 /** Plugin-owned copy; keys are stable identifiers, never business labels. */
 export const zh = {
+  'marivo.credentials.datasources-tab': '数据源',
+  'marivo.credentials.credential-management-tab': '凭证管理',
+  'marivo.credentials.report-publishing-credentials': '报告发布凭证',
+  'marivo.credentials.refresh-credential-status': '刷新凭证状态',
+  'marivo.credentials.loading-publishing-credentials': '正在读取发布凭证状态…',
+  'marivo.credentials.publishing-disabled': '当前 Host 尚未启用对象存储发布。',
+  'marivo.credentials.publishing-config-changed': '发布配置已更新，请刷新状态后重新填写。',
+  'marivo.credentials.publishing-credential-unconfirmed': '凭证操作结果未确认，请刷新状态后重试。',
+  'marivo.credentials.delete-shared-publishing-credential':
+    '删除 {p0} 的已保存值？当前 Host 中使用此引用的 Workspace 都会受到影响。',
   'marivo.credentials.basic-settings': '基本配置',
   'marivo.credentials.advanced-settings': '高级设置',
   'marivo.credentials.autocommit-required':
@@ -355,6 +365,18 @@ export const zh = {
   'marivo.credentials.save-failed': '保存配置失败。',
 } as const
 export const en = {
+  'marivo.credentials.datasources-tab': 'Datasources',
+  'marivo.credentials.credential-management-tab': 'Credential management',
+  'marivo.credentials.report-publishing-credentials': 'Report publishing credentials',
+  'marivo.credentials.refresh-credential-status': 'Refresh credential status',
+  'marivo.credentials.loading-publishing-credentials': 'Loading publishing credential status…',
+  'marivo.credentials.publishing-disabled': 'Object storage publishing is disabled on this Host.',
+  'marivo.credentials.publishing-config-changed':
+    'Publishing configuration changed. Refresh the status and enter the credential again.',
+  'marivo.credentials.publishing-credential-unconfirmed':
+    'Credential operation unconfirmed. Refresh the status before retrying.',
+  'marivo.credentials.delete-shared-publishing-credential':
+    'Delete the saved value for {p0}? This affects every Workspace using this reference on the current Host.',
   'marivo.credentials.basic-settings': 'Basic configuration',
   'marivo.credentials.advanced-settings': 'Advanced settings',
   'marivo.credentials.autocommit-required':

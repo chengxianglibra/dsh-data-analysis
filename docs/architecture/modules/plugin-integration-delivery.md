@@ -24,7 +24,7 @@ Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装�
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与任务路由提示。
 5. 相同 Environment 共享 Help/Datasource/Presentation bridge set；Agent activation state 独立。
 6. profile 级 Connection RPC 与 storageDomain 承载[语义对象引用输入](semantic-reference-input.md)，Browser 注册独立 `@` source。
-7. profile 同时注册 presentation RPC，按当前 Workspace 成员关系读取和删除保存文件。
+7. profile 同时注册 presentation RPC，按当前 Workspace 成员关系读取和删除保存文件。报告发布 RPC 由同一 profile 管理，开启 `reportPublishing` 后注册 Agent 发布 Tool。
 8. plugin disposal 取消展示读取和在途 present，停止语义引用/Catalog 接线并 drain usage 写入，取消并 drain 凭据准备、测试与 Python 执行；移除自身 Tool、prompt 和事件。
 
 Agent 安装位于 `src/plugin-agents.ts`：已有 Agent 批量安装失败会回滚本批全部安装；后续新 Agent
@@ -62,10 +62,11 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 | `marivo_report_write` | 引用/Lang 准入、不可变 JSON 与默认 tool/显式 tab 交付 | DSH 提供等价的完整快照交付 |
 | `marivo_report_read` | 恢复准确/当前正式版本或当前 Turn 草稿的定义、资源声明与必要 schema，不读取业务数据 | Harness 提供等价的文档定义恢复 |
 | `marivo_report_delete` | 按准确 saved ref 永久删除分析视图及历史，核验当前版本与 Workspace | Harness 提供等价的视图删除 |
+| `marivo_publish_report` | 开启 `reportPublishing` 时发布固定 Build 的 HTML 到配置的 S3 目标 | Harness 提供等价的固定报告发布 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
 semantic readiness、datasource/table inspect、Artifact materialize/export 等 convenience wrappers。
-`marivo_export_html` 与 `marivo_publish_report` 已随旧报告管线移除，插件不再注册 HTML 导出或发布 Tool。原生 API 已拥有
+`marivo_export_html` 已随旧报告管线移除。原生 API 已拥有
 语义时，插件不重新装箱。
 
 ## Prompt 与 Skill 激活
@@ -111,11 +112,11 @@ Skill 正文路径与 `resourceBase` 都落在同一快照。现有快照内容�
 
 Web client 只保留：
 
-- datasource 凭据管理与 `marivo_datasource_test` / `marivo_python` 的等待表单；
+- datasource 凭据、报告发布凭据，以及 `marivo_datasource_test` / `marivo_python` 的等待表单；
 - 语义层对象浏览与 composer 原生引用输入；
 - 原生报告目录、版本历史与分析 UI 正文 Tab（只读）。
 
-报告 tab 可下载已保存版本的[离线 HTML](report-publishing.md)；报告呈现编辑、对象存储发布和发布凭据管理不受支持。
+报告 Tab 的三点菜单在关闭发布配置时提供离线 HTML 下载，开启时提供[对象存储发布](report-publishing.md#对象存储发布)。菜单、Agent Tool 和认证 RPC 均可发布固定版本。菜单在缺少凭据时可直接打开「数据源与凭证」页面内的「凭证管理」标签。
 
 生产 client bundle 由 `client.tsx` 注册共享 AnalysisSurface，作为右侧 Tab 的[展示 reader](presentation-reader.md)。
 通过统一 Session/Turn delivery 观察新交付：报告正文固定在右侧 Tab，首次候选、修订和保存复用同一视图；Chat 保留轻量入口与推荐。前台会话首次可展示候选自动打开并选中 Tab，后续更新不反复导航；用户关闭后可手动重开。目录和历史入口始终在右侧打开。重复事件去重，历史回放和后台会话不自动导航；打开失败时提供错误反馈。

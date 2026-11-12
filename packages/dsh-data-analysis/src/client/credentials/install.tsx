@@ -24,6 +24,7 @@ import { TabsContent, TabsList, Tabs as TabsRoot, TabsTrigger } from '../ui/prim
 import { UIStyleSheet } from '../ui/theme.ts'
 import type { CredentialChanges } from './changes.ts'
 import { CredentialClientModel, credentialMessage } from './model.ts'
+import { ReportPublishingCredentials } from './report-publishing.tsx'
 import { credentialStyles } from './styles.ts'
 
 const statusLabels = {
@@ -400,15 +401,17 @@ function CredentialForm({ context, request, state, model, workspaceId }) {
     </Card>
   )
 }
-export function CredentialPanel({ model, workspaces, onRefresh }) {
+export function CredentialPanel({ model, workspaces, onRefresh, initialSection = 'datasources' }) {
   const t = useCopy()
   const formId = useId()
 
   const state = useSyncExternalStore(model.subscribe, model.getSnapshot)
+  const [section, setSection] = useState(initialSection)
   const columns = useRef(null)
   const navigation = useRef(null)
   const main = useRef(null)
   const request = state.requests.find((item) => item.id === state.requestId)
+  const activeSection = request || !state.workspaceId ? 'datasources' : section
   const pending = state.requests.filter(
     (item) => item.endedAt === undefined && item.sessionId === state.sessionId,
   )
@@ -431,7 +434,7 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
       if (bounds.left < viewport.left) list.scrollLeft += bounds.left - viewport.left
       else if (bounds.right > viewport.right) list.scrollLeft += bounds.right - viewport.right
     }
-  }, [context?.token])
+  }, [context?.token, activeSection])
   const workspaceId = request
     ? (workspaces.find((item) => item.sessionIds.includes(request.sessionId))?.workspaceId ?? '')
     : state.workspaceId
@@ -460,211 +463,235 @@ export function CredentialPanel({ model, workspaces, onRefresh }) {
       <style>{credentialStyles}</style>
       <div className="rt-heading-row">
         <h2 className="rt-heading">{t('marivo.credentials.datasources-and-credentials')}</h2>
-        <div className="mc-heading-actions">
-          <IconButton
-            variant="ghost"
-            className="mc-icon-button"
-            type="button"
-            title={t('marivo.credentials.refresh-datasources')}
-            label={t('marivo.credentials.refresh-datasources')}
-            disabled={state.loading}
-            onClick={onRefresh ?? (() => void model.refreshDatasources())}
-          >
-            <CredentialIcon name="refresh" />
-          </IconButton>
-        </div>
+        {activeSection === 'datasources' && (
+          <div className="mc-heading-actions">
+            <IconButton
+              variant="ghost"
+              className="mc-icon-button"
+              type="button"
+              title={t('marivo.credentials.refresh-datasources')}
+              label={t('marivo.credentials.refresh-datasources')}
+              disabled={state.loading}
+              onClick={onRefresh ?? (() => void model.refreshDatasources())}
+            >
+              <CredentialIcon name="refresh" />
+            </IconButton>
+          </div>
+        )}
       </div>
       <p className="rt-caption">
         {workspaces.find((item) => item.workspaceId === workspaceId)?.title ?? workspaceId}
       </p>
-      <div className="mc-shell">
-        {(pending.length > 0 || request) && (
-          <div className="mc-requests">
-            <span>
-              {pending.length
-                ? t('marivo.credentials.requests-in-this-session')
-                : t('marivo.credentials.configuration-result')}
-            </span>
-            {pending.map((item) => (
-              <Button
-                variant="outline"
-                type="button"
-                key={item.id}
-                onClick={() => model.openRequest(item.id)}
-              >
-                {item.context?.name} · {t(statusLabels[item.status])}
-              </Button>
-            ))}
-            {request && (
-              <Button variant="ghost" type="button" onClick={() => model.show(workspaceId)}>
-                {t('marivo.credentials.datasource-management')}
-              </Button>
-            )}
-          </div>
+      <TabsRoot className="mc-shell" value={activeSection} onValueChange={setSection}>
+        {!request && (
+          <TabsList aria-label={t('marivo.credentials.datasources-and-credentials')}>
+            <TabsTrigger value="datasources">{t('marivo.credentials.datasources-tab')}</TabsTrigger>
+            <TabsTrigger value="credentials" disabled={!workspaceId}>
+              {t('marivo.credentials.credential-management-tab')}
+            </TabsTrigger>
+          </TabsList>
         )}
-        <TabsRoot
-          className="mc-columns"
-          ref={columns}
-          value={!request ? (context?.token ?? '') : ''}
-          activationMode="manual"
-          onValueChange={(token) => {
-            model.select(token)
-          }}
-        >
-          {!request && (
-            <aside className="mc-nav" aria-label={t('marivo.credentials.datasource-navigation')}>
-              <div>
-                <div className="mc-nav-heading">
-                  <h3>
-                    {request
-                      ? t('marivo.credentials.requested-datasource')
-                      : t('marivo.credentials.datasource-value', { p0: datasources.length })}
-                  </h3>
-                </div>
-                <TabsList
-                  variant="line"
-                  className="mc-datasources"
-                  ref={navigation}
-                  aria-label={t('marivo.credentials.datasource-navigation')}
+        <TabsContent value="datasources" className="mc-directory-content">
+          {(pending.length > 0 || request) && (
+            <div className="mc-requests">
+              <span>
+                {pending.length
+                  ? t('marivo.credentials.requests-in-this-session')
+                  : t('marivo.credentials.configuration-result')}
+              </span>
+              {pending.map((item) => (
+                <Button
+                  variant="outline"
+                  type="button"
+                  key={item.id}
+                  onClick={() => model.openRequest(item.id)}
                 >
-                  {datasources.map((item, index) => {
-                    const count = item.refs.filter(
-                      (ref) => item.credentials[ref]?.configured,
-                    ).length
-                    const ready = count === item.refs.length
-                    const running = state.operations.some(
-                      (entry) => entry.handle.scope === item.token,
-                    )
-                    const status =
-                      item.refs.length === 0
-                        ? t('marivo.credentials.no-credentials-required')
-                        : ready
-                          ? t('marivo.credentials.all-credentials-configured')
-                          : t('marivo.credentials.value-value-configured', {
-                              p0: count,
-                              p1: item.refs.length,
-                            })
-                    const description = running
-                      ? `${status} · ${t('marivo.credentials.processing')}`
-                      : status
-                    const statusId = `${formId}-datasource-status-${index}`
-                    return (
-                      <TabsTrigger
-                        key={item.token}
-                        value={item.token}
-                        className="mc-datasource"
-                        type="button"
-                        title={item.name}
-                        aria-label={t('marivo.credentials.select-datasource-value', {
-                          p0: item.name,
-                        })}
-                        aria-describedby={statusId}
-                      >
-                        <CredentialIcon name="database" />
-                        <span className="mc-datasource-copy">
-                          <span className="mc-datasource-name">{item.name}</span>
-                          <span
-                            className="mc-dot"
-                            data-ready={ready}
-                            title={description}
-                            aria-hidden="true"
-                          />
-                        </span>
-                        <span id={statusId} className="mc-visually-hidden">
-                          {description}
-                        </span>
-                      </TabsTrigger>
-                    )
-                  })}
-                </TabsList>
-              </div>
-            </aside>
+                  {item.context?.name} · {t(statusLabels[item.status])}
+                </Button>
+              ))}
+              {request && (
+                <Button variant="ghost" type="button" onClick={() => model.show(workspaceId)}>
+                  {t('marivo.credentials.datasource-management')}
+                </Button>
+              )}
+            </div>
           )}
-          <main className="mc-main" ref={main}>
-            {state.error && (
-              <Alert role="alert" className="mc-alert">
-                <AlertDescription>{t(state.error)}</AlertDescription>
-              </Alert>
-            )}
-            {state.loading && (
-              <p className="mc-loading" role="status">
-                {t('marivo.credentials.loading-datasources-and-credential-status')}
-              </p>
-            )}
-            {!request && !state.loading && !context && !state.error && (
-              <Empty className="mc-empty">
-                <EmptyDescription>
-                  <CredentialIcon name="database" size={32} />
-                  <h3>
-                    {!state.workspaceId
-                      ? t('marivo.credentials.this-session-is-not-bound-to-a-workspace')
-                      : state.datasources.length === 0
-                        ? t('marivo.credentials.no-datasources')
-                        : t('marivo.credentials.select-a-datasource')}
-                  </h3>
-                  <p>
-                    {!state.workspaceId
-                      ? t('marivo.credentials.return-to-the-session-and-retry')
-                      : state.datasources.length === 0
-                        ? t('marivo.credentials.this-workspace-has-no-defined-datasources')
-                        : t(
-                            'marivo.credentials.view-credential-configuration-and-the-latest-connection-test',
-                          )}
-                  </p>
-                </EmptyDescription>
-              </Empty>
-            )}
-            {request
-              ? credentialForm
-              : context && <TabsContent value={context.token}>{credentialForm}</TabsContent>}
-            {operations.length > 0 && (
-              <section
-                className="mc-activity"
-                aria-label={t('marivo.credentials.credential-operations-in-progress')}
-              >
-                <p className="mc-activity-heading">
-                  {t('marivo.credentials.in-progress')}
-                  {operations.length}
-                </p>
-                <div className="mc-activity-list">
-                  {operations.map((entry) => (
-                    <Button
-                      variant="outline"
-                      type="button"
-                      key={entry.handle.id}
-                      aria-pressed={state.handle?.id === entry.handle.id}
-                      onClick={() => model.selectOperation(entry.handle.id)}
-                    >
-                      {entry.name} {t('marivo.credentials.processing-177')}
-                    </Button>
-                  ))}
-                </div>
-                {activeOperation?.status === 'running' && (
-                  <div className="mc-progress">
-                    <p>
-                      {state.operations.find((entry) => entry.handle.id === state.handle?.id)?.name}{' '}
-                      · {t('marivo.credentials.saving')}
-                    </p>
-                    <Button
-                      variant="outline"
-                      type="button"
-                      onClick={() => void model.cancelOperation()}
-                    >
-                      {t('marivo.credentials.cancel-this-operation')}
-                    </Button>
-                    {activeOperation.saved.length > 0 && (
-                      <p>
-                        {t('marivo.credentials.saved')}
-                        {activeOperation.saved.join('、')}。
-                      </p>
-                    )}
+          <TabsRoot
+            className="mc-columns"
+            ref={columns}
+            value={!request ? (context?.token ?? '') : ''}
+            activationMode="manual"
+            onValueChange={(token) => {
+              model.select(token)
+            }}
+          >
+            {!request && (
+              <aside className="mc-nav" aria-label={t('marivo.credentials.datasource-navigation')}>
+                <div>
+                  <div className="mc-nav-heading">
+                    <h3>
+                      {request
+                        ? t('marivo.credentials.requested-datasource')
+                        : t('marivo.credentials.datasource-value', { p0: datasources.length })}
+                    </h3>
                   </div>
-                )}
-              </section>
+                  <TabsList
+                    variant="line"
+                    className="mc-datasources"
+                    ref={navigation}
+                    aria-label={t('marivo.credentials.datasource-navigation')}
+                  >
+                    {datasources.map((item, index) => {
+                      const count = item.refs.filter(
+                        (ref) => item.credentials[ref]?.configured,
+                      ).length
+                      const ready = count === item.refs.length
+                      const running = state.operations.some(
+                        (entry) => entry.handle.scope === item.token,
+                      )
+                      const status =
+                        item.refs.length === 0
+                          ? t('marivo.credentials.no-credentials-required')
+                          : ready
+                            ? t('marivo.credentials.all-credentials-configured')
+                            : t('marivo.credentials.value-value-configured', {
+                                p0: count,
+                                p1: item.refs.length,
+                              })
+                      const description = running
+                        ? `${status} · ${t('marivo.credentials.processing')}`
+                        : status
+                      const statusId = `${formId}-datasource-status-${index}`
+                      return (
+                        <TabsTrigger
+                          key={item.token}
+                          value={item.token}
+                          className="mc-datasource"
+                          type="button"
+                          title={item.name}
+                          aria-label={t('marivo.credentials.select-datasource-value', {
+                            p0: item.name,
+                          })}
+                          aria-describedby={statusId}
+                        >
+                          <CredentialIcon name="database" />
+                          <span className="mc-datasource-copy">
+                            <span className="mc-datasource-name">{item.name}</span>
+                            <span
+                              className="mc-dot"
+                              data-ready={ready}
+                              title={description}
+                              aria-hidden="true"
+                            />
+                          </span>
+                          <span id={statusId} className="mc-visually-hidden">
+                            {description}
+                          </span>
+                        </TabsTrigger>
+                      )
+                    })}
+                  </TabsList>
+                </div>
+              </aside>
             )}
-          </main>
-        </TabsRoot>
-      </div>
+            <main className="mc-main" ref={main}>
+              {state.error && (
+                <Alert role="alert" className="mc-alert">
+                  <AlertDescription>{t(state.error)}</AlertDescription>
+                </Alert>
+              )}
+              {state.loading && (
+                <p className="mc-loading" role="status">
+                  {t('marivo.credentials.loading-datasources-and-credential-status')}
+                </p>
+              )}
+              {!request && !state.loading && !context && !state.error && (
+                <Empty className="mc-empty">
+                  <EmptyDescription>
+                    <CredentialIcon name="database" size={32} />
+                    <h3>
+                      {!state.workspaceId
+                        ? t('marivo.credentials.this-session-is-not-bound-to-a-workspace')
+                        : state.datasources.length === 0
+                          ? t('marivo.credentials.no-datasources')
+                          : t('marivo.credentials.select-a-datasource')}
+                    </h3>
+                    <p>
+                      {!state.workspaceId
+                        ? t('marivo.credentials.return-to-the-session-and-retry')
+                        : state.datasources.length === 0
+                          ? t('marivo.credentials.this-workspace-has-no-defined-datasources')
+                          : t(
+                              'marivo.credentials.view-credential-configuration-and-the-latest-connection-test',
+                            )}
+                    </p>
+                  </EmptyDescription>
+                </Empty>
+              )}
+              {request
+                ? credentialForm
+                : context && <TabsContent value={context.token}>{credentialForm}</TabsContent>}
+              {operations.length > 0 && (
+                <section
+                  className="mc-activity"
+                  aria-label={t('marivo.credentials.credential-operations-in-progress')}
+                >
+                  <p className="mc-activity-heading">
+                    {t('marivo.credentials.in-progress')}
+                    {operations.length}
+                  </p>
+                  <div className="mc-activity-list">
+                    {operations.map((entry) => (
+                      <Button
+                        variant="outline"
+                        type="button"
+                        key={entry.handle.id}
+                        aria-pressed={state.handle?.id === entry.handle.id}
+                        onClick={() => model.selectOperation(entry.handle.id)}
+                      >
+                        {entry.name} {t('marivo.credentials.processing-177')}
+                      </Button>
+                    ))}
+                  </div>
+                  {activeOperation?.status === 'running' && (
+                    <div className="mc-progress">
+                      <p>
+                        {
+                          state.operations.find((entry) => entry.handle.id === state.handle?.id)
+                            ?.name
+                        }{' '}
+                        · {t('marivo.credentials.saving')}
+                      </p>
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={() => void model.cancelOperation()}
+                      >
+                        {t('marivo.credentials.cancel-this-operation')}
+                      </Button>
+                      {activeOperation.saved.length > 0 && (
+                        <p>
+                          {t('marivo.credentials.saved')}
+                          {activeOperation.saved.join('、')}。
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </section>
+              )}
+            </main>
+          </TabsRoot>
+        </TabsContent>
+        <TabsContent value="credentials" className="mc-directory-content">
+          {activeSection === 'credentials' && (
+            <ReportPublishingCredentials
+              key={workspaceId}
+              model={model}
+              workspaceId={workspaceId}
+            />
+          )}
+        </TabsContent>
+      </TabsRoot>
     </section>
   )
 }

@@ -6,6 +6,11 @@ import type {
   CredentialRequestView,
 } from '../../datasource/service.ts'
 import { PendingTasks } from '../../lifecycle.ts'
+import {
+  type PublishingField,
+  publishingCredentialResultSchema,
+  REPORT_PUBLISHING_CHANNEL,
+} from '../../report-publishing/credential-contract.ts'
 import { errorMessage, type Notice } from './../i18n/copy.ts'
 import type { BrowserRpc } from '../semantic-browser/model.ts'
 import type { CredentialChanges } from './changes.ts'
@@ -29,6 +34,10 @@ interface QueryHandle {
   id: string
   scope: string
 }
+export type PublishingCredentialRequest =
+  | { endpoint: 'describe' }
+  | { endpoint: 'set'; configId: string; field: PublishingField; value: string }
+  | { endpoint: 'unset'; configId: string; field: PublishingField }
 export interface ClientOperation {
   handle: QueryHandle
   name: string
@@ -185,6 +194,22 @@ export class CredentialClientModel {
       error?: { message?: string }
     }
     if (!result.ok) throw new CredentialResponseError(result.error?.message ?? '')
+    return result.value
+  }
+  async publishingCredentials(
+    workspaceId: string,
+    { endpoint, ...input }: PublishingCredentialRequest,
+    signal: AbortSignal,
+  ) {
+    const response = await this.#rpc.call(
+      REPORT_PUBLISHING_CHANNEL,
+      endpoint,
+      { workspaceId, ...input },
+      signal,
+    )
+    signal.throwIfAborted()
+    const result = publishingCredentialResultSchema.parse(response)
+    if (!result.ok) throw new CredentialResponseError(result.error.message)
     return result.value
   }
   async show(workspaceId: string, selectedToken?: string): Promise<void> {

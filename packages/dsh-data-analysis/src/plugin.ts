@@ -47,6 +47,9 @@ import {
   MarivoPresentationFileService,
   registerMarivoPresentationRpc,
 } from './presentation/index.ts'
+import { registerPublishingRpc } from './report-publishing/adapters.ts'
+import { type ReportPublishingConfig, resolvePublishingConfig } from './report-publishing/config.ts'
+import { ReportPublishingService } from './report-publishing/service.ts'
 import { browserFailure, SemanticBrowserService } from './semantic-browser/service.ts'
 import {
   registerSemanticReferenceRpc,
@@ -75,6 +78,7 @@ export const inject = [
 /** Loader-safe configuration for the shared Runtime and per-Workspace bindings. */
 export interface Config extends PythonTimeoutConfig {
   readonly credentialInteraction?: 'web' | 'none'
+  readonly reportPublishing?: ReportPublishingConfig
 
   /** Explicit project root override; otherwise each Agent uses session.header.cwd. */
   readonly projectRoot?: string
@@ -90,6 +94,8 @@ export interface Config extends PythonTimeoutConfig {
 
 /** Cordis loader schema. Runtime defaults are resolved in {@link apply}. */
 export const Config = z.object({
+  // Validate at apply time so loader errors cannot echo supplied values.
+  reportPublishing: z.any(),
   pythonTimeoutMs: z
     .number()
     .min(1)
@@ -126,6 +132,7 @@ export async function applyWithIntegration(
   config: Config = {},
   integration: MarivoIntegrationV1 = {},
 ): Promise<() => Promise<void>> {
+  const publishingConfig = resolvePublishingConfig(config.reportPublishing)
   const pythonOptions = currentPythonOptions(config)
   const pythonExecutable = config.pythonExecutable ?? process.env.DSH_DATA_ANALYSIS_PYTHON
   const runtimeRoot = config.runtimeRoot ?? process.env.DSH_DATA_ANALYSIS_RUNTIME_ROOT
@@ -168,6 +175,7 @@ export async function applyWithIntegration(
   let disposeCredentials: (() => Promise<void>) | undefined
   let disposeReferences: (() => Promise<void>) | undefined
   let disposePresentation: (() => Promise<void>) | undefined
+  let disposePublishing: (() => Promise<void>) | undefined
   let referenceService: SemanticReferenceService | undefined
   let agentInstallation: ReturnType<typeof createMarivoAgentInstallation> | undefined
   let pythonSettings: ReturnType<typeof installPythonSettings> | undefined
@@ -186,6 +194,7 @@ export async function applyWithIntegration(
       () => pythonSettings?.dispose(),
       () => disposeCredentials?.(),
       disposeChanges,
+      () => disposePublishing?.(),
       () => disposePresentation?.(),
       () => disposeReferences?.(),
       () => browserService.close(),
@@ -235,12 +244,23 @@ export async function applyWithIntegration(
       presentationDrafts,
     )
     disposePresentation = registerMarivoPresentationRpc(ctx.connection, presentationFiles)
+    const reportPublishing = publishingConfig
+      ? new ReportPublishingService(publishingConfig, ctx.credentials, presentationFiles, (id) => {
+          const workspace = ctx.workspaceRegistry.get(WorkspaceId(id))
+          if (!workspace) throw new Error('workspace-unavailable')
+          return workspace.title
+        })
+      : undefined
+    disposePublishing = registerPublishingRpc(ctx.connection, reportPublishing, (id) =>
+      Boolean(ctx.workspaceRegistry.get(WorkspaceId(id))),
+    )
     agentInstallation = createMarivoAgentInstallation(ctx, resolveEnvironment, {
       ...pythonOptions,
       pythonOptionsSource: pythonSettings.get,
       helpBridgeSource: helpBridge,
       credentialService,
       presentationDrafts,
+      ...(reportPublishing ? { reportPublishing } : {}),
       nextStepsPublish: (notice) => nextSteps.publish(notice),
     })
     agentInstallation.install()

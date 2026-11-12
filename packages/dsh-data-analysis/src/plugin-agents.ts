@@ -28,6 +28,8 @@ import {
   registerMarivoUiReadTool,
 } from './presentation/index.ts'
 import { restorePythonResults } from './python-results-context.ts'
+import { registerReportPublishTool } from './report-publishing/adapters.ts'
+import type { ReportPublishingService } from './report-publishing/service.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const ROUTING_PROMPT = [
@@ -63,6 +65,7 @@ export function createMarivoAgentInstallation(
       /** Runtime-scoped Help source; normal plugin installation never binds Help to a Workspace. */
       helpBridgeSource?: MarivoHelpBridgeSource
       presentationDrafts?: AnalysisDrafts
+      reportPublishing?: ReportPublishingService
       nextStepsPublish?: (notice: NextStepsNotice) => void
     } = {},
 ) {
@@ -141,6 +144,10 @@ export function createMarivoAgentInstallation(
       controller.addDisposer(() => credentialService.disposeAgent(agent))
       controller.addDisposer(registerMarivoUiReadTool(agent.ctx, workspace, presentationDrafts))
       controller.addDisposer(registerMarivoReportDeleteTool(agent.ctx, workspace))
+      if (options.reportPublishing)
+        controller.addDisposer(
+          registerReportPublishTool(agent.ctx, options.reportPublishing, agent.session),
+        )
       controller.addDisposer(
         registerMarivoPresentTool(
           agent.ctx,
@@ -166,7 +173,9 @@ export function createMarivoAgentInstallation(
         agent.ctx.systemPrompt.section({
           name: 'marivo:routing',
           order: 180,
-          text: ROUTING_PROMPT,
+          text: options.reportPublishing
+            ? `${ROUTING_PROMPT}\nThis Host has object-storage publishing enabled. Use marivo_publish_report with the exact saved report ref only when the user explicitly requests publication to object storage.`
+            : ROUTING_PROMPT,
         }),
       )
       controller.addDisposer(

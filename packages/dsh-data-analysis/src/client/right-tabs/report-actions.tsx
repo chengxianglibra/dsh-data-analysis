@@ -3,9 +3,18 @@ import { Dialog, DropdownMenu } from 'radix-ui'
 import { useRef, useState } from 'react'
 import type { AnalysisDocument } from '../../presentation/contracts/analysis-document.ts'
 import { useCopy } from '../i18n/context.tsx'
+import type { BrowserRpc } from '../semantic-browser/model.ts'
 import { Button, IconButton } from '../ui/controls.tsx'
 import { useThemedPortal } from '../ui/portal.tsx'
 import { useExportHtml } from './export-html.tsx'
+import { useReportPublishing } from './report-publishing.ts'
+
+const deliveryLabels = {
+  checking: 'marivo.presentation.report-delivery-checking',
+  unavailable: 'marivo.presentation.report-delivery-unavailable',
+  download: 'marivo.presentation.export-html',
+  publish: 'marivo.presentation.publish-report',
+} as const
 
 export function ReportActions({
   document,
@@ -14,6 +23,9 @@ export function ReportActions({
   refreshLocked,
   onRefreshData,
   onDelete,
+  rpc,
+  signal,
+  onOpenPublishingCredentials,
 }: {
   document: AnalysisDocument
   isCurrent: () => boolean
@@ -25,11 +37,23 @@ export function ReportActions({
   onDelete: (
     isCurrent: () => boolean,
   ) => Promise<'deleted' | 'cleanup-pending' | 'stale' | 'unavailable' | 'failed' | 'uncertain'>
+  rpc: BrowserRpc
+  signal: AbortSignal
+  onOpenPublishingCredentials: () => void
 }) {
   const t = useCopy()
   const source = useRef<HTMLSpanElement>(null)
   const container = useThemedPortal(source)
   const { status, download, dismiss } = useExportHtml({ document, isCurrent })
+  const publishing = useReportPublishing({ rpc, document, signal, isCurrent })
+  const publication = publishing.status
+  const deliveryBusy = status === 'working' || publication?.kind === 'working'
+  const deliveryLabel =
+    status === 'working'
+      ? 'marivo.presentation.exporting-html'
+      : publication?.kind === 'working'
+        ? 'marivo.presentation.publishing-report'
+        : deliveryLabels[publishing.mode]
   const [refreshStatus, setRefreshStatus] = useState<
     'accepted' | 'stale' | 'unavailable' | 'failed' | 'uncertain'
   >()
@@ -68,7 +92,11 @@ export function ReportActions({
   }
   return (
     <>
-      <DropdownMenu.Root>
+      <DropdownMenu.Root
+        onOpenChange={(open) => {
+          if (open) void publishing.check()
+        }}
+      >
         <span ref={source}>
           <DropdownMenu.Trigger asChild>
             <IconButton label={t('marivo.presentation.report-actions')} variant="ghost">
@@ -93,14 +121,15 @@ export function ReportActions({
             </DropdownMenu.Item>
             <DropdownMenu.Item
               className="rt-actions-item"
-              disabled={status === 'working'}
-              onSelect={() => void download()}
+              disabled={
+                deliveryBusy || publishing.mode === 'checking' || publishing.mode === 'unavailable'
+              }
+              onSelect={() => {
+                if (publishing.mode === 'publish') void publishing.publish()
+                else if (publishing.mode === 'download') void download()
+              }}
             >
-              {t(
-                status === 'working'
-                  ? 'marivo.presentation.exporting-html'
-                  : 'marivo.presentation.export-html',
-              )}
+              {t(deliveryLabel)}
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
@@ -185,6 +214,47 @@ export function ReportActions({
             label={t('marivo.presentation.export-html-dismiss')}
             variant="ghost"
             onClick={dismiss}
+          >
+            <X aria-hidden="true" />
+          </IconButton>
+        </div>
+      )}
+      {publication && publication.kind !== 'working' && (
+        <div
+          className={`rt-export-notice${publication.kind === 'success' ? '' : ' rt-export-notice-error'}`}
+        >
+          {publication.kind === 'success' ? (
+            <CheckCircle2 aria-hidden="true" />
+          ) : (
+            <CircleAlert aria-hidden="true" />
+          )}
+          <div className="rt-publishing-details">
+            <span role={publication.kind === 'success' ? 'status' : 'alert'}>
+              {t(`marivo.presentation.publish-report-${publication.kind}`)}
+            </span>
+            {publication.kind === 'success' && (
+              <a href={publication.url} target="_blank" rel="noopener noreferrer">
+                {t('marivo.presentation.open-published-report')}
+              </a>
+            )}
+            {publication.kind === 'credentials-missing' && (
+              <Button
+                variant="link"
+                type="button"
+                onClick={() => {
+                  if (!isCurrent()) return
+                  publishing.dismiss()
+                  onOpenPublishingCredentials()
+                }}
+              >
+                {t('marivo.presentation.open-publishing-credentials')}
+              </Button>
+            )}
+          </div>
+          <IconButton
+            label={t('marivo.presentation.publish-report-dismiss')}
+            variant="ghost"
+            onClick={publishing.dismiss}
           >
             <X aria-hidden="true" />
           </IconButton>

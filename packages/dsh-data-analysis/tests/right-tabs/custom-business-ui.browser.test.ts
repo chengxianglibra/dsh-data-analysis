@@ -33,9 +33,27 @@ import {ReportCatalogView,ReportHistoryPanel,catalogStyles} from './src/client/p
 import {ReportCatalogModel} from './src/client/presentation/catalog-model.ts';
 import {rightTabStyles} from './src/client/right-tabs/styles.ts';
 const workspaces=[{workspaceId:'w',name:'Sample',sessionIds:['s']}];
-const credentialModel=new CredentialClientModel({call:async()=>({ok:true,value:{generation:'fixture',datasources:[{
+let publishingConfigId='10000000-0000-4000-8000-000000000001';
+let publishingSecret='';
+const publishingStatus=()=>({enabled:true,configId:publishingConfigId,name:'Team storage',bucket:'reports',fields:[
+ {field:'accessKeyId',reference:'REPORT_ACCESS_KEY',required:true,configured:true,writable:false,source:'env'},
+ {field:'secretAccessKey',reference:'REPORT_SECRET_KEY',required:true,configured:!!publishingSecret,writable:true,...(publishingSecret?{source:'file'}:{})}
+]});
+const credentialModel=new CredentialClientModel({call:async(channel,endpoint,payload)=>{
+ if(channel==='/dsh-report-publishing'){
+  if(payload.workspaceId!=='w') throw Error('Wrong fixture workspace');
+  if(endpoint==='describe') return {ok:true,value:publishingStatus()};
+  if(payload.configId!==publishingConfigId) return {ok:false,error:{message:'report-publishing-config-changed'}};
+  if(payload.field!=='secretAccessKey') throw Error('Wrong fixture credential field');
+  if(endpoint==='set') publishingSecret=payload.value;
+  else if(endpoint==='unset') publishingSecret='';
+  else throw Error('Unexpected publishing credential operation');
+  return {ok:true,value:publishingStatus()};
+ }
+ return {ok:true,value:{generation:'fixture',datasources:[{
  token:'warehouse',workspaceId:'w',name:'warehouse',backend:'clickhouse',properties:{host:'example.invalid',port:443},refs:['DB_PASSWORD'],fields:{password:'DB_PASSWORD'},version:'v1',credentials:{DB_PASSWORD:{configured:true,writable:true,source:'user'}}
-}]}})});
+}]}};
+}});
 await credentialModel.show('w');
 const object={ref:{schema:'marivo.semantic_ref/v1',kind:'metric',path:'sales.revenue'},name:'Revenue 收入',domain:'sales',definition:'Captured definition',guardrails:[],source:{file:'models/sales.py',line:1,symbol:'revenue'},fields:[],relations:[],computation:{schema:'dsh-data-analysis-computation/v1',ref:{schema:'marivo.semantic_ref/v1',kind:'metric',path:'sales.revenue'},catalog_definition_fingerprint:'c1',expression:${JSON.stringify(expression)},explanation:'',facts:[]}};
 const semanticModel=new SemanticBrowserModel({call:async()=>({ok:true,value:{formatVersion:2,workspaceId:'w',projectRoot:'/fixture',environmentFingerprint:'env',fingerprint:'c1',loadedAt:'2026-11-03T00:00:00Z',kinds:['metric'],objects:[object]}})});
@@ -44,12 +62,12 @@ let settings={status:'ready',value:{pythonTimeoutMs:120000},user:{},revision:1,w
 const listeners=new Set();
 let refuse=false;
 const form={getSnapshot:()=>settings,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},async mutate(ops,revision){if(refuse||revision!==settings.revision){refuse=false;return false}const value=ops[0].value;settings={...settings,value:{pythonTimeoutMs:value},user:{pythonTimeoutMs:value},revision:settings.revision+1};for(const fn of listeners)fn();return true}};
-window.fixture={refuse(){refuse=true},snapshot:()=>settings,expression:${JSON.stringify(expression)}};
+window.fixture={refuse(){refuse=true},snapshot:()=>settings,expression:${JSON.stringify(expression)},changePublishingConfig(){publishingConfigId='10000000-0000-4000-8000-000000000002'}};
 const version={receipt:{reportId:'r',buildId:'b1',title:'Revenue report'},publishedAt:'2026-11-03T00:00:00Z',source:{sessionId:'s',surface:'tab'}};
 const catalog=new ReportCatalogModel({call:async()=>{throw Error('No fixture reads')}});
 catalog.patch({open:true,workspaceId:'w',catalog:{workspaceId:'w',reports:[version],unavailable:0}});
 const root=createRoot(document.getElementById('root'));
-window.renderBusiness=(locale='en-US')=>root.render(<CopyProvider t={translator(locale)}><style>{rightTabStyles+catalogStyles}</style><main className="fixture-grid"><section className="mv-ui rt-page" data-fixture="credentials"><CredentialPanel model={credentialModel} workspaces={workspaces}/></section><section data-fixture="semantic"><SemanticBrowserPanel model={semanticModel} workspaces={workspaces}/></section><section className="mv-ui rt-page" data-fixture="catalog"><ReportCatalogView model={catalog} reader={{showReport(){}}}/><ReportHistoryPanel state={{history:{currentBuildId:'b1',versions:[version]},resolvedReceipt:{buildId:'b1'}}} model={{selectVersion(){}}}/></section><section data-fixture="settings"><ul style={{padding:0,margin:0}}><PythonSettingsCard scope={form}/></ul></section><section className="mv-ui" data-fixture="header"><WorkspaceHeaderAction icon="semantic" label="marivo.navigation.semantic-layer" disabled={false} onClick={()=>{}}/></section></main></CopyProvider>);
+window.renderBusiness=(locale='en-US',initialSection='datasources')=>root.render(<CopyProvider t={translator(locale)}><style>{rightTabStyles+catalogStyles}</style><main className="fixture-grid"><section className="mv-ui rt-page" data-fixture="credentials"><CredentialPanel key={initialSection} initialSection={initialSection} model={credentialModel} workspaces={workspaces}/></section><section data-fixture="semantic"><SemanticBrowserPanel model={semanticModel} workspaces={workspaces}/></section><section className="mv-ui rt-page" data-fixture="catalog"><ReportCatalogView model={catalog} reader={{showReport(){}}}/><ReportHistoryPanel state={{history:{currentBuildId:'b1',versions:[version]},resolvedReceipt:{buildId:'b1'}}} model={{selectVersion(){}}}/></section><section data-fixture="settings"><ul style={{padding:0,margin:0}}><PythonSettingsCard scope={form}/></ul></section><section className="mv-ui" data-fixture="header"><WorkspaceHeaderAction icon="semantic" label="marivo.navigation.semantic-layer" disabled={false} onClick={()=>{}}/></section></main></CopyProvider>);
 window.renderBusiness();
 `,
     },
@@ -190,6 +208,56 @@ window.renderBusiness();
   assert(refreshBounds && refreshBounds.x >= 0 && refreshBounds.x + refreshBounds.width <= 390)
   assert.equal(refreshBounds.width, 32)
   assert.equal(refreshBounds.height, 32)
+  const credentials = page.locator('[data-fixture="credentials"]')
+  const credentialTab = credentials.getByRole('tab', { name: 'Credential management' })
+  const datasourcesTab = credentials.getByRole('tab', { name: 'Datasources', exact: true })
+  const sourceTabList = credentials.getByRole('tablist', {
+    name: 'Datasources and credentials',
+    exact: true,
+  })
+  assert.equal(await sourceTabList.getByRole('tab').count(), 2)
+  await credentialTab.click()
+  const publishPanel = credentials.getByRole('tabpanel', { name: 'Credential management' })
+  const secret = publishPanel.getByRole('group', { name: 'REPORT_SECRET_KEY' })
+  const readonly = publishPanel.getByRole('group', { name: 'REPORT_ACCESS_KEY' })
+  await secret.getByRole('button', { name: 'Add credential' }).click()
+  assert.equal(await readonly.getByRole('button').count(), 0)
+  const password = secret.getByLabel('New value')
+  assert.equal(await password.getAttribute('type'), 'password')
+  await password.fill('unsubmitted-fixture-secret')
+  await datasourcesTab.click()
+  await credentialTab.click()
+  await secret.getByRole('button', { name: 'Add credential' }).click()
+  assert.equal(await password.inputValue(), '')
+  await password.fill('fixture-secret')
+  await secret.getByRole('button', { name: 'Add credential' }).click()
+  await secret.locator('[data-ready=true]').waitFor()
+  assert.equal(await password.count(), 0)
+  await secret.getByRole('button', { name: 'Replace', exact: true }).click()
+  await password.fill('stale-fixture-secret')
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { fixture: { changePublishingConfig(): void } }).fixture
+    fixture.changePublishingConfig()
+  })
+  await secret.getByRole('button', { name: 'Confirm replacement' }).click()
+  await publishPanel.getByRole('alert').waitFor()
+  assert.equal(await password.count(), 0)
+  await publishPanel.getByRole('button', { name: 'Refresh credential status' }).click()
+  await secret.getByRole('button', { name: 'Replace', exact: true }).click()
+  await password.fill('rotated-fixture-secret')
+  await secret.getByRole('button', { name: 'Confirm replacement' }).click()
+  await secret.getByRole('button', { name: 'Delete saved value', exact: true }).click()
+  await secret.getByRole('button', { name: 'Confirm saved value deletion' }).click()
+  await secret.locator('[data-ready=false]').waitFor()
+  assert.equal(await publishPanel.locator('input').count(), 0)
+  await datasourcesTab.click()
+  await page.evaluate(() => {
+    const fixture = window as unknown as { renderBusiness(locale: string, section: string): void }
+    fixture.renderBusiness('en-US', 'credentials')
+  })
+  await secret.getByRole('button', { name: 'Add credential' }).waitFor()
+  assert.equal(await credentialTab.getAttribute('aria-selected'), 'true')
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
   await page.screenshot({ path: path.join(directory, 'business-light-mobile.png'), fullPage: true })
   assert.deepEqual(errors, [])
   await writeFile(
@@ -205,6 +273,7 @@ window.renderBusiness();
           'invalid field association',
           'exact captured expression copy',
           'official 32px controls',
+          'publishing credential tab and stale-config recovery',
           'mobile overflow',
           'console',
         ],

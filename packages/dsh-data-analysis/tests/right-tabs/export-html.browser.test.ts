@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
-test('report export downloads the displayed build and rejects stale views', async (t) => {
+test('report actions export or publish the displayed build and guide missing credentials', async (t) => {
   const bundle = await build({
     stdin: {
       resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -16,11 +16,31 @@ import {createRoot} from 'react-dom/client';
 import {CopyProvider} from './src/client/i18n/context.tsx';
 import {translator} from './src/client/i18n/copy.ts';
 import {ReportActions} from './src/client/right-tabs/report-actions.tsx';
+import {parseReportRef} from './src/presentation/contracts/report-ref.ts';
 const root=createRoot(document.getElementById('root'));
-let current=true;
+let currentBuild, publishingEnabled=false, configured=false, missingAtUpload=false;
+const configId='10000000-0000-4000-8000-000000000001';
+const signal=new AbortController().signal;
+const rpc={async call(channel,endpoint,payload){
+ if(channel!=='/dsh-report-publishing'||payload.workspaceId!=='w') throw Error('Invalid publishing scope');
+ if(endpoint==='describe'){
+  return {ok:true,value:publishingEnabled
+   ? {enabled:true,configId,name:'Team storage',bucket:'reports',fields:[{field:'secretAccessKey',reference:'REPORT_SECRET',required:true,configured,writable:true}]}
+   : {enabled:false,fields:[]}};
+ }
+ if(endpoint!=='publish'||payload.configId!==configId) throw Error('Invalid publishing request');
+ if(missingAtUpload) return {ok:false,error:{message:'report-publishing-credentials-missing'}};
+ const {workspaceId,reportId,buildId}=parseReportRef(payload.ref);
+ window.published={workspaceId,reportId,buildId};
+ return {ok:true,value:{workspaceId,reportId,buildId,url:'http://localhost:9000/reports/'+buildId+'/index.html'}};
+}};
 window.historyClicks=0;
-window.renderExport=(buildId)=>root.render(<CopyProvider t={translator('en-US')}><ReportActions key={buildId} document={{reportId:'r',buildId}} isCurrent={()=>current} onHistory={()=>window.historyClicks++}/></CopyProvider>);
-window.setCurrent=(value)=>{current=value};
+window.openedCredentials=0;
+window.renderExport=(buildId)=>{
+ currentBuild=buildId;
+ root.render(<CopyProvider t={translator('en-US')}><ReportActions key={buildId} document={{workspaceId:'w',reportId:'r',buildId}} rpc={rpc} signal={signal} isCurrent={()=>currentBuild===buildId} onOpenPublishingCredentials={()=>window.openedCredentials++} onHistory={()=>window.historyClicks++}/></CopyProvider>);
+};
+window.publishing=(ready,missing=false)=>{publishingEnabled=true;configured=ready;missingAtUpload=missing};
 window.anchorClicks=0;
 const originalClick=HTMLAnchorElement.prototype.click;
 HTMLAnchorElement.prototype.click=function(){window.anchorClicks++;return originalClick.call(this)};
@@ -72,15 +92,11 @@ window.renderExport('current');
   // Change version while the first module request is pending.
   await button.click()
   await moduleRequested
-  await page.evaluate(() => {
-    ;(window as any).setCurrent(false)
-    ;(window as any).renderExport('historical')
-  })
+  await page.evaluate(() => (window as any).renderExport('historical'))
   releaseModule?.()
   await menu.click()
   await button.waitFor()
   assert.equal(await page.evaluate(() => (window as any).anchorClicks), 0)
-  await page.evaluate(() => (window as any).setCurrent(true))
   const first = page.waitForEvent('download')
   await button.click()
   const historical = await first
@@ -104,6 +120,41 @@ window.renderExport('current');
   await page.getByRole('button', { name: 'Dismiss export notification' }).click()
   assert.equal(await page.getByRole('alert').count(), 0)
   assert.equal(await page.evaluate(() => (window as any).anchorClicks), 2)
+
+  await page.evaluate(() => {
+    ;(window as any).publishing(false)
+    ;(window as any).renderExport('historical')
+  })
+  const publish = page.getByRole('menuitem', { name: 'Publish to object storage' })
+  const credentials = page.getByRole('button', { name: 'Go to credential management' })
+  await menu.click()
+  await publish.waitFor()
+  assert.equal(await button.count(), 0)
+  await publish.click()
+  await credentials.click()
+  assert.equal(await page.evaluate(() => (window as any).openedCredentials), 1)
+
+  await page.evaluate(() => (window as any).publishing(true, true))
+  await menu.click()
+  await publish.click()
+  await credentials.waitFor()
+  await page.getByRole('button', { name: 'Dismiss publishing notification' }).click()
+
+  await page.evaluate(() => (window as any).publishing(true))
+  await menu.click()
+  await publish.click()
+  const link = page.getByRole('link', { name: 'Open published report' })
+  await link.waitFor()
+  assert.equal(
+    await link.getAttribute('href'),
+    'http://localhost:9000/reports/historical/index.html',
+  )
+  assert.deepEqual(await page.evaluate(() => (window as any).published), {
+    workspaceId: 'w',
+    reportId: 'r',
+    buildId: 'historical',
+  })
+  assert.equal(await page.evaluate(() => (window as any).anchorClicks), 2)
 })
 
 test('report actions align with the title without covering long content', async (t) => {
@@ -120,7 +171,8 @@ import {AnalysisSurface} from './src/client/analysis-ui/surface.tsx';
 import {ReportActions} from './src/client/right-tabs/report-actions.tsx';
 import {rightTabStyles} from './src/client/right-tabs/styles.ts';
 const documentValue={title:'Report',locale:'en-US',recordId:'r',reportId:'r',buildId:'b',resources:{},program:'root = Stack([title, body]);\\ntitle = TextContent("# A long report title that wraps across several lines in a narrow analysis pane");\\nbody = TextContent("Report body");'};
-createRoot(document.getElementById('root')).render(<CopyProvider t={translator('en-US')}><section className="mv-ui rt-page"><style>{rightTabStyles}</style><div className="rt-report-surface"><div className="rt-toolbar"><ReportActions document={documentValue} isCurrent={()=>true} onHistory={()=>{}} refreshLocked={false} onRefreshData={async()=> 'accepted'}/></div><AnalysisSurface document={documentValue}/></div></section></CopyProvider>);
+const rpc={call:async()=>({ok:true,value:{enabled:false,fields:[]}})};
+createRoot(document.getElementById('root')).render(<CopyProvider t={translator('en-US')}><section className="mv-ui rt-page"><style>{rightTabStyles}</style><div className="rt-report-surface"><div className="rt-toolbar"><ReportActions document={documentValue} rpc={rpc} signal={new AbortController().signal} isCurrent={()=>true} onHistory={()=>{}} refreshLocked={false} onRefreshData={async()=> 'accepted'}/></div><AnalysisSurface document={documentValue}/></div></section></CopyProvider>);
 `,
     },
     bundle: true,

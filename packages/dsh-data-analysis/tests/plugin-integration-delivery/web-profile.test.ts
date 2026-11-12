@@ -242,6 +242,18 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
     {
       runtimeRoot,
       pythonExecutable: python,
+      reportPublishing: {
+        enabled: true,
+        storage: {
+          name: 'Test reports',
+          endpoint: 'https://s3.example.test',
+          region: 'us-east-1',
+          bucket: 'test-reports',
+          accessKeyIdRef: 'REPORT_ACCESS_KEY',
+          secretAccessKeyRef: 'REPORT_SECRET_KEY',
+        },
+        publicBaseUrl: 'https://reports.example.test',
+      },
     },
   )
   const second = await ctx.agentLoop.create(
@@ -261,6 +273,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
         'marivo_datasource_test',
         'marivo_help',
         'marivo_next_steps',
+        'marivo_publish_report',
         'marivo_python',
         'marivo_report_delete',
         'marivo_report_read',

@@ -16,7 +16,8 @@ import {CopyProvider} from './src/client/i18n/context.tsx';
 import {translator} from './src/client/i18n/copy.ts';
 import {ReportActions} from './src/client/right-tabs/report-actions.tsx';
 let result='stale', calls=0;
-createRoot(document.getElementById('root')).render(<CopyProvider t={translator('en-US')}><ReportActions document={{reportId:'r',buildId:'b',title:'Revenue'}} isCurrent={()=>true} onHistory={()=>{}} refreshLocked={false} onRefreshData={async()=> 'accepted'} onDelete={async()=>{calls++;return result}} /></CopyProvider>);
+const rpc={call:async()=>({ok:true,value:{enabled:false,fields:[]}})};
+createRoot(document.getElementById('root')).render(<CopyProvider t={translator('en-US')}><ReportActions document={{reportId:'r',buildId:'b',title:'Revenue'}} rpc={rpc} signal={new AbortController().signal} isCurrent={()=>true} onHistory={()=>{}} refreshLocked={false} onRefreshData={async()=> 'accepted'} onDelete={async()=>{calls++;return result}} /></CopyProvider>);
 window.fixture={calls:()=>calls,set:value=>{result=value}};
 `,
     },
@@ -64,7 +65,9 @@ import {translator} from './src/client/i18n/copy.ts';
 import {ReportActions} from './src/client/right-tabs/report-actions.tsx';
 const root=createRoot(document.getElementById('root'));
 let resolve, locked=false, calls=0;
-function render(){root.render(<CopyProvider t={translator('en-US')}><ReportActions document={{reportId:'r',buildId:'b'}} isCurrent={()=>true} onHistory={()=>{}} refreshLocked={locked} onRefreshData={()=>{calls++;locked=true;render();return new Promise(r=>resolve=r)}} /></CopyProvider>)}
+const rpc={call:async()=>({ok:true,value:{enabled:false,fields:[]}})};
+const signal=new AbortController().signal;
+function render(){root.render(<CopyProvider t={translator('en-US')}><ReportActions document={{reportId:'r',buildId:'b'}} rpc={rpc} signal={signal} isCurrent={()=>true} onHistory={()=>{}} refreshLocked={locked} onRefreshData={()=>{calls++;locked=true;render();return new Promise(r=>resolve=r)}} /></CopyProvider>)}
 window.fixture={resolve:value=>{locked=false;resolve(value);render()},calls:()=>calls};render();
 `,
     },

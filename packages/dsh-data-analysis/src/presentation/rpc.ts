@@ -18,7 +18,7 @@ import {
   parsePointEnvelope,
   parsePointRequest,
 } from './contracts/point-reference.ts'
-import { reportRefFromRecordId } from './contracts/report-ref.ts'
+import { reportRefFromRecordId, type SavedReportRef } from './contracts/report-ref.ts'
 import { resourceStreamRequest } from './contracts/resource-stream.ts'
 import {
   datasetReferenceLabel,
@@ -458,6 +458,31 @@ export class MarivoPresentationFileService {
     await readReceiptAsset(root, workspace.id, receipt, signal)
     await check()
     return receipt
+  }
+  readSavedReport(
+    scope: { sessionId: string } | { workspaceId: string },
+    ref: SavedReportRef,
+    caller: AbortSignal,
+  ) {
+    return this.#tasks.track(this.#readSavedReport(scope, ref, caller))
+  }
+  async #readSavedReport(
+    scope: { sessionId: string } | { workspaceId: string },
+    ref: SavedReportRef,
+    caller: AbortSignal,
+  ) {
+    const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
+    const workspace = await this.#workspace(scope)
+    if (!workspace) throw new Error('workspace-unavailable')
+    if (ref.workspaceId !== workspace.id) throw new Error('report-workspace-mismatch')
+    const root = path.resolve(workspace.path)
+    const document = await readAnalysisRecord(root, workspace.id, ref.reportId, ref.buildId, signal)
+    const current = await this.#workspace(scope)
+    if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
+      throw new Error('workspace-changed')
+    signal.throwIfAborted()
+    return document
   }
   read(payload: unknown, caller = new AbortController().signal) {
     return this.#tasks.track(this.#read(payload, caller))

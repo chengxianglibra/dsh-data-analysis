@@ -576,8 +576,14 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             )}
             {page.target.kind === 'datasources' && (
               <CredentialPanel
+                key={tab.navigation.revision}
                 model={page.datasources}
                 workspaces={workspaces}
+                initialSection={
+                  tab.navigation.params?.credentialSection === 'credentials'
+                    ? 'credentials'
+                    : 'datasources'
+                }
                 onRefresh={() => void page.refresh()}
               />
             )}
@@ -608,6 +614,17 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                         <ReportActions
                           key={report.analysisDocument.recordId}
                           document={report.analysisDocument}
+                          rpc={rpc}
+                          signal={tab.signal}
+                          onOpenPublishingCredentials={() =>
+                            act(page, () => {
+                              const { workspaceId } = page.target
+                              check(page.sessionId, workspaceId)
+                              tab.actions.openTab(directoryKind('datasources'), {
+                                params: { workspaceId, credentialSection: 'credentials' },
+                              })
+                            })
+                          }
                           onHistory={() => void page.reader.toggleHistory()}
                           onDelete={(isCurrent) =>
                             deleteReport(
