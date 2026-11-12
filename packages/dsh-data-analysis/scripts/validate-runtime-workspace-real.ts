@@ -97,7 +97,7 @@ print(json.dumps(mv.persist_dataframe(frame).to_dict()))
 
   const shadowRoot = path.join(firstWorkspace, 'marivo')
   await mkdir(shadowRoot)
-  await writeFile(path.join(shadowRoot, '__init__.py'), '__version__ = "0.6.5"\n')
+  await writeFile(path.join(shadowRoot, '__init__.py'), '__version__ = "0.6.6"\n')
   const freshManager = new MarivoWorkspaceEnvironmentManager(runtime)
   try {
     await assert.rejects(freshManager.resolve(firstWorkspace), {

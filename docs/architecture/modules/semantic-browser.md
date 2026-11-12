@@ -97,7 +97,7 @@ DSH_DATA_ANALYSIS_PLAYWRIGHT_MODULE=/absolute/path/to/playwright/index.mjs \
 npm run validate:semantic-browser:web
 ```
 
-可通过 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定目标 Marivo 0.6.5 Python，通过 `DSH_DATA_ANALYSIS_BROWSER_OUTPUT`
+可通过 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定目标 Marivo 0.6.6 Python，通过 `DSH_DATA_ANALYSIS_BROWSER_OUTPUT`
 指定截图及结果记录目录。浏览器工具默认查找可导入的 `playwright`，其 Chromium 必须已安装。
 
 该夹具复用生产 Tab 正文与模型，模拟 Workspace transport；不等同于当前已安装 DSH Profile 的

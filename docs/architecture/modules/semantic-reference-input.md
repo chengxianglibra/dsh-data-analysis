@@ -72,7 +72,7 @@ DSH 移除对应 source group 的行为，提交失败沿用 composer error 并�
 
 执行 `npm run test:semantic-reference-input`。确定性测试执行 checked-out DSH 的真实 controller、InputMachine 和
 SessionInputShell；这些是输入管线集成证据，不代替真实 Web 验收。真实 Catalog 测试可通过
-`DSH_DATA_ANALYSIS_TEST_PYTHON` 指定目标 Marivo 0.6.5；默认查找本地 DSH shared Runtime，缺失时明确 skip。
+`DSH_DATA_ANALYSIS_TEST_PYTHON` 指定目标 Marivo 0.6.6；默认查找本地 DSH shared Runtime，缺失时明确 skip。
 
 `npm run validate:semantic-ask-dsh:web` 验证真实 composer 的两种入口、撤销及模型请求。
 

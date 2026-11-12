@@ -8,6 +8,7 @@ import {
   assertFileReportProject,
   captureFileReportProject,
 } from '../../scripts/file-analysis-real/report-project.ts'
+import { MARIVO_VERSION } from '../../src/compatibility.ts'
 import type { DoctorReport } from '../../src/environment/types.ts'
 import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
 
@@ -193,7 +194,7 @@ for (const initialized of [false, true])
     assert.equal(resource.declaration.kind, 'dataframe')
     resource.declaration.ref = ref
     const proof = await assertFileReportProject(f.options)
-    assert.equal(proof.marivo.version, '0.6.4')
+    assert.equal(proof.marivo.version, MARIVO_VERSION)
     assert.equal(proof.projectRoot, f.root)
     assert.equal(
       proof.initialization,

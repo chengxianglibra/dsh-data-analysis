@@ -34,14 +34,14 @@ function assertCatalogCacheOnly(before: Record<string, string>, after: Record<st
     )
   }
 }
-test('real Marivo 0.6.5: all 8 kinds, full definitions and relations; no data operations or authored-file changes', async (t) => {
+test('real Marivo 0.6.6: all 8 kinds, full definitions and relations; no data operations or authored-file changes', async (t) => {
   const python =
     process.env.DSH_DATA_ANALYSIS_TEST_PYTHON ??
     path.join(homedir(), '.dsh/dsh-data-analysis/runtimes/marivo/.venv/bin/python')
   try {
     await access(python)
   } catch {
-    t.skip('Marivo 0.6.5 Python unavailable')
+    t.skip('Marivo 0.6.6 Python unavailable')
     return
   }
   const temp = await mkdtemp(path.join(tmpdir(), 'semantic-browser-real-')),
