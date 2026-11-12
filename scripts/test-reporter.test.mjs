@@ -19,10 +19,13 @@ function runFixture(source) {
     )
     const env = { ...process.env }
     delete env.NODE_TEST_CONTEXT
-    return spawnSync(process.execPath, ['--test', `--test-reporter=${reporter}`, fixture], {
+    const result = spawnSync(process.execPath, ['--test', `--test-reporter=${reporter}`, fixture], {
       encoding: 'utf8',
       env,
+      timeout: 15_000,
     })
+    if (result.error) throw result.error
+    return result
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -58,9 +61,14 @@ test('retains failure details and stdout without repeating the parent failure', 
 })
 
 test('reports a cancelled test and its cause', () => {
-  const result = runFixture("test('unfinished', () => new Promise(() => {}))")
+  const result = runFixture(`
+    test('parent', (t) => {
+      t.test('unfinished', () => new Promise(() => {}))
+      throw new Error('parent failed')
+    })
+  `)
   assert.equal(result.status, 1)
   assert.match(result.stdout, /FAIL unfinished/)
   assert.match(result.stdout, /cancelled: 1/)
-  assert.match(result.stdout, /Promise resolution is still pending/)
+  assert.match(result.stdout, /test did not finish before its parent and was cancelled/)
 })

@@ -367,7 +367,7 @@ test('chart data uses a keyboard operable dialog with formatted values', async (
   const menu = page.getByRole('menu')
   await page.keyboard.press('Escape')
   assert.equal(await details.isVisible(), true)
-  assert.equal(await menu.count(), 0)
+  await menu.waitFor({ state: 'detached' })
   assert.equal(
     await saved.getByRole('button').evaluate((element) => element === document.activeElement),
     true,
