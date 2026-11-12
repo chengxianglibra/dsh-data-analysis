@@ -1,5 +1,8 @@
 import { type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { resolveDatasetView } from '../../presentation/contracts/dataset-view.ts'
+import {
+  resolveDatasetView,
+  validateDatasetDisplay,
+} from '../../presentation/contracts/dataset-view.ts'
 import { validateFrameDisplay } from '../../presentation/contracts/frame-display.ts'
 import {
   type FrameDisplay,
@@ -13,9 +16,10 @@ import {
   isFrameSnapshotV2,
 } from '../../presentation/contracts/snapshot.ts'
 import { snapshotFilterViewIssue } from '../../presentation/contracts/snapshot-filter.ts'
-import type { TypedDataset } from '../../presentation/contracts/types.ts'
+import type { Cell, DatasetColumn, TypedDataset } from '../../presentation/contracts/types.ts'
 import type { PythonExecutionDatasource } from '../../python-execution-contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
+import { cellText } from '../presentation/model.ts'
 import { DatasetTable } from '../presentation/table.tsx'
 import { FishLogo } from '../ui/fish-logo.tsx'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
@@ -37,6 +41,7 @@ import { type ComponentIdentity, useAnalysisResources } from './context.tsx'
 import { useFocusAfterAsk } from './focus-after-ask.ts'
 import { FrameIcon } from './frame/frame-icon.tsx'
 import { CoverageIcon, Dialog, FrameIconButton } from './frame/icons.tsx'
+import { displayExplicitFormat } from './frame/model.ts'
 import { AnalysisFrame } from './frame/view.tsx'
 import { useReportReading } from './reading-state.tsx'
 import { ResourceAskButton } from './resource-ask-button.tsx'
@@ -66,8 +71,10 @@ function DatasetDisplayTable({
   caption,
   visibleRowIndices,
   filterSelectionKey,
+  display,
 }: {
   data: TypedDataset
+  display?: (value: Exclude<Cell, null>, column: DatasetColumn) => string
   columns?: string[]
   height?: number
   caption: string
@@ -98,6 +105,7 @@ function DatasetDisplayTable({
       <div ref={ref} style={{ maxHeight: height ?? 520, overflow: 'auto' }}>
         <DatasetTable
           data={data}
+          display={display}
           visibleRowIndices={visibleRowIndices}
           filterSelectionKey={filterSelectionKey}
           columns={columns}
@@ -147,7 +155,9 @@ export function AnalysisDataView({
     resolution?.ok &&
     filterState.ready &&
     (!filters?.length || !snapshotFilterViewIssue(snapshot, resolution)) &&
-    (!isFrameSnapshotV2(snapshot) || !validateFrameDisplay(snapshot, resolution.view, display))
+    (isFrameSnapshotV2(snapshot)
+      ? !validateFrameDisplay(snapshot, resolution.view, display)
+      : !validateDatasetDisplay(snapshot, display))
   const ready =
     valid && resource?.kind === 'snapshot'
       ? {
@@ -209,7 +219,7 @@ export function AnalysisDataView({
       snapshot={visible.resource.snapshot}
       binding={visible.resource.binding}
       view={visible.view}
-      height={visible.display?.height}
+      display={visible.display}
       {...filterProps}
     />
   )
@@ -222,7 +232,7 @@ function DatasetDataView({
   snapshot,
   binding,
   view,
-  height,
+  display,
   visibleRowIndices,
   filterSelectionKey,
   filterSummary,
@@ -236,7 +246,7 @@ function DatasetDataView({
     codeRef?: { executionId: string; sha256: string }
   }
   view?: FrameView
-  height?: number
+  display?: FrameDisplay
   visibleRowIndices?: readonly number[]
   filterSelectionKey?: string
   filterSummary?: ReactNode
@@ -425,8 +435,10 @@ function DatasetDataView({
             : [chart.axis, ...(chart.series ? [chart.series] : [])]
           : [],
         visibleRowIndices,
+        display?.formats,
+        t.locale,
       ),
-    [snapshot, chart, visibleRowIndices],
+    [snapshot, chart, visibleRowIndices, display?.formats, t.locale],
   )
   if (!resolution.ok)
     return (
@@ -453,9 +465,18 @@ function DatasetDataView({
     const column = data.columns.find((item) => item.id === name)
     return column ? [column.label] : []
   })
-  const title = titleNames.length
-    ? titleNames.slice(0, 3).join(' · ') + (titleNames.length > 3 ? ' …' : '')
-    : resourceName
+  const title =
+    display?.title ??
+    (titleNames.length
+      ? titleNames.slice(0, 3).join(' · ') + (titleNames.length > 3 ? ' …' : '')
+      : resourceName)
+  const formatValue = (value: Cell, column: DatasetColumn) =>
+    displayExplicitFormat(
+      t.locale,
+      value,
+      column,
+      display?.formats?.find((item) => item.value === column.id),
+    ) ?? formatCell(value, column)
   const codeStatus =
     currentCode?.kind === 'ok'
       ? 'ready'
@@ -645,7 +666,9 @@ function DatasetDataView({
               )}
             </div>
           }
-        />
+        >
+          {display?.subtitle}
+        </ResultHeader>
         <CardContent className="space-y-4 min-w-0">
           {filterSummary}
           {visibleRowIndices?.length === 0 && (
@@ -654,9 +677,9 @@ function DatasetDataView({
           {chart ? (
             visibleRowIndices?.length !== 0 &&
             (chart.chart === 'heatmap' ? (
-              <Heatmap model={model} view={chart} height={height} />
+              <Heatmap model={model} view={chart} height={display?.height} />
             ) : (
-              <TimeChart model={model} view={chart} height={height} />
+              <TimeChart model={model} view={chart} height={display?.height} />
             ))
           ) : metric ? (
             <MetricGroup
@@ -669,18 +692,20 @@ function DatasetDataView({
                         type="button"
                         className="pr-cell-select"
                         data-frame-point={`0:${metricColumn.id}`}
-                        aria-label={`${t('marivo.presentation.ui-frame-select-point')}: ${metricColumn.label}, ${formatCell(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn)}`}
+                        aria-label={`${t('marivo.presentation.ui-frame-select-point')}: ${metricColumn.label}, ${formatValue(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn)}`}
                         onClick={() => selectable.select(0, metricColumn.id)}
                       >
-                        {formatCell(
+                        {formatValue(
                           data.rows[0]![data.columns.indexOf(metricColumn)]!,
                           metricColumn,
                         )}
                       </button>
                     ) : (
-                      formatCell(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn)
+                      formatValue(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn)
                     ),
-                  unit: metricColumn.unit,
+                  unit: display?.formats?.some((item) => item.value === metricColumn.id)
+                    ? undefined
+                    : metricColumn.unit,
                 },
               ]}
             />
@@ -688,8 +713,16 @@ function DatasetDataView({
             <DatasetDisplayTable
               data={data}
               columns={columns}
-              height={height}
-              caption={resourceName ?? ''}
+              height={display?.height}
+              display={(value, column) =>
+                displayExplicitFormat(
+                  t.locale,
+                  value,
+                  column,
+                  display?.formats?.find((item) => item.value === column.id),
+                ) ?? cellText(t.locale, value, column)
+              }
+              caption={title ?? resourceName ?? ''}
               visibleRowIndices={visibleRowIndices}
               filterSelectionKey={filterSelectionKey}
             />

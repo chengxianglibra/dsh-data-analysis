@@ -59,13 +59,13 @@ AccordionItem(value: string, trigger: string, content: (Stack | TextContent | Ca
 ## AnalysisFrameView
 
 ```text
-AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", style?: "stacked", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, density?: "full" | "compact", dataTable?: "collapsed" | "visible", rowLimit?: number, title?: string, subtitle?: string, formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[], comparisonLabels?: {alias?: string, current: string, baseline: string}[], highlight?: {axis: string, key: (string | number | boolean)[]}, decompositionTotals?: {current: string, baseline: string, currentLabel: string, baselineLabel: string}, recordPreview?: {coordinates: string[], values: string[], limit: number, label: string}}, filters?: string[])
+AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", style?: "stacked", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, title?: string, subtitle?: string, formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[], density?: "full" | "compact", dataTable?: "collapsed" | "visible", rowLimit?: number, comparisonLabels?: {alias?: string, current: string, baseline: string}[], highlight?: {axis: string, key: (string | number | boolean)[]}, decompositionTotals?: {current: string, baseline: string, currentLabel: string, baselineLabel: string}, recordPreview?: {coordinates: string[], values: string[], limit: number, label: string}}, filters?: string[])
 ```
 
 ## DatasetView
 
 ```text
-DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number}, filters?: string[])
+DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number, title?: string, subtitle?: string, formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[]}, filters?: string[])
 ```
 
 ## SnapshotFilter
@@ -86,4 +86,4 @@ DashboardGrid(items: DashboardGridItem[], columns?: 1 | 2 | 3 | 4, gap?: "s" | "
 DashboardGridItem(content: (Card | TextContent | TextCallout | Image | Stack | Tabs | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[], span?: 1 | 2 | 3 | 4)
 ```
 
-Image.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 必须为完整单行结果，Dataset 图表要求完整快照。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。
+Image.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 必须为完整单行结果，Dataset 图表要求完整快照。Dataset 的 display 可声明 title、subtitle 与数值列 formats；格式只改变主视图，详细数据保留精确值。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。

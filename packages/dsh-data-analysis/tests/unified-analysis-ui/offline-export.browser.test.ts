@@ -20,9 +20,9 @@ import { datasetSnapshot } from './dataset-fixtures.ts'
 test('exported report opens offline, renders data and charts, and keeps local interaction', async () => {
   const payload = '</script><script>globalThis.__offlineInjected = true</script>'
   const snapshot = datasetSnapshot([
-    ['A', '10'],
-    ['B', '20'],
-    [payload, '30'],
+    ['A', '0.237'],
+    ['B', '0.112'],
+    [payload, '0.305'],
   ])
   const document = parseAnalysisDocument({
     schemaVersion: ANALYSIS_UI_FORMAT,
@@ -36,7 +36,7 @@ test('exported report opens offline, renders data and charts, and keeps local in
     generatedAt: '2026-11-05T00:00:00Z',
     catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
     program:
-      'root = Tabs([chart, data, dashboard]);\nchart = TabItem("chart", "Chart", [DatasetView("result", {chart:"line",encoding:{axis:"category",values:["value"]}})]);\ndata = TabItem("data", "Data", [DatasetView("result", {chart:"table"})]);\ndashboard = TabItem("dashboard", "Dashboard", [DashboardGrid([DashboardGridItem([TextCallout("info", "Scope", "Snapshot data")], 1), DashboardGridItem([Accordion([AccordionItem("details", "Details", [DatasetView("result", {chart:"table"})])])], 1)], 2)]);',
+      'root = Tabs([chart, data, dashboard]);\nchart = TabItem("chart", "Chart", [DatasetView("result", {chart:"line",encoding:{axis:"category",values:["value"]}}, {title:"Share trend",subtitle:"Saved ratios",formats:[{value:"value",format:"percent",decimals:1}]})]);\ndata = TabItem("data", "Data", [DatasetView("result", {chart:"table"}, {title:"Family shares",subtitle:"Saved ratios",formats:[{value:"value",format:"percent",decimals:1}]})]);\ndashboard = TabItem("dashboard", "Dashboard", [DashboardGrid([DashboardGridItem([TextCallout("info", "Scope", "Snapshot data")], 1), DashboardGridItem([Accordion([AccordionItem("details", "Details", [DatasetView("result", {chart:"table"})])])], 1)], 2)]);',
     resources: {
       result: {
         kind: 'snapshot',
@@ -104,13 +104,33 @@ test('exported report opens offline, renders data and charts, and keeps local in
     await review.waitFor()
     assert.equal(await page.getByRole('heading', { name: 'Offline report' }).count(), 0)
     await page.locator('[data-resource="result"] .recharts-line-dots circle').first().waitFor()
+    assert.equal(await page.getByRole('heading', { name: 'Share trend' }).isVisible(), true)
+    assert.equal(
+      await page
+        .getByRole('tabpanel', { name: 'Chart' })
+        .getByText('Saved ratios', { exact: true })
+        .isVisible(),
+      true,
+    )
+    assert.match((await page.locator('.recharts-yAxis-tick-labels').textContent()) ?? '', /%/)
     assert.ok(await page.locator('[data-resource="result"] svg.recharts-surface').count())
     await page
       .locator('[data-resource="result"] .recharts-line-dots circle')
       .first()
       .click({ force: true })
     assert.equal(await page.getByRole('menuitem', { name: 'Ask about this' }).count(), 0)
+    await page.locator('[data-resource="result"] [data-icon="data"] button').click()
+    const chartData = page.getByRole('dialog')
+    assert.equal(await chartData.getByText('0.237', { exact: true }).isVisible(), true)
+    await chartData.getByRole('button', { name: 'Close', exact: true }).click()
     await page.getByRole('tab', { name: 'Data' }).click()
+    const table = page.getByRole('tabpanel', { name: 'Data' })
+    assert.equal(await table.getByRole('heading', { name: 'Family shares' }).isVisible(), true)
+    assert.equal(await table.getByText('Saved ratios', { exact: true }).isVisible(), true)
+    assert.equal(await table.getByText('23.7%', { exact: true }).isVisible(), true)
+    assert.equal(await table.locator('[data-row-index="0"] [title="0.237"]').count(), 1)
+    await table.getByRole('button', { name: 'Sort by Value' }).click()
+    assert.equal(await table.locator('tbody tr').first().getAttribute('data-row-index'), '1')
     assert.equal(
       await page
         .getByRole('tabpanel', { name: 'Data' })

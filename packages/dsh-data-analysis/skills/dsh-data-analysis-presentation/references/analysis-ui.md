@@ -28,6 +28,8 @@
 
 `DatasetView` 按保存的列 ID 映射字段。表格可用 `{chart:"table", columns:["category", "amount"]}` 选择读者需要核对的列。指标卡使用完整单行结果中的一个标量，支持文本；图表的数值映射仍须符合对应类型约束。折线图、面积图和柱图用 `{axis, values, series?}`，热力图用 `{x, y, value}`。这些图要求完整快照、数值列和唯一坐标组合，按快照中首次出现的顺序展示。趋势图应使用原分析已经按时间排好的数据。
 
+`display.title` 和 `display.subtitle` 可说明表格、指标卡或图表；`display.formats` 按已保存的数值列 ID 声明，例如 `formats:[{value:"share",format:"percent",decimals:1}]`。格式支持 `percent`、`number`、`currency`，小数位为 0–6，百分比把保存的比例乘以 100；货币单位来自列的 `unit`，不得猜测币种或将已是百分数的数值再次标成比例。格式仅改变主视图显示，排序、筛选、点选与数据详情仍使用保存值；没有显式格式的列保持精确显示。不要仅依赖 Tab 标签说明表格内容。
+
 ## 固定快照筛选
 
 需要读者按类别查看已保存行时，使用具名 `SnapshotFilter`，并在同一资源的数据视图 `filters` 中引用其 `filterId`。Dataset 字段用保存列 ID（`{kind:"column",name:"..."}`），Frame 字段用只有一个 key 的 ordinary 公开轴名（`{kind:"axis",name:"..."}`）；仅 string、boolean、int64 和允许的 null 可用。int64 使用精确十进制字符串。默认值必须存在于该快照，空数组表示全部，`[null]` 选择空值。多选在同一控件内为 OR，多个控件之间为 AND。

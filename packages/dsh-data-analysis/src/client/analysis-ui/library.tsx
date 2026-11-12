@@ -110,7 +110,7 @@ function ResourceView({
 export const AnalysisFrameView = defineComponent({
   name: 'AnalysisFrameView',
   description:
-    'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition, display height/density/dataTable.',
+    'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition. Display supports height, title, subtitle, formats, density, dataTable, rowLimit, comparisonLabels, highlight, decompositionTotals and recordPreview; options are validated against the saved Frame and resolved view.',
   props: frameProps,
   component: ({ props, statementId }) => (
     <ResourceView kind="frame" props={props} statementId={statementId} />

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { commonDisplayFields } from './display-fields.ts'
 import type { FrameView, FrameViewFailure } from './frame-view.ts'
 import type { DatasetSnapshot } from './snapshot.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
@@ -23,8 +24,31 @@ export const datasetViewSchema = z.union([
   }),
 ])
 export const datasetDisplaySchema = z.strictObject({
-  height: z.number().int().positive().max(1200).optional(),
+  ...commonDisplayFields,
 })
+export type DatasetDisplay = z.infer<typeof datasetDisplaySchema>
+
+/** Validate author format references against saved numeric column IDs. */
+export function datasetDisplayIssue(snapshot: DatasetSnapshot, display?: DatasetDisplay) {
+  const names = (display?.formats ?? []).map(({ value }) => value)
+  const numeric = snapshot.data.columns
+    .filter((column) => numericViewType(column.type))
+    .map(({ id }) => id)
+  for (const [i, name] of names.entries()) {
+    if (!numeric.includes(name) || names.indexOf(name) !== i) {
+      return {
+        path: `/display/formats/${i}/value`,
+        expectedKind: 'column' as const,
+        candidates: availableNames(numeric, names, i),
+      }
+    }
+  }
+  return undefined
+}
+
+export function validateDatasetDisplay(snapshot: DatasetSnapshot, display?: DatasetDisplay) {
+  return datasetDisplayIssue(snapshot, display)?.path.split('/').slice(0, 3).join('/')
+}
 export type DatasetView = z.infer<typeof datasetViewSchema>
 export type ResolvedDatasetView =
   | { chart: 'table'; columns: string[] }

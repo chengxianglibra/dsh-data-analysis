@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { AnalysisResultSummary } from '../result-summary.ts'
 import { analysisCatalogId } from './analysis-catalog.ts'
 import { analysisStatements, parseAnalysisProgram } from './analysis-program.ts'
-import { datasetDisplaySchema, resolveDatasetView } from './dataset-view.ts'
+import { datasetDisplayIssue, datasetDisplaySchema, resolveDatasetView } from './dataset-view.ts'
 import { frameDisplayIssue } from './frame-display.ts'
 import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
@@ -260,6 +260,10 @@ export function validateAnalysisResources(
         ? resolveDatasetView(source.snapshot, view.data)
         : resolveFrameView(source.snapshot, view.data)
     if (resolved.ok) {
+      if (source.snapshot.kind === 'dataset') {
+        const issue = datasetDisplayIssue(source.snapshot, display.data)
+        if (issue) throw viewError('analysis-view-invalid', node, issue.path, issue)
+      }
       if (source.snapshot.kind === 'frame') {
         const issue = frameDisplayIssue(source.snapshot, resolved.view, display.data)
         if (issue)

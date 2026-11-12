@@ -3,11 +3,66 @@ import test from 'node:test'
 import { datasetChartModel } from '../../src/client/analysis-ui/charts/dataset-model.ts'
 import { axisOf, groupRows, ticksOf } from '../../src/client/analysis-ui/charts/model.ts'
 import {
+  AnalysisViewError,
+  validateAnalysisResources,
+} from '../../src/presentation/contracts/analysis-document.ts'
+import {
+  datasetDisplayIssue,
+  datasetDisplaySchema,
   datasetViewSchema,
   resolveDatasetView,
 } from '../../src/presentation/contracts/dataset-view.ts'
 import type { FrameView } from '../../src/presentation/contracts/frame-view.ts'
 import { datasetSnapshot } from './dataset-fixtures.ts'
+
+test('Dataset display admits numeric column formats and reports invalid references on save', () => {
+  const snapshot = datasetSnapshot()
+  const display = {
+    title: 'Families',
+    subtitle: 'Share',
+    formats: [{ value: 'value', format: 'percent', decimals: 1 }],
+  }
+  const parsed = datasetDisplaySchema.parse(display)
+  assert.equal(datasetDisplayIssue(snapshot, parsed), undefined)
+  assert.equal(
+    datasetDisplaySchema.safeParse({
+      ...display,
+      formats: [{ value: 'value', format: 'percent', decimals: 7 }],
+    }).success,
+    false,
+  )
+  const resources = {
+    data: {
+      kind: 'snapshot' as const,
+      declaration: { kind: 'dataset-snapshot' as const, snapshotRef: 'data' },
+      snapshot,
+      binding: {
+        workspaceId: 'workspace',
+        codeRef: { executionId: 'run', sha256: 'a'.repeat(64) },
+        sessionId: 'session',
+        callId: 'call',
+      },
+    },
+  }
+  const program = (value: string) =>
+    `root = DatasetView("data", {chart:"table"}, {title:"Families", formats:[{value:"${value}", format:"percent", decimals:1}]});`
+  assert.doesNotThrow(() => validateAnalysisResources(program('value'), resources))
+  for (const value of ['category', 'missing']) {
+    assert.throws(
+      () => validateAnalysisResources(program(value), resources),
+      (error) => {
+        assert(error instanceof AnalysisViewError)
+        assert.equal(error.path, 'root/display/formats/0/value')
+        assert.deepEqual(error.details.candidates, ['value'])
+        return true
+      },
+    )
+  }
+  assert.equal(
+    datasetDisplayIssue(snapshot, { formats: [parsed.formats![0]!, parsed.formats![0]!] })?.path,
+    '/display/formats/1/value',
+  )
+})
 
 test('Dataset defaults and metrics retain the existing complete-single-row contract without classification', () => {
   const scalar = datasetSnapshot(

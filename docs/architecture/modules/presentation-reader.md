@@ -55,7 +55,7 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
 
 - DatasetView 支持 auto/table/metric/line/area/bar/heatmap，与 Frame 共用结果卡片、图表样式和数据操作布局，
   复用 DatasetTable 的精确格式化、类型感知排序及本地分页，并提供选列与来源/范围详情。
-  int64、Decimal 与 null 不经浮点转换。metric 要求完整单行；
+  未配置格式时 int64、Decimal 与 null 保持精确显示。metric 要求完整单行；
   Dataset 的 auto 要求完整单行单列才显示 metric，其余按表格显示；Frame 的 auto 由下述结构与语义规则决定。
 - Dataset 图表由 [dataset-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/dataset-view.ts) 校验列映射：
   line/area/bar 必填 `encoding: {axis, values, series?}`，heatmap 必填 `{x, y, value}`，名称均为保存列 ID。
@@ -65,9 +65,10 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   heatmap 展开网格最多 100,000 格；对应预算超限在保存时拒绝。展开后的系列仍全部呈现，不因色板长度静默截断数据。
   默认 auto/table/metric 判定不变。metric 与图表提供数据图标和详细表格弹窗，支持排序、分页和精确值读取；
   table 直接使用当前表格，不重复显示数据图标。
+- Dataset 的 `display` 支持 `height`、`title`、`subtitle` 和 `formats`。格式目标是已保存的数值列 ID，重复、未知或非数值列在保存时拒绝；`percent` 将保存比例乘以 100，`currency` 使用保存单位。主表、指标卡及图形应用格式，详细数据保留精确值；排序、筛选和点选使用保存值。未配置时沿用原有标题与精确显示。
 - Frame 与 Dataset 的适配层分别生成轻量 `ChartModel`；[共享图表](../../../packages/dsh-data-analysis/src/client/analysis-ui/charts/observation.tsx)
   只消费绘图模型，共用主题、图例、tooltip、缺失值路径和局部滚动。Frame 保留期间状态、广播参考线及既有领域交互。密集折线/面积保留全部路径点，省略逐点静态 DOM 时通过活动点与 Frame 键盘导航器读取和选择原始行字段；Dataset 继续提供精确数据入口。
-  Frame 图表和提示使用可读数值格式，详细数据按默认字段语义呈现；Dataset 保留精确显示。int64/decimal 绘图位置可近似，引用仍使用保存值。
+  Frame 图表和提示使用可读数值格式，详细数据按默认字段语义呈现；Dataset 默认保留精确显示，作者指定格式时主视图按声明显示，详细数据仍保留精确值。int64/decimal 绘图位置可近似，引用仍使用保存值。
   共享图表与领域图表的悬停数据使用单一提示，时间游标只标记位置。日历轴按已知内置粒度呈现刻度和悬停标签，保留必要的期间范围说明；
   Dataset 的时间坐标省略小数秒末尾的零。图表摘要仍可由辅助技术读取，数据表与数据引用保留原始坐标。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的

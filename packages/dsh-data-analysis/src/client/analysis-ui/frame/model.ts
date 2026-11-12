@@ -129,15 +129,13 @@ export function percent(
 }
 
 /** Display a Frame cell using the saved semantic role when one is available. */
-export function displayFrameCell(
-  s: Snapshot,
+export function displayExplicitFormat(
   locale: PresentationLocale,
   value: Cell,
   column: DatasetColumn,
-  timezone = 'UTC',
-): string {
+  format?: NonNullable<FrameDisplay['formats']>[number],
+): string | undefined {
   if (value === null) return '—'
-  const format = s.frameDisplay?.formats?.find((item) => item.value === column.id)
   if (format?.format === 'percent')
     return percent(locale, numberOf(value, column), false, value, format.decimals ?? 2)
   if (format) {
@@ -171,6 +169,20 @@ export function displayFrameCell(
       ? `${result} ${column.unit}`
       : result
   }
+  return undefined
+}
+
+export function displayFrameCell(
+  s: Snapshot,
+  locale: PresentationLocale,
+  value: Cell,
+  column: DatasetColumn,
+  timezone = 'UTC',
+): string {
+  if (value === null) return '—'
+  const format = s.frameDisplay?.formats?.find((item) => item.value === column.id)
+  const explicit = displayExplicitFormat(locale, value, column, format)
+  if (explicit !== undefined) return explicit
   const facts = interpretationOf(s)
   const context = facts?.valueContexts[column.id]
   const relative = facts?.comparisons.some((comparison) =>

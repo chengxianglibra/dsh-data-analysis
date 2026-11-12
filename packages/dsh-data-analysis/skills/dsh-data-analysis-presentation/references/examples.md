@@ -122,7 +122,7 @@ flows = DatasetView("flows", {chart:"table", columns:["source", "target", "amoun
 ```openui
 root = Stack([bars, table]);
 bars = DatasetView("by_category", {chart:"bar", encoding:{axis:"category", values:["value"]}});
-table = DatasetView("by_category", {chart:"table", columns:["category", "value"]});
+table = DatasetView("by_category", {chart:"table", columns:["category", "value"]}, {title:"类别汇总", subtitle:"按已保存结果展示", formats:[{value:"value", format:"number", decimals:0}]});
 ```
 
 需要读者在同一快照内选择类别时，可声明筛选并显式绑定两个视图。这里类别和值列以及默认值须来自实际已核验快照；结果正文不会随选择重新计算。

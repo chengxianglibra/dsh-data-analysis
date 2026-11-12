@@ -31,6 +31,8 @@ export interface ChartModel {
   valueLabels: Record<string, string>
   references: Record<string, ChartGroup[]>
   display?: (value: Cell, column?: DatasetColumn) => string
+  scaleFormatKey?: (name: string) => string
+  tickDisplay?: (value: number, name: string) => string | undefined
   frameStyle?: boolean
   highlight?: { axis: string; key: string }
   rowLimit?: number

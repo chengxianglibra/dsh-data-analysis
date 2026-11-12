@@ -30,7 +30,7 @@ business 固定 unknown。
 - `int64` 使用 signed 64-bit 范围的精确十进制字符串；`decimal` 保留尾随零及可选指数，不允许 NaN/Infinity。
 - `float64` 必须是有限 JSON number；超出 JavaScript safe integer 范围的整值拒绝接收，不能把已舍入值改成字符串冒充精确值。
 - `date` 使用有效 `YYYY-MM-DD`，`datetime` 使用带 `Z` 或 offset 的 ISO 字符串，最多六位秒小数；不猜时区。
-- `null` 只出现在 nullable 列，不替换成零或空字符串；来源原值不变，Frame 按统一格式显示数值并引用保存值，DatasetView 表格、tooltip 与 reader 保持精确显示，图形位置可使用数值近似。
+- `null` 只出现在 nullable 列，不替换成零或空字符串；来源原值不变，Frame 按统一格式显示数值并引用保存值，DatasetView 默认精确显示，显式格式仅改变主视图的展示，详细数据仍保留精确值，图形位置可使用数值近似。
 
 `rows.length` 必须等于 `min(rowCount, limit)`，`truncated` 必须等于 `rowCount > rows.length`。
 空结果保留列定义；截断数据不能用于推导全量总计、KPI 或排名，metric 视图要求 complete 的单行快照。

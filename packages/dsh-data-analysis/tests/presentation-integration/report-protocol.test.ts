@@ -72,7 +72,14 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
           ]
       const snapshot = datasetSnapshot(
         rows.map((row) => [row[1]!]),
-        [{ id: 'value', label: 'Value', type: 'decimal', nullable: false }],
+        [
+          {
+            id: 'value',
+            label: 'Value',
+            type: ref.result_id.includes('3') ? 'string' : 'decimal',
+            nullable: false,
+          },
+        ],
       )
       return {
         exitCode: 0,
@@ -455,6 +462,35 @@ test('same fixed results report reuse and data-only reports need no narrative re
   })
   assert.equal(refreshed.contentReview, 'not-needed')
   assert.deepEqual(refreshed.changed, ['data'])
+})
+
+test('Dataset display survives save and reopen and refresh rejects a changed format column type', async (t) => {
+  const f = await fixture(t)
+  const program =
+    'root = DatasetView("data", {chart:"table"}, {title:"Family share", subtitle:"Saved results", formats:[{value:"value",format:"percent",decimals:1}]})'
+  const base = await f.write({
+    stage: 'save',
+    program,
+    resourcePatch: { put: { data: f.resource() } },
+  })
+  const saved = await f.document(base.ref)
+  assert.equal(saved.program, program)
+  const history = await readReportHistory(f.root, 'workspace', saved.reportId)
+  await assert.rejects(
+    f.write({
+      stage: 'save',
+      ref: base.ref,
+      mode: 'refresh-data',
+      resourcePatch: { put: { data: f.resource('3') } },
+    }),
+    (error: unknown) => {
+      assert(error instanceof AnalysisViewError)
+      assert.equal(error.path, 'root/display/formats/0/value')
+      return true
+    },
+  )
+  assert.deepEqual(await readReportHistory(f.root, 'workspace', saved.reportId), history)
+  assert.equal((await f.document(base.ref)).program, program)
 })
 
 test('refresh marks authored callouts and accordion headings for review', async (t) => {

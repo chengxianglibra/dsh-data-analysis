@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { commonDisplayFields } from './display-fields.ts'
 import type {
   AnalysisSnapshot,
   FrameInterpretation,
@@ -52,22 +53,10 @@ export const frameViewSchema = z.union([
   }),
 ])
 export const frameDisplaySchema = z.strictObject({
-  height: z.number().int().positive().max(1200).optional(),
+  ...commonDisplayFields,
   density: z.enum(['full', 'compact']).optional(),
   dataTable: z.enum(['collapsed', 'visible']).optional(),
   rowLimit: z.number().int().min(1).max(100).optional(),
-  title: z.string().trim().min(1).max(512).optional(),
-  subtitle: z.string().trim().min(1).max(1024).optional(),
-  formats: z
-    .array(
-      z.strictObject({
-        value: z.string().min(1).max(512),
-        format: z.enum(['percent', 'number', 'currency']),
-        decimals: z.number().int().min(0).max(6).optional(),
-      }),
-    )
-    .max(64)
-    .optional(),
   comparisonLabels: z
     .array(
       z.strictObject({

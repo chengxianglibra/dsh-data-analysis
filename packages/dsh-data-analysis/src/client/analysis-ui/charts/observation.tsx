@@ -70,7 +70,10 @@ function unitGroups(s: ChartModel, values: string[], broadcast: string[]) {
   ] as const)
     for (const name of names) {
       const unit = columnOf(s, name)?.column.unit
-      const key = unit ? `unit:${unit}` : `unknown:${name}`
+      const key = JSON.stringify([
+        unit ? `unit:${unit}` : `unknown:${name}`,
+        s.scaleFormatKey?.(name) ?? '',
+      ])
       let group = groups.get(key)
       if (!group) {
         group = { values: [], broadcast: [] }
@@ -338,7 +341,9 @@ function TimeChartPlot({
             domain={domain}
             padding={bars ? undefined : { top: 4, bottom: 4 }}
             tick={{ fill: 'var(--muted-foreground)', fontSize: 10.5 }}
-            tickFormatter={(value) => compact(t.locale, value)}
+            tickFormatter={(value) =>
+              (view.values[0] && s.tickDisplay?.(value, view.values[0])) || compact(t.locale, value)
+            }
             width={64}
           />
           <ExactTooltip
@@ -944,7 +949,9 @@ function HBarChartPlot({
               ],
               true,
             )}
-            tickFormatter={(value) => compact(t.locale, value)}
+            tickFormatter={(value) =>
+              (view.values[0] && s.tickDisplay?.(value, view.values[0])) || compact(t.locale, value)
+            }
           />
           <YAxis
             allowDataOverflow
