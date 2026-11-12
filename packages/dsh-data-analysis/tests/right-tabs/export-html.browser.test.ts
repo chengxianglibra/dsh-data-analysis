@@ -119,7 +119,7 @@ import {translator} from './src/client/i18n/copy.ts';
 import {AnalysisSurface} from './src/client/analysis-ui/surface.tsx';
 import {ReportActions} from './src/client/right-tabs/report-actions.tsx';
 import {rightTabStyles} from './src/client/right-tabs/styles.ts';
-const documentValue={title:'Report',locale:'en-US',recordId:'r',reportId:'r',buildId:'b',contentReview:'not-needed',resources:{},program:'root = Stack([title, body]);\\ntitle = TextContent("# A long report title that wraps across several lines in a narrow analysis pane");\\nbody = TextContent("Report body");'};
+const documentValue={title:'Report',locale:'en-US',recordId:'r',reportId:'r',buildId:'b',resources:{},program:'root = Stack([title, body]);\\ntitle = TextContent("# A long report title that wraps across several lines in a narrow analysis pane");\\nbody = TextContent("Report body");'};
 createRoot(document.getElementById('root')).render(<CopyProvider t={translator('en-US')}><section className="mv-ui rt-page"><style>{rightTabStyles}</style><div className="rt-report-surface"><div className="rt-toolbar"><ReportActions document={documentValue} isCurrent={()=>true} onHistory={()=>{}} refreshLocked={false} onRefreshData={async()=> 'accepted'}/></div><AnalysisSurface document={documentValue}/></div></section></CopyProvider>);
 `,
     },

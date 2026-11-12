@@ -60,7 +60,6 @@ async function fixture(
   const makeDocument = (buildId: string) =>
     parseAnalysisDocument({
       schemaVersion: ANALYSIS_UI_FORMAT,
-      contentReview: 'not-needed',
       workspaceId: 'workspace',
       reportId: 'report',
       buildId,

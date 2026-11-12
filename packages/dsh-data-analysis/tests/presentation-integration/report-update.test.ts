@@ -814,7 +814,7 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
     updated.buildId,
   )
   assert.deepEqual(await readFile(original.receipt.files.document.path), bytes)
-  assert.equal(parseSavedPresentation(document).schemaVersion, 'dsh.analysis-ui/v2')
+  assert.equal(parseSavedPresentation(document).schemaVersion, 'dsh.analysis-ui/v3')
 })
 
 test('statement updates reuse embedded snapshots without resolving Runtime and save independent versions', async (t) => {

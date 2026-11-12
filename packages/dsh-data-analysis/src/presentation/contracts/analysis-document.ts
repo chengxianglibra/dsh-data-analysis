@@ -22,9 +22,7 @@ export { analysisResourceDeclaration } from './resource-declaration.ts'
 import type { AnalysisResourceDeclaration } from './resource-declaration.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
 
-export const ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v2'
-export const LEGACY_ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v1'
-export type ContentReview = 'required' | 'not-needed' | 'unknown'
+export const ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v3'
 const id = z
   .string()
   .min(1)
@@ -91,18 +89,10 @@ const documentFields = z.strictObject({
   program: z.string().min(1).max(PRESENTATION_BUDGETS.text),
   resources: z.record(id, resource),
 })
-const schema = z.union([
-  z.strictObject({
-    schemaVersion: z.literal(LEGACY_ANALYSIS_UI_FORMAT),
-    ...documentFields.shape,
-    contentReview: z.never().optional(),
-  }),
-  z.strictObject({
-    schemaVersion: z.literal(ANALYSIS_UI_FORMAT),
-    contentReview: z.enum(['required', 'not-needed', 'unknown']),
-    ...documentFields.shape,
-  }),
-])
+const schema = z.strictObject({
+  schemaVersion: z.literal(ANALYSIS_UI_FORMAT),
+  ...documentFields.shape,
+})
 export type AnalysisDocument = z.infer<typeof schema>
 export type AnalysisResource = z.infer<typeof resource>
 export function analysisRecordId(reportId: string, buildId: string): string {
@@ -510,7 +500,7 @@ export function parseSavedPresentation(value: unknown): AnalysisDocument {
     !value ||
     typeof value !== 'object' ||
     !('schemaVersion' in value) ||
-    ![ANALYSIS_UI_FORMAT, LEGACY_ANALYSIS_UI_FORMAT].includes(String(value.schemaVersion))
+    value.schemaVersion !== ANALYSIS_UI_FORMAT
   )
     throw new Error('report-version-unsupported')
   return parseAnalysisDocument(value)

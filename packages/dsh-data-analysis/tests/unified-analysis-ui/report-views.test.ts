@@ -77,7 +77,6 @@ function saved(draftId?: string): PresentationDelivery {
 function document(buildId: string, program: string): AnalysisDocument {
   return {
     schemaVersion: ANALYSIS_UI_FORMAT,
-    contentReview: 'not-needed',
     workspaceId: 'workspace',
     reportId: 'report',
     buildId,

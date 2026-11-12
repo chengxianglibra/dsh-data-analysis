@@ -49,7 +49,6 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   t.after(() => rm(root, { recursive: true, force: true }))
   const document: AnalysisDocument = {
     schemaVersion: ANALYSIS_UI_FORMAT,
-    contentReview: 'not-needed',
     workspaceId: 'workspace',
     reportId: 'report',
     buildId: 'build',

@@ -271,7 +271,6 @@ export function ReportView({
           <ReportAnalysisSurface
             viewId={id}
             progress={progress}
-            contentReview={document?.contentReview ?? (document ? 'unknown' : undefined)}
             recordId={published ? document?.recordId : undefined}
             program={content.program}
             title={content.title}

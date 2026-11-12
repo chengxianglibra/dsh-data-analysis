@@ -3,6 +3,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { type CredentialProvider, credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { MarivoEnvironmentError } from '../environment/errors.ts'
 import { finishCleanup } from '../lifecycle.ts'
 import type {
   MarivoDatasourceBridgePort,
@@ -16,6 +17,28 @@ const RETENTION = 30 * 60_000
 const CAPACITY = 512
 export type CredentialStore = Pick<CredentialProvider, 'describe' | 'resolve' | 'set' | 'unset'>
 export type CredentialAction = 'save' | 'update' | 'delete' | 'submit'
+
+async function describeDatasource(
+  bridge: MarivoDatasourceBridgePort,
+  name: string,
+  signal: AbortSignal,
+): Promise<MarivoDatasourceDescription> {
+  try {
+    return await bridge.describe(name, signal)
+  } catch (error) {
+    if (error instanceof MarivoEnvironmentError && error.code === 'subprocess-timeout')
+      throw new MarivoEnvironmentError(
+        error.code,
+        error.message,
+        {
+          ...error.details,
+          preparationStep: 'datasource-describe',
+        },
+        { cause: error },
+      )
+    throw error
+  }
+}
 export interface CredentialContextView {
   token: string
   workspaceId: string
@@ -239,7 +262,7 @@ export class MarivoCredentialService {
   }
   async #current(context: BoundContext, signal: AbortSignal): Promise<void> {
     const bridge = await this.#currentBinding(context, signal)
-    const described = await bridge.describe(context.description.name, signal)
+    const described = await describeDatasource(bridge, context.description.name, signal)
     assert(described.definition === context.description.definition, 'context-changed')
     assert(!context.invalidated, 'context-changed')
     signal.throwIfAborted()
@@ -277,7 +300,7 @@ export class MarivoCredentialService {
     this.#prune()
     assert(!this.#lifetime.signal.aborted, 'disposed')
     const bridge = await resolve()
-    const description = await bridge.describe(name, signal)
+    const description = await describeDatasource(bridge, name, signal)
     assert(description.name === name, 'invalid-datasource-context')
     for (const ref of description.refs) marivoCredentialStorageRef(ref)
     assert(

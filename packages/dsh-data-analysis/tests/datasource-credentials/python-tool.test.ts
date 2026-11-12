@@ -6,6 +6,7 @@ import test from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ShellExecRequest, ShellExecSpec, ShellRunResult } from '@deepseek-ai/dsh-shell'
 import { type ToolDefinition, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import type { MarivoDatasourceBridgeSource } from '../../src/datasource/bridge.ts'
 import {
   MarivoPythonExecutionError,
   type MarivoPythonExecutionSummary,
@@ -16,7 +17,11 @@ import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
 import { PythonOperationError } from '../../src/python-exception.ts'
 import { barrier, fixture, operation, waiting } from './fixtures.ts'
 
-function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsSource = {}) {
+function pythonTool(
+  f: ReturnType<typeof fixture>,
+  options: MarivoPythonOptionsSource = {},
+  source: MarivoDatasourceBridgeSource = f.bridge,
+) {
   let definition!: ToolDefinition
   const requests: ShellExecRequest[] = []
   const launches: ShellExecSpec[] = []
@@ -73,7 +78,7 @@ function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsS
     },
     get: (name: string) => services.get(name),
   } as unknown as Context
-  registerMarivoPythonTool(ctx, f.bridge, f.service, options)
+  registerMarivoPythonTool(ctx, source, f.service, options)
   return {
     definition,
     requests,
@@ -558,6 +563,48 @@ test('preparation exceptions carry safe facts without starting Python', async (t
     assertSummary(error.execution, 'preparing', 'not-started')
     assert.doesNotMatch(error.message, /private-provider-failure/)
     assert.equal(error.execution.effectiveTimeoutMs, null)
+    return true
+  })
+  assert.equal(p.launches.length, 0)
+})
+
+test('datasource preflight timeout reports its own budget before user Python starts', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.bridge.describe = async () => {
+    throw new MarivoEnvironmentError('subprocess-timeout', 'timed out', { timeoutMs: 30_000 })
+  }
+  const p = pythonTool(f)
+  await assert.rejects(p.call(['warehouse'], 'print("complete")', 240_000), (error: unknown) => {
+    assert(error instanceof MarivoPythonExecutionError)
+    assert.equal(error.code, 'subprocess-timeout')
+    assertSummary(error.execution, 'preparing', 'not-started')
+    assert.equal(error.execution.requestedTimeoutMs, 240_000)
+    assert.deepEqual(error.preparation, { step: 'datasource-describe', timeoutMs: 30_000 })
+    assert(error.message.includes('"preparation":{"step":"datasource-describe","timeoutMs":30000}'))
+    assert.match(error.recovery!, /timeoutMs/)
+    return true
+  })
+  assert.equal(p.launches.length, 0)
+})
+
+test('binding timeout after project preparation identifies the binding step', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  let prepared = false
+  f.bridge.ensureProject = async () => {
+    prepared = true
+    return { status: 'already-ready', projectRoot: f.bridge.binding.projectRoot }
+  }
+  const p = pythonTool(f, {}, async () => {
+    if (prepared)
+      throw new MarivoEnvironmentError('subprocess-timeout', 'timed out', { timeoutMs: 10_000 })
+    return f.bridge
+  })
+  await assert.rejects(p.call(), (error: unknown) => {
+    assert(error instanceof MarivoPythonExecutionError)
+    assert.deepEqual(error.preparation, { step: 'workspace-binding', timeoutMs: 10_000 })
+    assertSummary(error.execution, 'preparing', 'not-started')
     return true
   })
   assert.equal(p.launches.length, 0)

@@ -30,7 +30,6 @@ import {
 
 const base = {
   schemaVersion: ANALYSIS_UI_FORMAT,
-  contentReview: 'not-needed',
   workspaceId: 'workspace',
   reportId: 'report',
   title: 'Saved analysis',

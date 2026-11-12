@@ -152,11 +152,6 @@ export function createMarivoPresentTool(
           stage: { type: 'string', required: true, enum: ['preview', 'save'] },
           ref: { type: 'string', required: true },
           mode: { type: 'string', required: true, enum: ['edit', 'refresh-data'] },
-          contentReview: {
-            type: 'string',
-            required: true,
-            enum: ['required', 'not-needed', 'unknown'],
-          },
           changed: { type: 'array', items: { type: 'string' }, required: true },
           reused: { type: 'array', items: { type: 'string' }, required: true },
           unchangedAliases: {
@@ -180,13 +175,13 @@ export function createMarivoPresentTool(
           return [
             {
               type: 'text',
-              text: `Preview updated (unsaved).\nRef: ${value.ref}\nReader: right sidebar\nMode: ${value.mode}\nChanged: ${JSON.stringify(value.changed)}\nReused: ${JSON.stringify(value.reused)}\nContent review: ${value.contentReview}\nUnchanged aliases: ${JSON.stringify(value.unchangedAliases)}\nResult metadata: ${JSON.stringify(value.resultMetadata)}`,
+              text: `Preview updated (unsaved).\nRef: ${value.ref}\nReader: right sidebar\nMode: ${value.mode}\nChanged: ${JSON.stringify(value.changed)}\nReused: ${JSON.stringify(value.reused)}\nUnchanged aliases: ${JSON.stringify(value.unchangedAliases)}\nResult metadata: ${JSON.stringify(value.resultMetadata)}`,
             },
           ]
         return [
           {
             type: 'text',
-            text: `${presentationReceiptText(delivery.receipt)}\nMode: ${value.mode}\nChanged: ${JSON.stringify(value.changed)}\nReused: ${JSON.stringify(value.reused)}\nContent review: ${value.contentReview}\nUnchanged aliases: ${JSON.stringify(value.unchangedAliases)}\nResult metadata: ${JSON.stringify(value.resultMetadata)}`,
+            text: `${presentationReceiptText(delivery.receipt)}\nMode: ${value.mode}\nChanged: ${JSON.stringify(value.changed)}\nReused: ${JSON.stringify(value.reused)}\nUnchanged aliases: ${JSON.stringify(value.unchangedAliases)}\nResult metadata: ${JSON.stringify(value.resultMetadata)}`,
           },
         ]
       },
@@ -409,7 +404,6 @@ export function createMarivoPresentTool(
                 revision: delivery.draftRevision,
               }),
               mode,
-              contentReview: document.contentReview ?? 'unknown',
               changed: changedNames,
               unchangedAliases,
               reused: Object.keys(document.resources).filter(
@@ -434,7 +428,6 @@ export function createMarivoPresentTool(
             stage: 'save' as const,
             ref: reportRefFromRecordId(document.recordId, identity.id),
             mode,
-            contentReview: document.contentReview ?? 'unknown',
             changed: changedNames,
             unchangedAliases,
             reused: Object.keys(document.resources).filter((name) => !changedNames.includes(name)),
@@ -695,7 +688,6 @@ export function createMarivoUiReadTool(
       return {
         definition: reportDefinition.parse({
           ...identifiers,
-          contentReview: document.contentReview ?? 'unknown',
           reuseGroups: sharedResourceGroups(document),
           title: document.title,
           locale: document.locale,

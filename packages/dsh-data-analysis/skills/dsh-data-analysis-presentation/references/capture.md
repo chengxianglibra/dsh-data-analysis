@@ -30,15 +30,18 @@ table_ref = mv.persist_dataframe(table).to_dict()
 
 ```javascript
 const output = execution.results?.detail;
-if (execution.execution.reason !== "succeeded" || !output) {
+const overview = execution.results?.overview;
+if (execution.execution.reason !== "succeeded" || !output || !overview) {
   throw new Error("Inspect execution/export state before continuing.");
 }
 draft = await tools.marivo_report_write({
   stage: "preview", ref: draft.ref,
-  resourcePatch: { put: { detail: output.resource } },
-  program: 'detail = DatasetView("detail"); root = Stack([detail]);',
+  resourcePatch: { put: { overview: overview.resource, detail: output.resource } },
+  program: 'overview = AnalysisFrameView("overview"); detail = DatasetView("detail"); root = Stack([overview, detail]);',
 });
 ```
+
+上例假定同一次调用导出了 Frame `overview` 和 DataFrame `detail`；也可分别使用各自调用的完整 resource。不要拆解或手工重建引用。
 
 逐项检查执行、导出、来源及 metadata 状态。来源或元数据不可用不使已导出的 resource 失效，不授权重跑业务代码。`results[name].metadata` 和 writer 的结构化 `resultMetadata` 提供配置名与覆盖范围；先据此修复视图。
 

@@ -22,7 +22,7 @@ Harness 的 Skill provider 与 `skill` 工具提供发现、加载与引用资�
 
 用户要求刷新数据时，以 saved ref 开始 `mode:"refresh-data"`，保持页面与静态正文。工具禁止程序和元数据改动、remove 及新资源名，并验证完整文档和所有受影响视图；每批原子提交。可显式提交已经就绪的子集，答复必须说明仍用旧数据的范围；失败目标不能自动降为 pending。
 
-相同声明返回 reused，不代表新计算。准确引用的共享别名由 reader 分组、writer 提示，更新范围由本次请求明确指定。auto 换成另一图形类型时拒绝，内部尺寸仍可随行数变化。静态正文的待复核状态随固定 Build 持久化并显示于正文之外，数据保存不证明结论已经重新核对。详细流程见[数据刷新](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/data-update.md)。
+相同声明返回 reused，不代表新计算。准确引用的共享别名由 reader 分组、writer 提示，更新范围由本次请求明确指定。auto 换成另一图形类型时拒绝，内部尺寸仍可随行数变化。静态正文不会随数据刷新自动改写。详细流程见[数据刷新](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/data-update.md)。
 
 Skill 保留证据核对、解释与停止条件。每轮最终视图保存后提交准确 saved ref 的推荐或明确空状态，随后完成其他交付。最终 Chat 回复通常用一两句话说明核心结论和会改变解读的限制。完整证据和说明放在视图中，用户明确要求的文字内容仍直接回答。只有草稿或保存失败时，回复说明实际状态并给出已有证据支持的答案。API 参数与当前修复动作分别由 schema 和本次结构化错误提供。
 

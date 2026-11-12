@@ -43,7 +43,6 @@ const tab = { kind: 'agent', sessionId: 'source', surface: 'tab' } as const
 function analysisDocument(reportId: string, buildId: string, title: string): AnalysisDocument {
   return {
     schemaVersion: ANALYSIS_UI_FORMAT,
-    contentReview: 'not-needed',
     workspaceId: 'workspace',
     reportId,
     buildId,

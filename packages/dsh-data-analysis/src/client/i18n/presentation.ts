@@ -15,8 +15,6 @@ export const zh = {
   'marivo.presentation.ui-semantic-groups': '分组',
   'marivo.presentation.ui-semantic-scope': '范围',
   'marivo.presentation.ui-filter-empty': '没有匹配的行',
-  'marivo.presentation.ui-content-review-required': '数据已变更，静态叙述待核对。',
-  'marivo.presentation.ui-content-review-unknown': '此版本未记录正文复核状态。',
   'marivo.presentation.ui-next-steps-connection-failed':
     '下一步建议连接中断。重连后可重新请求建议。',
   'marivo.presentation.ui-next-steps-reconnect': '重试连接',
@@ -277,9 +275,6 @@ export const en = {
   'marivo.presentation.ui-semantic-groups': 'Groups',
   'marivo.presentation.ui-semantic-scope': 'Scope',
   'marivo.presentation.ui-filter-empty': 'No matching rows',
-  'marivo.presentation.ui-content-review-required': 'Data changed. Static narrative needs review.',
-  'marivo.presentation.ui-content-review-unknown':
-    'Narrative review status was not recorded for this version.',
   'marivo.presentation.ui-next-steps-connection-failed':
     'Next steps connection failed. Reconnect, then request suggestions again.',
   'marivo.presentation.ui-next-steps-reconnect': 'Retry connection',

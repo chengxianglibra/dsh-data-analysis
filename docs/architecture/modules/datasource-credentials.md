@@ -79,6 +79,11 @@ Agent 接入和 Tool 注册前校验；参数在凭据准备前校验。Harness 
 凭据等待在 Shell 计时之前；外层 Code Mode 时限包含等待和其他步骤，仍可能先触发取消。插件不修改 Harness
 超时策略，也不添加覆盖整次凭据交互的独立定时器。
 
+内部预检子进程使用各自的超时，不受 `timeoutMs` 控制。预检的 `subprocess-timeout` 在错误 JSON 的
+`preparation` 中提供 `step` 和实际 `timeoutMs`（不可用时为 null）；`datasource-describe` 指数据源描述，
+其他步骤为 `workspace-binding`、`project-preparation` 或 `credential-admission`。此时用户 Python 未启动；
+提示检查该步骤后再重试，不推断远端查询是否仍在运行。
+
 原有成功、进程结果和 datasource 准备结果字段保留，新增 `execution`：
 
 | 字段 | 含义 |

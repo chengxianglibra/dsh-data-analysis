@@ -10,16 +10,11 @@ import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
-import {
-  AnalysisViewError,
-  analysisRecordId,
-  parseAnalysisDocument,
-} from '../../src/presentation/contracts/analysis-document.ts'
+import { AnalysisViewError } from '../../src/presentation/contracts/analysis-document.ts'
 import { parseReportRef, savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
 import {
   deletePresentation,
-  publishPresentation,
   readAnalysisRecord,
   readReportHistory,
 } from '../../src/presentation/reports.ts'
@@ -34,7 +29,6 @@ const output = z.object({
   stage: z.enum(['preview', 'save']),
   ref: z.string(),
   mode: z.enum(['edit', 'refresh-data']),
-  contentReview: z.enum(['required', 'not-needed', 'unknown']),
   changed: z.array(z.string()),
   reused: z.array(z.string()),
   unchangedAliases: z.array(z.string()),
@@ -111,7 +105,6 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
       .object({
         definition: z.object({
           ref: z.string(),
-          contentReview: z.string(),
           reuseGroups: z.array(z.array(z.string())),
         }),
       })
@@ -388,14 +381,11 @@ test('refresh-data atomically rejects a mixed batch and preserves revision, curr
   assert.deepEqual(subset.changed, ['a'])
   assert.deepEqual(subset.reused, ['b'])
   assert.deepEqual(subset.unchangedAliases, ['b'])
-  assert.equal(subset.contentReview, 'required')
   const current = await f.document(subset.ref)
-  assert.equal(current.schemaVersion, 'dsh.analysis-ui/v2')
-  assert.equal(current.contentReview, 'required')
+  assert.equal(current.schemaVersion, 'dsh.analysis-ui/v3')
   assert.equal(current.program, baseDoc.program)
   assert.deepEqual(current.resources.b, baseDoc.resources.b)
-  const edited = await f.write({ stage: 'save', ref: subset.ref, title: 'Edited title' })
-  assert.equal(edited.contentReview, 'required')
+  await f.write({ stage: 'save', ref: subset.ref, title: 'Edited title' })
 })
 
 test('a failed draft revision returns the current ref and the valid column IDs', async (t) => {
@@ -481,39 +471,6 @@ test('saved ref survives an actual cold process and old draft ref does not', asy
   )
 })
 
-test('legacy v1 is read-only data with unknown review state; v2 requires explicit metadata', async (t) => {
-  const f = await fixture(t)
-  const saved = await f.write({ stage: 'save', program: 'root = TextContent("scope");' })
-  const doc = await f.document(saved.ref)
-  const { contentReview, ...legacy } = doc
-  assert.equal(contentReview, 'not-needed')
-  const old = parseAnalysisDocument({ ...legacy, schemaVersion: 'dsh.analysis-ui/v1' })
-  assert.equal(old.contentReview, undefined)
-  const legacyDocument = parseAnalysisDocument({
-    ...old,
-    reportId: 'legacy-report',
-    buildId: 'legacy-build',
-    recordId: analysisRecordId('legacy-report', 'legacy-build'),
-  })
-  await publishPresentation(f.root, legacyDocument, null, async () => {}, undefined, {
-    kind: 'agent',
-    sessionId: 'session',
-    surface: 'tool',
-  })
-  const legacyRef = savedReportRef({
-    workspaceId: 'workspace',
-    reportId: legacyDocument.reportId,
-    buildId: legacyDocument.buildId,
-  })
-  assert.equal((await f.read(legacyRef)).contentReview, 'unknown')
-  const upgraded = await f.write({ stage: 'save', ref: legacyRef, title: 'New build from legacy' })
-  assert.equal(upgraded.contentReview, 'unknown')
-  assert.equal((await f.document(upgraded.ref)).schemaVersion, 'dsh.analysis-ui/v2')
-  assert.equal((await f.document(legacyRef)).schemaVersion, 'dsh.analysis-ui/v1')
-
-  assert.throws(() => parseAnalysisDocument({ ...legacy, schemaVersion: 'dsh.analysis-ui/v2' }))
-})
-
 test('stale refs expose the exact currentRef and refresh rebase remains explicit and mode constrained', async (t) => {
   const f = await fixture(t)
   const base = await f.write({
@@ -590,7 +547,7 @@ test('public output schemas retain concrete definition and source fields without
   assert(definition)
   assert.equal(definition.type, 'object')
   assert.equal(definition?.additionalProperties, false)
-  for (const field of ['ref', 'program', 'resources', 'contentReview', 'reuseGroups', 'sources'])
+  for (const field of ['ref', 'program', 'resources', 'reuseGroups', 'sources'])
     assert(definition?.properties?.[field], field)
   assert.equal(definition.properties?.ref?.type, 'string')
   assert.match(definition.properties?.resources?.description ?? '', /columns.*coverage/)
@@ -599,7 +556,7 @@ test('public output schemas retain concrete definition and source fields without
   assert.equal(sources?.[1]?.properties?.code?.properties?.text?.type, 'string')
 })
 
-test('same fixed results report reuse and data-only reports need no narrative review', async (t) => {
+test('same fixed results report reuse across refresh', async (t) => {
   const f = await fixture(t)
   const base = await f.write({
     stage: 'save',
@@ -621,7 +578,6 @@ test('same fixed results report reuse and data-only reports need no narrative re
     ref: preview.ref,
     resourcePatch: { put: { data: f.resource('2') } },
   })
-  assert.equal(refreshed.contentReview, 'not-needed')
   assert.deepEqual(refreshed.changed, ['data'])
 })
 
@@ -652,45 +608,4 @@ test('Dataset display survives save and reopen and refresh rejects a changed for
   )
   assert.deepEqual(await readReportHistory(f.root, 'workspace', saved.reportId), history)
   assert.equal((await f.document(base.ref)).program, program)
-})
-
-test('refresh marks authored callouts and accordion headings for review', async (t) => {
-  const f = await fixture(t)
-  const programs = [
-    'root = Stack([TextCallout("info", "Sales increased", ""), DatasetView("data", {chart:"table"})]);',
-    'root = Stack([TextCallout("info", "", "Sales increased"), DatasetView("data", {chart:"table"})]);',
-    'root = Accordion([AccordionItem("details", "Sales increased", [DatasetView("data", {chart:"table"})])]);',
-    'root = Card([Stack([TextCallout("warning", "", "Check the scope"), DatasetView("data", {chart:"table"})])]);',
-  ]
-  for (const program of programs) {
-    const base = await f.write({
-      stage: 'save',
-      program,
-      resourcePatch: { put: { data: f.resource() } },
-    })
-    const refreshed = await f.write({
-      stage: 'save',
-      ref: base.ref,
-      mode: 'refresh-data',
-      resourcePatch: { put: { data: f.resource('2') } },
-    })
-    assert.equal(refreshed.contentReview, 'required')
-    assert.equal((await f.document(refreshed.ref)).contentReview, 'required')
-  }
-})
-
-test('an empty callout does not require review after data refresh', async (t) => {
-  const f = await fixture(t)
-  const base = await f.write({
-    stage: 'save',
-    program: 'root = Stack([TextCallout("info", " ", " "), DatasetView("data", {chart:"table"})]);',
-    resourcePatch: { put: { data: f.resource() } },
-  })
-  const refreshed = await f.write({
-    stage: 'save',
-    ref: base.ref,
-    mode: 'refresh-data',
-    resourcePatch: { put: { data: f.resource('2') } },
-  })
-  assert.equal(refreshed.contentReview, 'not-needed')
 })

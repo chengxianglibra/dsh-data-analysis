@@ -25,7 +25,7 @@ import {rightTabStyles} from './src/client/right-tabs/styles.ts';
 import {AnalysisSurface} from './src/client/analysis-ui/surface.tsx';
 const makeVersion=(buildId,title,publishedAt)=>({receipt:{buildId,title},publishedAt,source:{sessionId:'s'}});
 const versions=[makeVersion('b1','Revenue report','2026-11-03T00:00:00Z'),makeVersion('b0','Earlier report','2026-11-02T00:00:00Z')];
-const documents={b1:{title:'Revenue report',locale:'en-US',recordId:'marivo-ui:r:b1',program:'root = TextContent("Current narrative");',resources:{},contentReview:'not-needed'},b0:{title:'Earlier report',locale:'en-US',recordId:'marivo-ui:r:b0',program:'root = TextContent("Historical narrative");',resources:{},contentReview:'required'}};
+const documents={b1:{title:'Revenue report',locale:'en-US',recordId:'marivo-ui:r:b1',program:'root = TextContent("Current narrative");',resources:{}},b0:{title:'Earlier report',locale:'en-US',recordId:'marivo-ui:r:b0',program:'root = TextContent("Historical narrative");',resources:{}}};
 function App(){const [open,setOpen]=React.useState(true);const [selected,setSelected]=React.useState('b1');return <CopyProvider t={translator('en-US')}><style>{catalogStyles+rightTabStyles}</style><section className="mv-ui rt-page">{open&&<ReportHistoryPanel state={{history:{currentBuildId:'b1',versions},resolvedReceipt:{buildId:selected}}} model={{selectVersion:setSelected}} sessions={{s:{displayTitle:'Analysis conversation'}}} onOpenSession={()=>{}} onClose={()=>setOpen(false)}/>}<AnalysisSurface document={documents[selected]}/></section></CopyProvider>};
 createRoot(document.getElementById('root')).render(<App/>);
 `,
@@ -72,22 +72,15 @@ createRoot(document.getElementById('root')).render(<App/>);
   const older = history.getByRole('button', { name: /Earlier report/ })
   assert.equal(await current.getAttribute('aria-pressed'), 'true')
   assert.equal(await history.getByText('Current version').count(), 1)
-  assert.equal(await page.locator('[data-content-review]').count(), 0)
   assert.equal(await history.getByText('Analysis conversation').count(), 2)
   assert(await history.evaluate((node) => node.scrollWidth <= node.clientWidth))
   await older.click()
   assert.equal(await older.getAttribute('aria-pressed'), 'true')
   assert.equal(await current.getAttribute('aria-pressed'), 'false')
   assert.equal(await history.getByText('Viewing').count(), 1)
-  await page
-    .locator('[data-content-review=required]')
-    .getByText('Data changed. Static narrative needs review.')
-    .waitFor()
-  assert.equal(await page.locator('.au-surface-body [data-content-review]').count(), 0)
+  await page.getByText('Historical narrative').waitFor()
   await current.click()
-  await page.locator('[data-content-review]').waitFor({ state: 'detached' })
-  await older.click()
-  await page.locator('[data-content-review=required]').waitFor()
+  await page.getByText('Current narrative').waitFor()
   await history.getByRole('button', { name: 'Close version history' }).click()
   assert.equal(await history.count(), 0)
 })
@@ -113,7 +106,7 @@ import {ReportHistoryPanel} from './src/client/presentation/catalog.tsx';
 import {AnalysisSurface} from './src/client/analysis-ui/surface.tsx';
 const resource={kind:'snapshot',snapshot:${JSON.stringify(snapshot)},declaration:{kind:'dataset-snapshot',snapshotRef:'ref'},binding:{workspaceId:'workspace'}};
 const versions=[{receipt:{buildId:'b1',title:'Current'},publishedAt:'2026-11-03T00:00:00Z',source:{sessionId:'s'}},{receipt:{buildId:'b0',title:'Earlier'},publishedAt:'2026-11-02T00:00:00Z',source:{sessionId:'s'}}];
-const makeDocument=(id,defaultValue)=>({title:id,locale:'en-US',recordId:'marivo-ui:r:'+id,contentReview:'not-needed',resources:{result:resource},program:'root = Stack([f,v]);\\nf = SnapshotFilter("category", "result", {kind:"column", name:"category"}, "Category", "multiple", ["'+defaultValue+'"]);\\nv = DatasetView("result", {chart:"table"}, {}, ["category"]);'});
+const makeDocument=(id,defaultValue)=>({title:id,locale:'en-US',recordId:'marivo-ui:r:'+id,resources:{result:resource},program:'root = Stack([f,v]);\\nf = SnapshotFilter("category", "result", {kind:"column", name:"category"}, "Category", "multiple", ["'+defaultValue+'"]);\\nv = DatasetView("result", {chart:"table"}, {}, ["category"]);'});
 const documents={b1:makeDocument('b1','A'),b0:makeDocument('b0','B')};
 function App(){const [selected,setSelected]=React.useState('b1');return <CopyProvider t={translator('en-US')}><ReportHistoryPanel state={{history:{currentBuildId:'b1',versions},resolvedReceipt:{buildId:selected}}} model={{selectVersion:setSelected}} sessions={{s:{displayTitle:'Analysis'}}} onOpenSession={()=>{}} onClose={()=>{}}/><AnalysisSurface key={selected} document={documents[selected]}/></CopyProvider>}
 createRoot(document.getElementById('root')).render(<App/>);`,

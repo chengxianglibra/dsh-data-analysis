@@ -50,14 +50,16 @@ export class MarivoPythonExecutionError extends Error {
   readonly phase: MarivoPythonExecutionSummary['phase']
   readonly recovery: string | null
   readonly exception?: PythonException
+  readonly preparation?: { step: string; timeoutMs: number | null }
   constructor(
     message: string,
     execution: MarivoPythonExecutionSummary,
     code = 'python-execution-failed',
     exception?: PythonException,
+    preparation?: { step: string; timeoutMs: number | null },
   ) {
     super(
-      `${message}; error=${JSON.stringify({ code, phase: execution.phase, recovery: execution.nextAction, ...(exception ? { exception } : {}) })}; execution=${JSON.stringify(execution)}`,
+      `${message}; error=${JSON.stringify({ code, phase: execution.phase, recovery: execution.nextAction, ...(exception ? { exception } : {}), ...(preparation ? { preparation } : {}) })}; execution=${JSON.stringify(execution)}`,
     )
     this.name = 'MarivoPythonExecutionError'
     this.execution = execution
@@ -65,6 +67,7 @@ export class MarivoPythonExecutionError extends Error {
     this.phase = execution.phase
     this.recovery = execution.nextAction
     this.exception = exception
+    this.preparation = preparation
   }
 }
 
@@ -255,7 +258,7 @@ export function registerMarivoPythonTool(
         timeoutMs: {
           type: 'number',
           description:
-            'Optional foreground Shell timeout in milliseconds, a positive integer at most 2147483647. Defaults to the current plugin pythonTimeoutMs setting. Applied separately to project init when needed and to user code. Credential waiting precedes user execution; Harness Shell limits, outer Code Mode deadlines and cancellation remain independent.',
+            'Optional foreground Shell timeout in milliseconds, a positive integer at most 2147483647. Defaults to the current plugin pythonTimeoutMs setting. Applied separately to project init when needed and to user code. Internal preparation subprocesses use independent timeouts. Credential waiting precedes user execution; Harness Shell limits, outer Code Mode deadlines and cancellation remain independent.',
         },
         resultVariables: {
           type: 'object',
@@ -278,6 +281,24 @@ export function registerMarivoPythonTool(
         let executionElapsedMs: number | null = null
         let prepared: PreparedCredentialExecution | undefined
         let preparationSignal: AbortSignal | undefined
+        let preparationStep = 'workspace-binding'
+        const resolveBinding = async () => {
+          try {
+            return await resolveMarivoDatasourceBridge(source)
+          } catch (error) {
+            if (error instanceof MarivoEnvironmentError && error.code === 'subprocess-timeout')
+              throw new MarivoEnvironmentError(
+                error.code,
+                error.message,
+                {
+                  ...error.details,
+                  preparationStep: 'workspace-binding',
+                },
+                { cause: error },
+              )
+            throw error
+          }
+        }
         let project: ProjectPreparation | undefined
         const summary = (
           reason: MarivoPythonExecutionSummary['reason'],
@@ -347,7 +368,7 @@ export function registerMarivoPythonTool(
             ])
             const signal = service.executionSignal(exec.signal, agent)
             preparationSignal = signal
-            const bridge = await service.track(resolveMarivoDatasourceBridge(source))
+            const bridge = await service.track(resolveBinding())
             const fingerprint = bridge.binding.fingerprint
             const unchanged = () =>
               exec.agent?.session === session &&
@@ -356,7 +377,7 @@ export function registerMarivoPythonTool(
             const assertCurrent = async () => {
               signal.throwIfAborted()
               if (!unchanged()) throw new CredentialServiceError('context-changed')
-              const current = await resolveMarivoDatasourceBridge(source)
+              const current = await resolveBinding()
               signal.throwIfAborted()
               if (!unchanged() || current.binding.fingerprint !== fingerprint)
                 throw new CredentialServiceError('context-changed')
@@ -364,6 +385,7 @@ export function registerMarivoPythonTool(
             await assertCurrent()
             if (!bridge.ensureProject)
               rejectInput('Bound Runtime project preparation is unavailable')
+            preparationStep = 'project-preparation'
             project = await service.track(
               bridge.ensureProject!({
                 signal,
@@ -392,12 +414,9 @@ export function registerMarivoPythonTool(
             )
             await assertCurrent()
           }
+          preparationStep = 'credential-admission'
           const admission = await service.track(
-            service.prepareExecution(
-              exec,
-              () => resolveMarivoDatasourceBridge(source),
-              args.datasources,
-            ),
+            service.prepareExecution(exec, resolveBinding, args.datasources),
           )
           if (admission.status !== 'ready')
             return {
@@ -586,13 +605,35 @@ export function registerMarivoPythonTool(
               : undefined
           const exception =
             !cancelled && error instanceof PythonOperationError ? error.diagnostic : undefined
+          const preparation =
+            !cancelled &&
+            shellStartedAt === null &&
+            error instanceof MarivoEnvironmentError &&
+            error.code === 'subprocess-timeout'
+              ? {
+                  step:
+                    error.details.preparationStep === 'datasource-describe' ||
+                    error.details.preparationStep === 'workspace-binding'
+                      ? error.details.preparationStep
+                      : preparationStep,
+                  timeoutMs:
+                    typeof error.details.timeoutMs === 'number' &&
+                    Number.isSafeInteger(error.details.timeoutMs) &&
+                    error.details.timeoutMs > 0
+                      ? error.details.timeoutMs
+                      : null,
+                }
+              : undefined
           throw new MarivoPythonExecutionError(
             shellStartedAt === null
               ? `Marivo Python preparation failed or was cancelled; user Python code was not started (${code})`
               : 'Marivo Python execution outcome is unknown after an execution service failure or cancellation',
             summary(
               reason,
-              projectRecovery ??
+              (preparation
+                ? 'Inspect the timed-out preparation step and wait for the underlying condition to clear before retrying. timeoutMs does not change the internal preparation subprocess timeout.'
+                : undefined) ??
+                projectRecovery ??
                 (exception
                   ? (exception.repair?.action ?? null)
                   : shellStartedAt === null
@@ -601,6 +642,7 @@ export function registerMarivoPythonTool(
             ),
             code,
             exception,
+            preparation,
           )
         } finally {
           prepared?.release()

@@ -21,7 +21,6 @@ import {
 } from './contracts/analysis-program.ts'
 import { resolveDatasetView } from './contracts/dataset-view.ts'
 import { frameViewSchema, resolveFrameView } from './contracts/frame-view.ts'
-import { sameAnalysisResult } from './contracts/resource-declaration.ts'
 import { resultReferenceKey } from './contracts/result-reference.ts'
 import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
@@ -103,23 +102,6 @@ const defaultComponent: Record<AnalysisResourceDeclaration['kind'], string> = {
   'image-file': 'Image',
 }
 
-/** Authored report text remains static when the underlying fixed results change. */
-function hasNarrativeText(nodes: ReturnType<typeof analysisElements>): boolean {
-  return nodes.some((node) => {
-    const properties =
-      node.typeName === 'TextContent'
-        ? ['text']
-        : node.typeName === 'TextCallout'
-          ? ['title', 'description']
-          : node.typeName === 'AccordionItem'
-            ? ['trigger']
-            : []
-    return properties.some((name) => {
-      const value = node.props[name]
-      return typeof value === 'string' && value.trim().length > 0
-    })
-  })
-}
 /** Read each admitted resource once; saved bytes never depend on the capture directory. */
 export async function createAnalysisDocument(
   input: AnalysisPresentInput,
@@ -347,21 +329,6 @@ export async function createAnalysisDocument(
     applyAnalysisLabels(resources, input.labels)
     return parseAnalysisDocument({
       schemaVersion: ANALYSIS_UI_FORMAT,
-      contentReview:
-        base?.contentReview === 'required'
-          ? 'required'
-          : base &&
-              Object.entries(resources).some(
-                ([name, resource]) =>
-                  base.resources[name] &&
-                  !sameAnalysisResult(base.resources[name]!.declaration, resource.declaration),
-              )
-            ? hasNarrativeText(nodes)
-              ? 'required'
-              : 'not-needed'
-            : base
-              ? (base.contentReview ?? 'unknown')
-              : 'not-needed',
       ...identity,
       recordId: analysisRecordId(identity.reportId, identity.buildId),
       title,

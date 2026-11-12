@@ -62,6 +62,8 @@ AccordionItem(value: string, trigger: string, content: (Stack | TextContent | Ca
 AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", style?: "stacked", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, title?: string, subtitle?: string, formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[], density?: "full" | "compact", dataTable?: "collapsed" | "visible", rowLimit?: number, comparisonLabels?: {alias?: string, current: string, baseline: string}[], highlight?: {axis: string, key: (string | number | boolean)[]}, decompositionTotals?: {current: string, baseline: string, currentLabel: string, baselineLabel: string}, recordPreview?: {coordinates: string[], values: string[], limit: number, label: string}}, filters?: string[])
 ```
 
+Frame 字段取自结果 metadata 的 `viewCandidates`：表格 `columns` 和 metric `encoding.value` 使用 `columns` 列 ID；line/area 的 `encoding.axis` 使用 `timeAxis` 公开轴名（仅 calendar/interval），bar 的 axis 及图表的 series 使用 `axis` 公开轴名；图表 values 使用 `values` 中的公开值名，绘图使用 `numericValues`。`axis.0` 等 token 用于 `coordinateColumns` 与轴关联，不直接填入 encoding。候选是字段级提示，仍需通过图表数据约束。auto 在时间与类别组合中以 8 个系列为选图阈值；显式 line/area/bar 不设此系列上限。
+
 ## DatasetView
 
 ```text

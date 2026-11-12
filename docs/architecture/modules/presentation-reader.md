@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-本模块把已保存的分析文档（新保存为 `dsh.analysis-ui/v2`，兼容读取 v1）呈现在原生右侧 Tab 中，并在真实 Turn 的 Chat 节点保留入口。
+本模块把已保存的分析文档（新保存为 `dsh.analysis-ui/v3`）呈现在原生右侧 Tab 中，并在真实 Turn 的 Chat 节点保留入口。
 插件拥有 Catalog/Renderer、阅读状态、分析视图目录与版本历史视图；Marivo 拥有分析语义与来源事实，
 Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 消费已保存文档及交付链路提供的当前 Turn 草稿和候选，
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
@@ -23,7 +23,6 @@ Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader �
 
 同一阅读实例中的交付回执只应用一次，Chat 重放旧回执不覆盖后续修订。Turn 结束后草稿失效；已有正式版本的报告恢复最后保存的 Build，未保存修订不再读取，Chat 保留草稿失效提示。
 
-固定 Build 的 contentReview 在报告正文外显示：required 提示数据已变更、静态叙述待核对；旧 v1 缺少该字段，unknown 明示未记录复核状态；not-needed 不显示提示。当前和历史 Tab、离线 HTML 使用同一 reader 与相应版本元数据，普通展示编辑不自动清除 required。该状态不证明业务结论或分析正确性。
 
 ## 统一 AnalysisSurface 与候选预览
 

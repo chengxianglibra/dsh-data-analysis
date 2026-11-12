@@ -25,7 +25,6 @@ for (const referenceKind of ['frame-snapshot', 'analysis-frame'] as const) {
     snapshot.frame.inputId = 'private-frame-input'
     const report = parseAnalysisDocument({
       schemaVersion: ANALYSIS_UI_FORMAT,
-      contentReview: 'not-needed',
       workspaceId: 'private-workspace',
       reportId: 'report',
       buildId: 'build',

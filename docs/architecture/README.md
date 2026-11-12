@@ -38,7 +38,7 @@
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。验证命令以根目录 `package.json` 的 scripts 为准；
 `docs/testing/` 中的验证指南和验收记录是本地工作材料，不纳入版本控制。
 
-统一分析 UI 通过 `marivo_report_write` 保存 `dsh.analysis-ui/v2` 文档。Frame 和 DataFrame 都通过 Marivo 公开持久引用，在绑定 Python Runtime 中直接读取；不启动 HTTP 服务。快照内嵌不可变 Build，AnalysisSurface
+统一分析 UI 通过 `marivo_report_write` 保存 `dsh.analysis-ui/v3` 文档。Frame 和 DataFrame 都通过 Marivo 公开持久引用，在绑定 Python Runtime 中直接读取；不启动 HTTP 服务。快照内嵌不可变 Build，AnalysisSurface
 统一在右侧 Tab 呈现候选、草稿与正式版本，Chat 保留分析视图入口。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
 并可在 Catalog 范围内显式指定图形。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。旧格式报告不进入报告目录；
 新格式支持离线 HTML 导出，不提供对象存储发布或页面编辑。详细契约见本目录中的投影、交付与 reader 模块文档。
@@ -99,7 +99,7 @@ Agent 按计算依赖执行完整 Python 脚本，通过持久 Frame、DataFrame
 内部 recordId 编码这对身份。模型使用版本化 ref，更新传 ref 和变化语句，官方 mergeStatements 合并后校验完整文档，
 再复用既有锁与 current 条件提交；过期基版本失败，不自动覆盖或重试。
 
-已保存报告的数据刷新通过 mode=refresh-data 强制保留程序、组件组成与资源名，每批替换原子校验；数据替换后的静态正文复核状态随 Build 保存。明确的页面编辑才能改变布局或正文；静态文字和 auto 视图的刷新边界见[展示 Skill](modules/presentation-skill.md)。
+已保存报告的数据刷新通过 mode=refresh-data 强制保留程序、组件组成与资源名，每批替换原子校验。明确的页面编辑才能改变布局或正文；静态文字和 auto 视图的刷新边界见[展示 Skill](modules/presentation-skill.md)。
 
 新分析视图正文固定在右侧 Tab，前台会话首次产生可展示候选时自动打开并选中；预览、修订和保存更新同一视图。Chat 保留分析视图入口，关闭 Tab 后可手动重开，同一视图的后续更新不自动重开；历史回放和后台会话不自动导航。目录与历史入口也在右侧打开。
 Native 的公开 PartialArguments 提供真实 program 前缀；

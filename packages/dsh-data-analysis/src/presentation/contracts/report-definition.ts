@@ -66,7 +66,6 @@ export const reportDefinition = z.strictObject({
   ref: text.min(1).max(4096),
   mode: z.enum(['edit', 'refresh-data']).optional(),
   basedOn: text.optional(),
-  contentReview: z.enum(['required', 'not-needed', 'unknown']),
   reuseGroups: z.array(names),
   title: text,
   locale: z.enum(['zh-CN', 'en-US']),
@@ -172,7 +171,6 @@ export const reportDefinitionToolSchema = {
     basedOn: stringSpec,
     title: { ...stringSpec, required: true },
     locale: { type: 'string', enum: ['zh-CN', 'en-US'], required: true },
-    contentReview: { type: 'string', enum: ['required', 'not-needed', 'unknown'], required: true },
     reuseGroups: { type: 'array', items: namesSpec, required: true },
     program: { ...stringSpec, required: true },
     catalog: {

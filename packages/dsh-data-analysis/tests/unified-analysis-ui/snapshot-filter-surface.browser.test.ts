@@ -33,7 +33,6 @@ test('one filter state synchronizes bound views without changing an unbound view
   )
   const report = parseAnalysisDocument({
     schemaVersion: ANALYSIS_UI_FORMAT,
-    contentReview: 'not-needed',
     workspaceId: 'workspace',
     reportId: 'report',
     buildId: 'build',
