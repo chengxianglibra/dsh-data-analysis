@@ -4,6 +4,11 @@ import path from 'node:path'
 import process from 'node:process'
 import { admitDoctorReport, parseDoctorReport } from './doctor.ts'
 import { MarivoEnvironmentError } from './errors.ts'
+import {
+  canonicalImportIdentity,
+  canonicalPythonExecutable,
+  PYTHON_IMPORT_IDENTITY,
+} from './identity.ts'
 import { FixedSubprocessPolicy } from './subprocess.ts'
 import type {
   DoctorReport,
@@ -27,30 +32,24 @@ const IDENTITY_LIMITS: Readonly<Partial<SubprocessLimits>> = Object.freeze({
   stderrMaxBytes: 16_384,
 })
 
-const CHECKED_IDENTITY_PRELUDE = String.raw`
+const CHECKED_IDENTITY_PRELUDE = `${PYTHON_IMPORT_IDENTITY}\n${String.raw`
 import json as _dsh_json
 import os as _dsh_os
 import sys as _dsh_sys
 try:
     import marivo as _dsh_marivo
-    _dsh_actual = {
-        "python_executable": _dsh_os.path.abspath(_dsh_sys.executable),
-        "marivo_version": _dsh_marivo.__version__,
-        "package_path": _dsh_os.path.abspath(_dsh_marivo.__file__ or ""),
-    }
+    _dsh_actual = _dsh_import_identity(
+        _dsh_sys.executable, _dsh_marivo.__version__, _dsh_marivo.__file__,
+    )
 except Exception:
     raise SystemExit(78) from None
 
-_dsh_expected = {
-    "python_executable": _dsh_os.path.abspath(_dsh_sys.argv[1]),
-    "marivo_version": _dsh_sys.argv[2],
-    "package_path": _dsh_os.path.abspath(_dsh_sys.argv[3]),
-}
+_dsh_expected = _dsh_import_identity(*_dsh_sys.argv[1:4])
 if _dsh_actual != _dsh_expected:
     print(_dsh_json.dumps({"kind": "identity-mismatch", "actual": _dsh_actual}), file=_dsh_sys.stderr)
     raise SystemExit(78)
 _dsh_sys.argv = [_dsh_sys.argv[0], *_dsh_sys.argv[4:]]
-`.trim()
+`.trim()}`
 
 const IMPORT_IDENTITY_PROGRAM = String.raw`
 print(_dsh_json.dumps(_dsh_actual, sort_keys=True))
@@ -178,7 +177,7 @@ async function resolvePythonExecutable(
         )
       : path.normalize(configured)
   await assertExecutable(executable)
-  return executable
+  return canonicalPythonExecutable(executable)
 }
 
 function fingerprint(binding: Omit<MarivoEnvironmentBinding, 'fingerprint'>): string {
@@ -302,12 +301,12 @@ export class MarivoEnvironment {
       )
     }
     try {
-      const identity = parseImportIdentity(result.stdout)
+      const identity = canonicalImportIdentity(parseImportIdentity(result.stdout))
+      const expected = this.binding
       if (
-        normalizeAbsolute(identity.pythonExecutable) !==
-          normalizeAbsolute(this.binding.pythonExecutable) ||
-        identity.marivoVersion !== this.binding.marivoVersion ||
-        normalizeAbsolute(identity.packagePath) !== normalizeAbsolute(this.binding.packagePath)
+        identity.pythonExecutable !== expected.pythonExecutable ||
+        identity.marivoVersion !== expected.marivoVersion ||
+        identity.packagePath !== expected.packagePath
       )
         throw new Error('identity values differ from binding')
       return identity
@@ -343,9 +342,7 @@ function createRuntimeRunner(
   const subprocessPolicy = new FixedSubprocessPolicy(projectRoot, environment)
   const partialBinding = {
     projectRoot,
-    pythonExecutable: identity.pythonExecutable,
-    marivoVersion: identity.marivoVersion,
-    packagePath: identity.packagePath,
+    ...canonicalImportIdentity(identity),
     subprocessPolicyId: subprocessPolicy.id,
   }
   return new MarivoEnvironment(
@@ -363,7 +360,7 @@ export async function bindSharedMarivoWorkspace(
   const runner = createRuntimeRunner(projectRoot, {
     pythonExecutable,
     marivoVersion: runtime.marivoVersion,
-    packagePath: normalizeAbsolute(runtime.packagePath),
+    packagePath: runtime.packagePath,
   })
   const result = await runner.runChecked({
     program: PROJECT_CONFIG_PROGRAM,
@@ -436,7 +433,7 @@ export async function bindMarivoEnvironment(
     projectRoot,
     pythonExecutable,
     marivoVersion: report.marivo.version,
-    packagePath: normalizeAbsolute(report.marivo.package_path),
+    packagePath: await realpath(report.marivo.package_path),
     subprocessPolicyId: subprocessPolicy.id,
   }
   const binding: MarivoEnvironmentBinding = {

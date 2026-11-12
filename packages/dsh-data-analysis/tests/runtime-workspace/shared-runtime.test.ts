@@ -1,5 +1,15 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -37,7 +47,7 @@ const script = args[1] ?? ''
 if (args[0] !== '-c') process.exit(2)
 if (script.includes('sys.version_info')) {
   process.stdout.write(JSON.stringify({
-    python_executable: path.resolve(process.argv[1]),
+    python_executable: process.env.REPORTED_PYTHON ?? path.resolve(process.argv[1]),
     version: JSON.parse(process.env.PYTHON_VERSION ?? '[3, 10, 14]'),
     prefix: path.dirname(path.resolve(process.argv[1])),
   }))
@@ -55,7 +65,7 @@ if (script.includes('sys.version_info')) {
     marivo_index_install: process.env.DIRECT_INSTALL !== '1',
     marivo_distribution_version: process.env.MARIVO_VERSION ?? "0.6.6",
     marivo_import_identity: true,
-    python_executable: path.resolve(process.argv[1]),
+    python_executable: process.env.REPORTED_PYTHON ?? path.resolve(process.argv[1]),
     marivo_version: process.env.MARIVO_VERSION ?? ${JSON.stringify(FIXTURE_MARIVO_VERSION)},
     package_path: ${JSON.stringify(packagePath)},
   }))
@@ -78,7 +88,7 @@ interface RuntimeFixture {
 }
 
 async function fixture(): Promise<RuntimeFixture> {
-  const root = await mkdtemp(path.join(tmpdir(), 'dsh-shared-runtime-'))
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-shared-runtime-')))
   const runtimeRoot = path.join(root, 'runtime')
   const failedRuntimeRoot = path.join(root, 'failed-runtime')
   const managedPython = path.join(root, 'managed-python')
@@ -514,3 +524,61 @@ for (const administrator of [false, true]) {
     await assert.rejects(stat(path.join(item.runtimeRoot, 'installation.json')), { code: 'ENOENT' })
   })
 }
+
+test('DSH_HOME directory aliases install and reuse one Runtime, including an existing alias marker', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  const alias = path.join(item.root, 'home-link')
+  await symlink(item.root, alias, 'dir')
+  const previous = process.env.DSH_HOME
+  t.after(() => {
+    if (previous === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previous
+  })
+  process.env.DSH_HOME = alias
+  const config = { bootstrapPythonExecutable: item.bootstrapPython, installTimeoutMs: 10_000 }
+  const runtime = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
+  const physicalRuntime = path.join(item.root, 'dsh-data-analysis', 'runtimes', 'marivo')
+  const pythonSuffix = process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python'
+  assert.equal(runtime.pythonExecutable, path.join(physicalRuntime, '.venv', pythonSuffix))
+  assert.equal(runtime.packagePath, item.packagePath)
+  const marker = JSON.parse(await readFile(runtime.installationPath, 'utf8'))
+  assert.equal(marker.pythonExecutable, runtime.pythonExecutable)
+  assert.equal(marker.packagePath, runtime.packagePath)
+  const reused = await ensureSharedMarivoRuntime(config, {
+    ...runtimeOptions(item),
+    existingOnly: true,
+  })
+  assert.deepEqual(reused, runtime)
+
+  // Records written before canonicalization remain usable through either directory spelling.
+  marker.pythonExecutable = path.join(runtime.runtimeRoot, '.venv', pythonSuffix)
+  marker.packagePath = path.join(alias, 'site-packages', 'marivo', '__init__.py')
+  await writeFile(runtime.installationPath, JSON.stringify(marker))
+  process.env.DSH_HOME = item.root
+  const legacy = await ensureSharedMarivoRuntime(config, {
+    ...runtimeOptions(item),
+    existingOnly: true,
+  })
+  assert.equal(legacy.pythonExecutable, runtime.pythonExecutable)
+  assert.equal(legacy.packagePath, runtime.packagePath)
+  assert.equal(legacy.runtimeRoot, physicalRuntime)
+})
+
+test('Runtime admission rejects another venv even when both Python links share a base executable', async (t) => {
+  const item = await fixture()
+  t.after(item.cleanup)
+  const selected = path.join(item.root, 'first-venv', 'bin', 'python')
+  const reported = path.join(item.root, 'second-venv', 'bin', 'python')
+  for (const executable of [selected, reported]) {
+    await mkdir(path.dirname(executable), { recursive: true })
+    await symlink(item.bootstrapPython, executable)
+  }
+  await assert.rejects(
+    ensureSharedMarivoRuntime(
+      { runtimeRoot: item.runtimeRoot, pythonExecutable: selected },
+      runtimeOptions(item, { ...item.environment, REPORTED_PYTHON: reported }),
+    ),
+    { code: 'shared-runtime-identity-mismatch' },
+  )
+})

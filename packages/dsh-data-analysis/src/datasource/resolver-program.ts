@@ -1,3 +1,4 @@
+import { PYTHON_IMPORT_IDENTITY } from '../environment/identity.ts'
 import { PYTHON_EXCEPTION_PROGRAM } from '../python-exception.ts'
 import { PYTHON_RESULT_HEADER } from '../python-result-references.ts'
 
@@ -45,12 +46,11 @@ class SnapshotResolver:
 `.trim()
 
 /** The worker checks the exact binding and enters scope before any user code. */
-export const PYTHON_WORKER = `${PYTHON_EXCEPTION_PROGRAM}\n${RESOLVER_PROGRAM}\n${String.raw`
+export const PYTHON_WORKER = `${PYTHON_IMPORT_IDENTITY}\n${PYTHON_EXCEPTION_PROGRAM}\n${RESOLVER_PROGRAM}\n${String.raw`
 payload = json.load(sys.stdin)
 expected = payload["identity"]
-if (os.path.abspath(sys.executable) != expected["pythonExecutable"] or
-    marivo.__version__ != expected["marivoVersion"] or
-    os.path.abspath(marivo.__file__) != expected["packagePath"] or
+if (_dsh_import_identity(sys.executable, marivo.__version__, marivo.__file__) !=
+    _dsh_import_identity(expected["pythonExecutable"], expected["marivoVersion"], expected["packagePath"]) or
     str(Path.cwd().resolve()) != payload["project_root"]):
     raise RuntimeError("Marivo execution identity changed; rebind required")
 resolver = SnapshotResolver(payload)

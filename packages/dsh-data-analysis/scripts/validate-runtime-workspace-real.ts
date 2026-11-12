@@ -1,14 +1,28 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { MARIVO_VERSION } from '../src/compatibility.ts'
+import { PYTHON_LAUNCHER, PYTHON_WORKER } from '../src/datasource/resolver-program.ts'
 import {
+  createSharedMarivoRuntimeRunner,
   ensureSharedMarivoRuntime,
+  FixedSubprocessPolicy,
   MarivoEnvironmentError,
   MarivoWorkspaceEnvironmentManager,
 } from '../src/environment/index.ts'
+import { MARIVO_PROJECT_INIT_PROGRAM } from '../src/environment/project-preparation.ts'
 import { resultReference } from '../src/presentation/contracts/result-reference.ts'
 import { readMarivoResult } from '../src/presentation/result-reader.ts'
 
@@ -16,9 +30,19 @@ import { readMarivoResult } from '../src/presentation/result-reader.ts'
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
 const keepValidation = process.env.DSH_DATA_ANALYSIS_KEEP_VALIDATION === '1'
 
+const previousDshHome = process.env.DSH_HOME
 const validationRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-runtime-workspace-')))
 try {
-  const runtimeRoot = path.join(validationRoot, 'runtime')
+  const home = path.join(validationRoot, 'home')
+  const linkedHome = path.join(validationRoot, 'home-link')
+  await mkdir(home)
+  await symlink(home, linkedHome, 'dir')
+  process.env.DSH_HOME = linkedHome
+  let linkedPython: string | undefined
+  if (pythonExecutable !== undefined) {
+    await symlink(path.dirname(pythonExecutable), path.join(home, 'python-bin'), 'dir')
+    linkedPython = path.join(linkedHome, 'python-bin', path.basename(pythonExecutable))
+  }
   const firstWorkspace = path.join(validationRoot, 'workspace-a')
   const secondWorkspace = path.join(validationRoot, 'workspace-b')
   await mkdir(firstWorkspace)
@@ -28,10 +52,21 @@ try {
     [secondWorkspace, await readdir(secondWorkspace)],
   ])
 
-  const config = { runtimeRoot, ...(pythonExecutable === undefined ? {} : { pythonExecutable }) }
+  const config = linkedPython === undefined ? {} : { pythonExecutable: linkedPython }
   const runtime = await ensureSharedMarivoRuntime(config)
   const reused = await ensureSharedMarivoRuntime(config)
   assert.deepEqual(reused, runtime)
+  const helpRunner = createSharedMarivoRuntimeRunner(runtime)
+  await helpRunner.assertImportIdentity()
+  const help = await helpRunner.runChecked({
+    program: 'import marivo\nmarivo.help()',
+  })
+  assert.equal(help.exitCode, 0, help.stderr.toString('utf8'))
+  assert(help.stdout.byteLength > 0)
+  process.env.DSH_HOME = home
+  const canonicalHomeRuntime = await ensureSharedMarivoRuntime(config, { existingOnly: true })
+  assert.equal(canonicalHomeRuntime.pythonExecutable, runtime.pythonExecutable)
+  assert.equal(canonicalHomeRuntime.packagePath, runtime.packagePath)
   const marker = JSON.parse(await readFile(runtime.installationPath, 'utf8'))
   assert.equal(marker.marivoVersion, runtime.marivoVersion)
   assert.equal(marker.schema, 'dsh-data-analysis-runtime/v5')
@@ -63,6 +98,41 @@ try {
   for (const workspace of [firstWorkspace, secondWorkspace]) {
     assert.deepEqual(await readdir(workspace), before.get(workspace))
   }
+  const executionWorkspace = path.join(validationRoot, 'workspace-execution')
+  await mkdir(executionWorkspace)
+  const aliasedIdentity = {
+    pythonExecutable:
+      linkedPython ??
+      path.join(
+        runtime.runtimeRoot,
+        '.venv',
+        process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
+      ),
+    marivoVersion: runtime.marivoVersion,
+    packagePath: runtime.packagePath,
+  }
+  const policy = new FixedSubprocessPolicy(executionWorkspace)
+  const initialized = await policy.run({
+    executable: aliasedIdentity.pythonExecutable,
+    args: ['-c', MARIVO_PROJECT_INIT_PROGRAM],
+    stdin: JSON.stringify({ ...aliasedIdentity, projectRoot: executionWorkspace }),
+  })
+  assert.equal(initialized.exitCode, 0, initialized.stderr.toString('utf8'))
+  assert((await stat(path.join(executionWorkspace, 'marivo.toml'))).isFile())
+  const executed = await policy.run({
+    executable: aliasedIdentity.pythonExecutable,
+    args: ['-c', PYTHON_LAUNCHER],
+    stdin: JSON.stringify({
+      identity: aliasedIdentity,
+      project_root: executionWorkspace,
+      grants: {},
+      values: {},
+      code: 'print("symlink-runtime-executed")',
+      worker: PYTHON_WORKER,
+    }),
+  })
+  assert.equal(executed.exitCode, 0, executed.stderr.toString('utf8'))
+  assert.equal(executed.stdout.toString().trim(), 'symlink-runtime-executed')
   const checkedWrite = await first.runChecked({
     program: String.raw`
 from decimal import Decimal
@@ -172,6 +242,10 @@ print(json.dumps(mv.persist_dataframe(frame).to_dict()))
       administrator,
       workspaces: [first.binding, second.binding],
       runtimeReused: true,
+      symlinkDshHomeReused: true,
+      checkedHelpWithSymlinkIdentity: true,
+      projectInitWithSymlinkIdentity: true,
+      pythonWorkerWithSymlinkIdentity: true,
       zeroWorkspaceWrites: true,
       checkedEncoding: { data: computed },
       workspaceShadowRejected: true,
@@ -186,5 +260,7 @@ print(json.dumps(mv.persist_dataframe(frame).to_dict()))
   await writeFile(path.join(validationRoot, 'evidence.json'), evidence)
   process.stdout.write(evidence)
 } finally {
+  if (previousDshHome === undefined) delete process.env.DSH_HOME
+  else process.env.DSH_HOME = previousDshHome
   if (!keepValidation) await rm(validationRoot, { recursive: true, force: true })
 }

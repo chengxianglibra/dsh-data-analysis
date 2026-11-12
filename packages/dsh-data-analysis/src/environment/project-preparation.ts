@@ -1,6 +1,7 @@
 import { lstat, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { MarivoEnvironmentError } from './errors.ts'
+import { PYTHON_IMPORT_IDENTITY } from './identity.ts'
 import type { MarivoCheckedRunner } from './types.ts'
 
 export interface ProjectPreparation {
@@ -24,19 +25,18 @@ runpy.run_module("marivo", run_name="__main__")
 `.trim()
 
 /** The Host Shell owns policy/cancellation; this program only invokes the public CLI. */
-export const MARIVO_PROJECT_INIT_PROGRAM = String.raw`
+export const MARIVO_PROJECT_INIT_PROGRAM = `${PYTHON_IMPORT_IDENTITY}\n${String.raw`
 import json, os, runpy, sys
 from pathlib import Path
 import marivo
 expected = json.load(sys.stdin)
-if (os.path.abspath(sys.executable) != os.path.abspath(expected["pythonExecutable"]) or
-    marivo.__version__ != expected["marivoVersion"] or
-    os.path.abspath(marivo.__file__ or "") != os.path.abspath(expected["packagePath"]) or
+if (_dsh_import_identity(sys.executable, marivo.__version__, marivo.__file__) !=
+    _dsh_import_identity(expected["pythonExecutable"], expected["marivoVersion"], expected["packagePath"]) or
     str(Path.cwd().resolve()) != expected["projectRoot"]):
     raise RuntimeError("Marivo project preparation identity changed; rebind required")
 sys.argv = ["marivo", "init", "--project-root", expected["projectRoot"]]
 runpy.run_module("marivo", run_name="__main__")
-`.trim()
+`.trim()}`
 
 async function manifestPresent(root: string): Promise<boolean> {
   try {

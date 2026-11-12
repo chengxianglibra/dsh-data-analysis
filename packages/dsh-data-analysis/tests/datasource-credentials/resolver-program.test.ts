@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test, { type TestContext } from 'node:test'
@@ -346,4 +354,35 @@ print("CLEANED")
   const result = f.run(wrapper, JSON.stringify(payload))
   assert.equal(result.status, 0, result.stderr || String(result.error))
   assert.equal(result.stdout.trim(), 'CLEANED')
+})
+
+test('the Python worker accepts interpreter and package directory aliases', (t) => {
+  const f = pythonFixture(t)
+  const payload = f.payload('print("alias-worker-ok")')
+  const pythonDirectory = path.join(f.root, 'python-link')
+  symlinkSync(path.dirname(payload.identity.pythonExecutable), pythonDirectory, 'dir')
+  const packageDirectory = path.join(f.root, 'package-link')
+  symlinkSync(path.join(f.root, 'marivo'), packageDirectory, 'dir')
+  payload.identity.pythonExecutable = path.join(
+    pythonDirectory,
+    path.basename(payload.identity.pythonExecutable),
+  )
+  payload.identity.packagePath = path.join(packageDirectory, '__init__.py')
+  const result = f.run(PYTHON_LAUNCHER, JSON.stringify(payload))
+  assert.equal(result.status, 0, result.stderr || String(result.error))
+  assert.equal(result.stdout.trim(), 'alias-worker-ok')
+})
+
+test('the Python worker rejects a different environment sharing the same base executable', (t) => {
+  const f = pythonFixture(t)
+  const payload = f.payload('print("must-not-execute")')
+  const otherBin = path.join(f.root, 'other-venv', 'bin')
+  mkdirSync(otherBin, { recursive: true })
+  const otherPython = path.join(otherBin, path.basename(payload.identity.pythonExecutable))
+  symlinkSync(payload.identity.pythonExecutable, otherPython)
+  payload.identity.pythonExecutable = otherPython
+  const result = f.run(PYTHON_LAUNCHER, JSON.stringify(payload))
+  assert.notEqual(result.status, 0)
+  assert.equal(result.stdout, '')
+  assert.match(result.stderr, /identity changed/)
 })

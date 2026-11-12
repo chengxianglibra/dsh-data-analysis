@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
-import { chmod, mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { chmod, mkdir, mkdtemp, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import test from 'node:test'
 import {
   bindMarivoEnvironment,
+  createSharedMarivoRuntimeRunner,
   FixedSubprocessPolicy,
   MarivoEnvironmentError,
 } from '../../src/environment/index.ts'
+import { MARIVO_PROJECT_INIT_PROGRAM } from '../../src/environment/project-preparation.ts'
 import { environmentPayload } from '../../src/environment/summary.ts'
 
 const FIXTURE_EXECUTABLE = String.raw`#!/usr/bin/env node
@@ -131,6 +134,8 @@ async function fixtureProject(withDefaultVenv = true): Promise<FixtureProject> {
   await mkdir(path.dirname(executable), { recursive: true })
   await writeFile(executable, FIXTURE_EXECUTABLE, 'utf8')
   await chmod(executable, 0o755)
+  await mkdir(path.join(root, 'fake-marivo'))
+  await writeFile(path.join(root, 'fake-marivo', '__init__.py'), '')
   return { root, executable, cleanup: () => rm(root, { recursive: true, force: true }) }
 }
 
@@ -467,4 +472,100 @@ test('fixed non-secret process controls preserve v1 refs while credential overla
   assert.equal(payload.argument, 'marivo.semantic_ref/v1 office')
   assert.equal(payload.nested.secret, '[REDACTED]')
   assert.ok(!result.stderr.toString('utf8').includes('test-secret'))
+})
+
+test('checked execution and project initialization accept directory aliases while preserving venv identity', async (t) => {
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'marivo-path-identity-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const home = path.join(root, 'home')
+  const alias = path.join(root, 'home-link')
+  await mkdir(home)
+  await symlink(home, alias, 'dir')
+  const venv = path.join(home, '.venv')
+  const created = spawnSync('python3', ['-m', 'venv', '--without-pip', venv], { encoding: 'utf8' })
+  assert.equal(created.status, 0, created.stderr || String(created.error))
+  const suffix = process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python'
+  const executable = path.join(venv, suffix)
+  const linkedExecutable = path.join(alias, '.venv', suffix)
+  // Only Marivo imports/CLI are doubled; the venv, Python process and production checks are real.
+  const packageRoot = path.join(home, 'marivo')
+  await mkdir(packageRoot)
+  await writeFile(path.join(packageRoot, '__init__.py'), '__version__ = "fixture"\n')
+  await writeFile(
+    path.join(packageRoot, '__main__.py'),
+    'from pathlib import Path\nPath("initialized").write_text("ok")\n',
+  )
+  const runtime = {
+    runtimeRoot: root,
+    pythonExecutable: linkedExecutable,
+    marivoVersion: 'fixture',
+    packagePath: path.join(alias, 'marivo', '__init__.py'),
+  }
+  const runner = createSharedMarivoRuntimeRunner(runtime, {
+    environment: { ...process.env, DSH_HOME: alias, PYTHONPATH: home },
+  })
+  const identity = await runner.assertImportIdentity()
+  assert.equal(identity.pythonExecutable, executable)
+  assert.equal(identity.packagePath, path.join(packageRoot, '__init__.py'))
+  const result = await runner.runChecked({ program: 'import sys\nprint(sys.prefix)' })
+  assert.equal(result.exitCode, 0)
+  assert.equal(result.stdout.toString().trim(), venv)
+  const initialized = spawnSync(linkedExecutable, ['-c', MARIVO_PROJECT_INIT_PROGRAM], {
+    cwd: root,
+    env: { ...process.env, DSH_HOME: alias, PYTHONPATH: home },
+    input: JSON.stringify({ ...runtime, projectRoot: root }),
+    encoding: 'utf8',
+  })
+  assert.equal(initialized.status, 0, initialized.stderr || String(initialized.error))
+  assert((await stat(path.join(root, 'initialized'))).isFile())
+
+  const otherVenv = path.join(home, 'other-venv')
+  const other = spawnSync('python3', ['-m', 'venv', '--without-pip', otherVenv], {
+    encoding: 'utf8',
+  })
+  assert.equal(other.status, 0, other.stderr || String(other.error))
+  const otherExecutable = path.join(otherVenv, suffix)
+  await assert.rejects(
+    runner.runChecked({
+      program: 'print("must not run")',
+      environmentOverlay: { PYTHONPATH: root },
+    }),
+    { code: 'binding-identity-mismatch' },
+  )
+  assert.equal(runner.status, 'failed')
+  await rm(path.join(root, 'initialized'))
+  const rejected = spawnSync(otherExecutable, ['-c', MARIVO_PROJECT_INIT_PROGRAM], {
+    cwd: root,
+    env: { ...process.env, PYTHONPATH: home },
+    input: JSON.stringify({ ...runtime, projectRoot: root }),
+    encoding: 'utf8',
+  })
+  assert.notEqual(rejected.status, 0)
+  assert.match(rejected.stderr, /identity changed/)
+  await assert.rejects(stat(path.join(root, 'initialized')), { code: 'ENOENT' })
+})
+
+test('standalone doctor admission gives directory aliases the same binding fingerprint', async (t) => {
+  const fixture = await fixtureProject()
+  t.after(fixture.cleanup)
+  const alias = path.join(fixture.root, 'alias')
+  await symlink(fixture.root, alias, 'dir')
+  const aliasPython = path.join(
+    alias,
+    '.venv',
+    process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
+  )
+  const canonical = await bindMarivoEnvironment({ projectRoot: fixture.root })
+  const linked = await bindMarivoEnvironment(
+    { projectRoot: alias, pythonExecutable: aliasPython },
+    {
+      environment: {
+        ...process.env,
+        REPORTED_PYTHON: aliasPython,
+        PACKAGE_PATH: path.join(alias, 'fake-marivo', '__init__.py'),
+      },
+    },
+  )
+  assert.deepEqual(linked.binding, canonical.binding)
+  assert.equal((await linked.assertImportIdentity()).pythonExecutable, fixture.executable)
 })

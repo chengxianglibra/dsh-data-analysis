@@ -11,14 +11,14 @@ import {
 // Emulate the Python subprocess boundary, including its reserved identity and config exits.
 function workspacePython(packagePath: string): string {
   return `#!/usr/bin/env node
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
 const [mode, , python, version, actualPackage, projectRoot] = process.argv.slice(2)
 if (mode !== '-c' || projectRoot !== process.cwd()) process.exit(2)
 if (python !== process.argv[1] || version !== '9.8.7' ||
-    actualPackage !== ${JSON.stringify(packagePath)}) process.exit(78)
+    actualPackage !== realpathSync(${JSON.stringify(packagePath)})) process.exit(78)
 if (existsSync(path.join(projectRoot, 'premature-exit'))) process.exit(0)
 const manifestPath = path.join(projectRoot, 'marivo.toml')
 const manifest = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : undefined

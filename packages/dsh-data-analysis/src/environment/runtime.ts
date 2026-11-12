@@ -22,6 +22,7 @@ import {
   RUNTIME_INSTALLATION_VERSION,
 } from '../compatibility.ts'
 import { MarivoEnvironmentError } from './errors.ts'
+import { canonicalPythonExecutable, PYTHON_IMPORT_IDENTITY } from './identity.ts'
 import { FixedSubprocessPolicy } from './subprocess.ts'
 import type { SharedMarivoRuntime, SharedMarivoRuntimeConfig, SubprocessResult } from './types.ts'
 
@@ -34,7 +35,7 @@ const INSTALLATION_SCHEMA = RUNTIME_INSTALLATION_VERSION
 const INSTALLATION_FILENAME = 'installation.json'
 const SKILL_NAMES = ['marivo-analysis', 'marivo-semantic'] as const
 const SERVICE_SKILL = 'marivo-service'
-const PROBE_SCRIPT = String.raw`
+const PROBE_SCRIPT = `${PYTHON_IMPORT_IDENTITY}\n${String.raw`
 import json
 import os
 import sys
@@ -51,22 +52,20 @@ print(json.dumps({
     "marivo_distribution_version": dist.version,
     "marivo_index_install": dist.read_text("direct_url.json") is None,
     "marivo_import_identity": os.path.realpath(marivo.__file__) == os.path.realpath(dist.locate_file("marivo/__init__.py")),
-    "python_executable": os.path.abspath(sys.executable),
-    "marivo_version": marivo.__version__,
-    "package_path": os.path.abspath(marivo.__file__ or ""),
+    **_dsh_import_identity(sys.executable, marivo.__version__, marivo.__file__),
 }, sort_keys=True))
-`.trim()
-const PYTHON_VERSION_SCRIPT = String.raw`
+`.trim()}`
+const PYTHON_VERSION_SCRIPT = `${PYTHON_IMPORT_IDENTITY}\n${String.raw`
 import json
 import os
 import sys
 
 print(json.dumps({
-    "python_executable": os.path.abspath(sys.executable),
+    "python_executable": _dsh_python_executable(sys.executable),
     "version": list(sys.version_info[:3]),
     "prefix": os.path.abspath(sys.prefix),
 }, sort_keys=True))
-`.trim()
+`.trim()}`
 
 interface RuntimeProbe {
   marivo_distribution_version: string
@@ -173,7 +172,7 @@ async function assertExecutable(executable: string): Promise<string> {
     const info = await stat(selected)
     if (!info.isFile()) throw new Error('not a file')
     await access(selected, process.platform === 'win32' ? constants.F_OK : constants.X_OK)
-    return selected
+    return canonicalPythonExecutable(selected)
   } catch (cause) {
     throw new MarivoEnvironmentError(
       'python-unavailable',
@@ -253,8 +252,8 @@ async function probeRuntime(
       { probe, ...(repair === undefined ? {} : { repairCommands: repair.commands }) },
     )
   }
-  const actualPython = await realpath(path.resolve(probe.python_executable))
-  const selectedPython = await realpath(canonical)
+  const actualPython = canonicalPythonExecutable(probe.python_executable)
+  const selectedPython = canonicalPythonExecutable(canonical)
   if (expectedMarivoVersion !== undefined && probe.marivo_version !== expectedMarivoVersion) {
     throw new MarivoEnvironmentError(
       'shared-runtime-version-unsupported',
@@ -284,7 +283,7 @@ async function probeRuntime(
     marivo_import_identity: true,
     python_executable: canonical,
     marivo_version: probe.marivo_version,
-    package_path: path.resolve(probe.package_path),
+    package_path: await realpath(probe.package_path),
   }
 }
 
@@ -416,10 +415,11 @@ async function validatedExisting(
   if (record.marivoVersion !== PINNED_MARIVO_VERSION) return undefined
   const expectedPython = configuredPython ?? venvPython(runtimeRoot)
   const expectedSkillsRoot = path.join(runtimeRoot, 'skills')
-  if (path.normalize(record.skillsRoot) !== path.normalize(expectedSkillsRoot)) return undefined
   try {
+    if ((await realpath(record.skillsRoot)) !== (await realpath(expectedSkillsRoot)))
+      return undefined
     const selectedPython = await assertExecutable(expectedPython)
-    if (path.normalize(record.pythonExecutable) !== selectedPython) return undefined
+    if (canonicalPythonExecutable(record.pythonExecutable) !== selectedPython) return undefined
     const probe = await probeRuntime(
       runtimeRoot,
       selectedPython,
@@ -428,7 +428,7 @@ async function validatedExisting(
       configuredPython !== undefined,
       record.marivoVersion,
     )
-    if (path.normalize(probe.package_path) !== path.normalize(record.packagePath)) return undefined
+    if (probe.package_path !== (await realpath(record.packagePath))) return undefined
     const sourceRoot = path.join(path.dirname(probe.package_path), 'skills')
     await validateSkills(record.skillsRoot, await availableSkills(sourceRoot))
     return {

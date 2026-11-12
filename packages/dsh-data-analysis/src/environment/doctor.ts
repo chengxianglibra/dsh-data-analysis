@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { MarivoEnvironmentError } from './errors.ts'
+import { canonicalPythonExecutable } from './identity.ts'
 import type {
   DoctorCheck,
   DoctorOverallStatus,
@@ -125,7 +126,14 @@ export function admitDoctorReport(
   if (normalizeAbsolute(report.project_root) !== normalizeAbsolute(expectedProjectRoot)) {
     admissionFailure('project_root', `reported ${report.project_root}`)
   }
-  if (normalizeAbsolute(report.python_executable) !== normalizeAbsolute(expectedPythonExecutable)) {
+  try {
+    if (
+      canonicalPythonExecutable(report.python_executable) !==
+      canonicalPythonExecutable(expectedPythonExecutable)
+    ) {
+      admissionFailure('python_executable', `reported ${report.python_executable}`)
+    }
+  } catch {
     admissionFailure('python_executable', `reported ${report.python_executable}`)
   }
   if (report.marivo.version.length === 0) admissionFailure('marivo.version', 'missing')

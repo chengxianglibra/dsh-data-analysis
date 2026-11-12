@@ -36,6 +36,11 @@ $DSH_HOME/dsh-data-analysis/runtimes/marivo/
 
 `installation.json` 使用 `dsh-data-analysis-runtime/v5`，记录实际 `marivoVersion`、`pythonExecutable`、`packagePath` 和 `skillsRoot`。它是安装完成标记，不替代 Marivo 项目 manifest。
 
+Runtime 探测和 marker 使用与执行阶段一致的[路径身份规则](environment-execution.md#同进程身份复核)：
+Python 路径解析父目录软链，保留 venv 内的可执行入口；package path 解析为真实文件路径。
+`DSH_HOME` 或管理员 Python 的父目录含软链时，同一目录的别名不构成身份变化。读取现有 v5 marker 时，
+按同一规则比较 Python、package path，并以 `realpath` 比较 Skill 目录；仅路径写法不同不触发重装。
+
 启动时先读取 marker 并验证：
 
 1. Python 文件存在且可执行；

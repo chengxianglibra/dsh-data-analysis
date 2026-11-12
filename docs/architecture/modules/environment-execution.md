@@ -81,6 +81,12 @@ fingerprint
 prelude，在同一个 Python 进程内先比较 `sys.executable`、`marivo.__version__` 和 `marivo.__file__`，
 再把 argv 复原为领域参数并执行 program，避免 check/use 之间发生解释器或 package 漂移。
 
+安装探测、doctor 准入、binding、项目初始化和 Python worker 共用 `environment/identity.ts` 的路径身份规则。
+Python executable 只对父目录执行 `realpath`，保留最终文件名，避免追踪 `.venv/bin/python` 的软链后
+丢失 venv 上下文，或把共享同一个 base Python 的不同 venv 视为同一身份；Marivo package path 使用完整
+`realpath`。binding 保存规范化后的身份并计算 fingerprint，后续复核同样规范化实际路径。
+因此 `/tmp/...` 与 `/private/tmp/...` 等目录别名可以一致通过，而不同 venv、包路径或版本仍被拒绝。
+
 identity mismatch 使用专用 exit code `78`。一旦发现 mismatch，`MarivoEnvironment` 永久进入
 `failed`；后续操作返回 `binding-failed`，不会用新值更新原 binding。普通的无效 Help target 或
 Datasource 连接失败不会污染 binding。
