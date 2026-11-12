@@ -176,6 +176,108 @@ test('refresh preparation rejects a session workspace changed while resolving th
   )
 })
 
+test('delete RPC requires the current build and removes the report and its history', async (t) => {
+  const f = await fixture(t)
+  const next = version(f.document)
+  await publishPresentation(f.root, next, f.first.buildId, async () => {}, undefined, tab)
+  const { connection, channels } = createConnectionFixture()
+  const stop = registerMarivoPresentationRpc(connection, f.service)
+  t.after(() => stop())
+  const call = (payload: unknown) =>
+    channels.get('/marivo-presentation')!('reports/delete', payload, new AbortController().signal)
+  const request = {
+    workspaceId: f.document.workspaceId,
+    reportId: f.document.reportId,
+    expectedBuildId: f.first.buildId,
+  }
+  assert.deepEqual(await call(request), {
+    ok: false,
+    error: { code: 'internal', message: 'report-delete-conflict', details: {} },
+  })
+  assert.equal(
+    parseReportCatalog(await f.service.catalog('reports/list', { workspaceId: 'workspace' }))
+      .reports.length,
+    1,
+  )
+  assert.deepEqual(await call({ ...request, expectedBuildId: next.buildId }), {
+    ok: true,
+    value: { cleanupPending: false },
+  })
+  assert.equal(
+    parseReportCatalog(await f.service.catalog('reports/list', { workspaceId: 'workspace' }))
+      .reports.length,
+    0,
+  )
+  assert.deepEqual(
+    await channels.get('/marivo-presentation')!(
+      'reports/history',
+      { workspaceId: request.workspaceId, reportId: request.reportId },
+      new AbortController().signal,
+    ),
+    { ok: false, error: { code: 'internal', message: 'report-not-found', details: {} } },
+  )
+  assert.deepEqual(await call(request), {
+    ok: false,
+    error: { code: 'internal', message: 'report-not-found', details: {} },
+  })
+})
+
+test('resolve RPC distinguishes a missing view from a missing build', async (t) => {
+  const f = await fixture(t)
+  const { connection, channels } = createConnectionFixture()
+  const stop = registerMarivoPresentationRpc(connection, f.service)
+  t.after(() => stop())
+  const call = () =>
+    channels.get('/marivo-presentation')!(
+      'reports/resolve',
+      { workspaceId: f.document.workspaceId, reportId: f.document.reportId },
+      new AbortController().signal,
+    )
+  await rm(f.first.files.document.path)
+  assert.deepEqual(await call(), {
+    ok: false,
+    error: { code: 'internal', message: 'asset-missing', details: {} },
+  })
+  await rm(presentationReportPath(f.root, f.document.reportId), { recursive: true })
+  assert.deepEqual(await call(), {
+    ok: false,
+    error: { code: 'internal', message: 'report-not-found', details: {} },
+  })
+})
+
+test('delete RPC rejects unauthorized or changed workspace ownership', async (t) => {
+  const f = await fixture(t)
+  const request = {
+    workspaceId: f.document.workspaceId,
+    reportId: f.document.reportId,
+    expectedBuildId: f.document.buildId,
+  }
+  await assert.rejects(
+    f.service.deleteReport({ ...request, workspaceId: 'other' }),
+    /workspace-unavailable/,
+  )
+  await assert.rejects(
+    f.service.deleteReport({ ...request, sessionId: 'source' }),
+    /invalid-request/,
+  )
+  let resolutions = 0
+  const changed = new MarivoPresentationFileService(undefinedResolver, () => ({
+    id: f.document.workspaceId,
+    path: ++resolutions === 1 ? f.root : path.join(f.root, 'different'),
+  }))
+  t.after(() => changed.close())
+  await assert.rejects(changed.deleteReport(request), /workspace-changed/)
+  assert.equal(
+    parseReportCatalog(await f.service.catalog('reports/list', { workspaceId: 'workspace' }))
+      .reports.length,
+    1,
+  )
+})
+
+function undefinedResolver() {
+  return undefined
+}
+
 test('publication history excludes concurrent losers and remains readable without the source Session', async (t) => {
   const f = await fixture(t)
   const candidates = ['B', 'C'].map((title) => version(f.document, title))

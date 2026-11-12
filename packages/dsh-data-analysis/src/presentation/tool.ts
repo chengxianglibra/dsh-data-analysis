@@ -41,7 +41,12 @@ import {
   presentationReceiptText,
 } from './receipt.ts'
 import { PresentationRecoveryError, unavailableDraft } from './recovery.ts'
-import { publishPresentation, readAnalysisRecord, resolvePresentation } from './reports.ts'
+import {
+  deletePresentation,
+  publishPresentation,
+  readAnalysisRecord,
+  resolvePresentation,
+} from './reports.ts'
 import { analysisResultSummary, analysisResultSummaryToolSchema } from './result-summary.ts'
 
 export type PresentationWorkspaceSource = () =>
@@ -503,6 +508,65 @@ const uiReadInput = z.union([
   }),
   z.strictObject({ draft: z.literal(true), includeCode: z.boolean().optional() }),
 ])
+
+/** Permanently delete the saved view and all its history in the current Workspace. */
+export function createMarivoReportDeleteTool(source: PresentationWorkspaceSource): ToolDefinition {
+  return defineTool({
+    name: 'marivo_report_delete',
+    description:
+      'Permanently delete an entire saved analysis view and all its history when the user asks. Use its exact current saved ref; old refs are rejected on conflict. The action cannot be undone. A cleanupPending result means the view is unavailable but disk cleanup needs the same request retried. Does not delete source data or exported files.',
+    parameters: {
+      ref: {
+        type: 'string',
+        required: true,
+        description: 'Exact current saved analysis view ref.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          deleted: { type: 'boolean', required: true },
+          workspaceId: { type: 'string', required: true },
+          reportId: { type: 'string', required: true },
+          cleanupPending: { type: 'boolean', required: true },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    async execute(args, exec) {
+      const input = z.strictObject({ ref: z.string().min(1).max(4096) }).parse(args)
+      const ref = parseReportRef(input.ref)
+      if (ref.kind !== 'saved') throw new Error('report-saved-ref-required')
+      const binding = await source()
+      if (ref.workspaceId !== binding.id) throw new Error('report-workspace-mismatch')
+      const check = async () => {
+        const current = await source()
+        if (current.id !== binding.id || current.path !== binding.path)
+          throw new Error('presentation-workspace-changed')
+      }
+      const result = await deletePresentation(
+        binding.path,
+        binding.id,
+        ref.reportId,
+        ref.buildId,
+        check,
+        exec.signal,
+      )
+      return {
+        deleted: true,
+        workspaceId: binding.id,
+        reportId: ref.reportId,
+        cleanupPending: result.cleanupPending,
+      }
+    },
+  })
+}
+
+export function registerMarivoReportDeleteTool(ctx: Context, source: PresentationWorkspaceSource) {
+  return registerMarivoTool(ctx, createMarivoReportDeleteTool(source))
+}
 
 /** Editing context only: exact/current saved version or the caller's active Turn draft. */
 export function createMarivoUiReadTool(

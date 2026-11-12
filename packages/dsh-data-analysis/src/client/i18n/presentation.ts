@@ -149,6 +149,20 @@ export const zh = {
   'marivo.presentation.ui-dataset-source-datasources-offline':
     '离线分析视图不包含执行时数据源信息。',
   'marivo.presentation.report-actions': '分析视图操作',
+  'marivo.presentation.delete-report': '删除分析视图',
+  'marivo.presentation.delete-report-confirm': '确认删除分析视图',
+  'marivo.presentation.delete-report-description': '将永久删除整个视图及其所有历史版本，无法恢复。',
+  'marivo.presentation.delete-report-cancel': '取消',
+  'marivo.presentation.delete-report-stale': '视图版本已变化，请打开当前版本后重试。',
+  'marivo.presentation.delete-report-unavailable': '工作区或视图已变化，请重新打开后重试。',
+  'marivo.presentation.delete-report-failed': '删除失败，请重试。',
+  'marivo.presentation.delete-report-uncertain': '无法确认删除结果，请刷新目录检查。',
+  'marivo.presentation.delete-report-dismiss': '关闭删除提示',
+  'marivo.presentation.report-deleted': '此分析视图已删除或不存在。',
+  'marivo.presentation.report-deleted-cleanup-pending':
+    '此分析视图已删除，但磁盘文件清理尚未完成。',
+  'marivo.presentation.delete-report-retry-cleanup': '重试清理文件',
+  'marivo.presentation.delete-report-cleanup-failed': '无法确认文件清理结果，请重试。',
   'marivo.presentation.refresh-data': '更新数据',
   'marivo.presentation.refresh-data-accepted': '更新请求已提交，请在对话中查看进度和结果。',
   'marivo.presentation.refresh-data-stale': '此分析视图不是当前版本，请打开当前版本后重试。',
@@ -409,6 +423,25 @@ export const en = {
   'marivo.presentation.ui-dataset-source-datasources-offline':
     'Execution datasource information is not included in the offline analysis view.',
   'marivo.presentation.report-actions': 'Analysis view actions',
+  'marivo.presentation.delete-report': 'Delete analysis view',
+  'marivo.presentation.delete-report-confirm': 'Delete analysis view?',
+  'marivo.presentation.delete-report-description':
+    'The entire view and all its historical versions will be permanently deleted and cannot be restored.',
+  'marivo.presentation.delete-report-cancel': 'Cancel',
+  'marivo.presentation.delete-report-stale':
+    'The view has changed. Open the current version and try again.',
+  'marivo.presentation.delete-report-unavailable':
+    'The workspace or view changed. Reopen it and try again.',
+  'marivo.presentation.delete-report-failed': 'Deletion failed. Try again.',
+  'marivo.presentation.delete-report-uncertain':
+    'Deletion could not be confirmed. Refresh the catalog to check.',
+  'marivo.presentation.delete-report-dismiss': 'Dismiss deletion notification',
+  'marivo.presentation.report-deleted': 'This analysis view was deleted or no longer exists.',
+  'marivo.presentation.report-deleted-cleanup-pending':
+    'The view was deleted, but disk file cleanup is incomplete.',
+  'marivo.presentation.delete-report-retry-cleanup': 'Retry file cleanup',
+  'marivo.presentation.delete-report-cleanup-failed':
+    'File cleanup could not be confirmed. Try again.',
   'marivo.presentation.refresh-data': 'Update data',
   'marivo.presentation.refresh-data-accepted':
     'Update request submitted. Follow its progress and result in the conversation.',

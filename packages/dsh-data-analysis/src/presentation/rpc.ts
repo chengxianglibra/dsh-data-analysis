@@ -31,6 +31,7 @@ import type { AnalysisDrafts } from './drafts.ts'
 import { pointFromDocument } from './point-reference.ts'
 import { draftDeliverySchema, MARIVO_PRESENTATION_RPC_CHANNEL } from './receipt.ts'
 import {
+  deletePresentation,
   listReports,
   readAnalysisRecord,
   readReportHistory,
@@ -109,20 +110,61 @@ export class MarivoPresentationFileService {
     const workspace = await this.#workspace(input)
     if (!workspace) throw new Error('workspace-unavailable')
     const root = path.resolve(workspace.path)
-    const result =
-      endpoint === 'reports/list'
-        ? await listReports(root, workspace.id, signal)
-        : await readReportHistory(
-            root,
-            workspace.id,
-            parsePresentationBuildId(input.reportId),
-            signal,
-          )
+    let result:
+      | Awaited<ReturnType<typeof listReports>>
+      | Awaited<ReturnType<typeof readReportHistory>>
+    if (endpoint === 'reports/list') {
+      result = await listReports(root, workspace.id, signal)
+    } else {
+      try {
+        result = await readReportHistory(
+          root,
+          workspace.id,
+          parsePresentationBuildId(input.reportId),
+          signal,
+        )
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('report-not-found')
+        throw error
+      }
+    }
     const current = await this.#workspace(input)
     if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
       throw new Error('workspace-changed')
     signal.throwIfAborted()
     return result
+  }
+  deleteReport(payload: unknown, caller = new AbortController().signal) {
+    return this.#tasks.track(this.#deleteReport(payload, caller))
+  }
+  async #deleteReport(payload: unknown, caller: AbortSignal) {
+    const signal = AbortSignal.any([caller, this.#abort.signal])
+    signal.throwIfAborted()
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+      throw new Error('invalid-request')
+    const input = payload as Record<string, unknown>
+    if (Object.keys(input).sort().join(',') !== 'expectedBuildId,reportId,workspaceId')
+      throw new Error('invalid-request')
+    this.#scope(input)
+    const reportId = parsePresentationBuildId(input.reportId)
+    const expectedBuildId = parsePresentationBuildId(input.expectedBuildId)
+    const workspace = await this.#workspace(input)
+    if (!workspace) throw new Error('workspace-unavailable')
+    const root = path.resolve(workspace.path)
+    const assertOwner = async () => {
+      const current = await this.#workspace(input)
+      if (!current || current.id !== workspace.id || path.resolve(current.path) !== root)
+        throw new Error('workspace-changed')
+    }
+    const result = await deletePresentation(
+      root,
+      workspace.id,
+      reportId,
+      expectedBuildId,
+      assertOwner,
+      signal,
+    )
+    return { cleanupPending: result.cleanupPending }
   }
   close(): Promise<void> {
     this.#abort.abort()
@@ -405,7 +447,15 @@ export class MarivoPresentationFileService {
         throw new Error('workspace-changed')
     }
     await check()
-    const receipt = await resolvePresentation(root, workspace.id, reportId, signal)
+    let history: Awaited<ReturnType<typeof readReportHistory>>
+    try {
+      history = await readReportHistory(root, workspace.id, reportId, signal)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('report-not-found')
+      throw error
+    }
+    const receipt = history.versions[0]!.receipt
+    await readReceiptAsset(root, workspace.id, receipt, signal)
     await check()
     return receipt
   }
@@ -528,6 +578,7 @@ export function registerMarivoPresentationRpc(
       'reports/resolve',
       'reports/list',
       'reports/history',
+      'reports/delete',
       'report/refresh-prepare',
       'draft/read',
       'resource-stream/read',
@@ -546,6 +597,8 @@ export function registerMarivoPresentationRpc(
           return { ok: true, value: await service.report(payload, signal) }
         if (endpoint === 'reports/list' || endpoint === 'reports/history')
           return { ok: true, value: await service.catalog(endpoint, payload, signal) }
+        if (endpoint === 'reports/delete')
+          return { ok: true, value: await service.deleteReport(payload, signal) }
         if (endpoint === 'report/refresh-prepare')
           return { ok: true, value: await service.refreshPrepare(payload, signal) }
         if (endpoint === 'files/read')
@@ -571,7 +624,7 @@ export function registerMarivoPresentationRpc(
             : (error as NodeJS.ErrnoException)?.code === 'ENOENT'
               ? 'asset-missing'
               : error instanceof Error &&
-                  /^(report-version-unsupported|report-document-incompatible|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-not-current|report-history-full|report-catalog-too-large|analysis-draft-unavailable|code-not-bound|code-unavailable|point-unavailable|point-mismatch|dataset-unavailable|dataset-mismatch|frame-unavailable|component-unavailable|component-mismatch|component-too-large)$/.test(
+                  /^(report-version-unsupported|report-document-incompatible|report-delete-conflict|report-not-found|invalid-request|workspace-unavailable|workspace-changed|asset-path-mismatch|asset-not-file|asset-too-large|asset-changed|asset-digest-mismatch|asset-owner-mismatch|unknown-endpoint|invalid-report-current|invalid-report-history|report-not-current|report-history-full|report-catalog-too-large|analysis-draft-unavailable|code-not-bound|code-unavailable|point-unavailable|point-mismatch|dataset-unavailable|dataset-mismatch|frame-unavailable|component-unavailable|component-mismatch|component-too-large)$/.test(
                     error.message,
                   )
                 ? error.message

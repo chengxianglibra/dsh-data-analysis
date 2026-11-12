@@ -772,6 +772,49 @@ try {
   })
   record('reader container stays within the native viewport after reconnect')
 
+  // This report is no longer needed by subsequent scenarios; delete it through the real menu.
+  const deletePage = page.locator('[data-rt-kind=report][data-rt-current=true]:visible').first()
+  await deletePage.getByRole('button', { name: '分析视图操作' }).click()
+  await page.getByRole('menuitem', { name: '删除分析视图', exact: true }).click()
+  const deleteDialog = page.getByRole('dialog', { name: '确认删除分析视图' })
+  await deleteDialog.waitFor()
+  await deleteDialog.getByRole('button', { name: '取消', exact: true }).click()
+  await analysisSurface(deletePage).waitFor()
+  await deletePage.getByRole('button', { name: '分析视图操作' }).click()
+  await page.getByRole('menuitem', { name: '删除分析视图', exact: true }).click()
+  await deleteDialog.getByRole('button', { name: '删除分析视图', exact: true }).click()
+  await deletePage.getByText('此分析视图已删除或不存在。', { exact: true }).waitFor()
+  await page.evaluate(
+    ({ workspaceId, reportId, buildId }) =>
+      (window as any).__rightTabs.navigate('right-tabs-native', {
+        kind: 'report',
+        workspaceId,
+        reportId,
+        buildId,
+      }),
+    native.receipt,
+  )
+  const reopenedTab = await page.evaluate(() => (window as any).__rtHost.sidebar.active().id)
+  await page
+    .locator(`[data-rt-tab="${reopenedTab}"]`)
+    .getByText('此分析视图已删除或不存在。', { exact: true })
+    .waitFor()
+  await page.getByRole('button', { name: '打开分析视图', exact: true }).first().click()
+  await page.waitForFunction(({ reportId }) => {
+    const directories = [...(window as any).__rightTabs.pages.values()].filter(
+      (p: any) => p.target.kind === 'reports',
+    ) as any[]
+    return directories.some((p) => {
+      const state = p.catalog.getSnapshot()
+      return (
+        state.catalog && !state.catalog.reports.some((r: any) => r.receipt.reportId === reportId)
+      )
+    })
+  }, native.receipt)
+  record(
+    'permanent deletion can be cancelled, removes the view and history, and prevents reopening',
+  )
+
   await page.screenshot({ path: path.join(outputRoot, 'native-tabs.png'), fullPage: true })
   const audit = await page.evaluate(() => (window as any).__rightTabs.audit)
   await page.reload()

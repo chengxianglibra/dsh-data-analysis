@@ -101,6 +101,7 @@ const errorCopy: Readonly<Record<string, string>> = {
   ENOENT: 'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it',
   'asset-missing': 'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it',
   'file-missing': 'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it',
+  'report-not-found': 'marivo.presentation.report-deleted',
   'report-build-not-found': 'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it',
   'presentation-file-digest-mismatch':
     'marivo.presentation.analysis-snapshot-file-changed-and-no-longer-matches-the',

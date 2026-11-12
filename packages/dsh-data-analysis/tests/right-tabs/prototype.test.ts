@@ -11,7 +11,8 @@ import {
   reportViewFromAddress,
   resourceAddress,
 } from '../../src/client/right-tabs/navigation.ts'
-import { TabPage } from '../../src/client/right-tabs/page.ts'
+import { invalidateDeletedReport, TabPage } from '../../src/client/right-tabs/page.ts'
+import { deleteReport } from '../../src/client/right-tabs/report-delete.ts'
 import {
   analysisCatalogBuild,
   analysisCatalogId,
@@ -333,6 +334,165 @@ test('fixed Build never resolves current; current announces updates until explic
   current.dispose()
   fixed.dispose()
 })
+
+test('deleting a report invalidates every open version and prevents late reads reviving it', async () => {
+  const f = fixture(),
+    waiting: (() => void)[] = []
+  const rpc = {
+    call: async (...args: Parameters<typeof f.rpc.call>) => {
+      if (args[1] === 'files/read') await new Promise<void>((resolve) => waiting.push(resolve))
+      return f.rpc.call(...args)
+    },
+  }
+  const target = { kind: 'report' as const, workspaceId: base.workspaceId, reportId: base.reportId }
+  const current = new TabPage('s1', target, rpc)
+  const fixed = new TabPage('s1', { ...target, buildId: 'old' }, rpc)
+  const loading = [current.navigate(1), fixed.navigate(1)]
+  await new Promise((resolve) => setImmediate(resolve))
+  invalidateDeletedReport([current, fixed], base.workspaceId, base.reportId, 'old', true)
+  for (const resolve of waiting) resolve()
+  await Promise.all(loading)
+  for (const page of [current, fixed]) {
+    assert.equal(page.reader.getSnapshot().analysisDocument, undefined)
+    assert.equal(page.getSnapshot().error, 'marivo.presentation.report-deleted-cleanup-pending')
+    assert.deepEqual(page.getSnapshot().deleteCleanup, {
+      reportId: base.reportId,
+      expectedBuildId: 'old',
+    })
+  }
+  invalidateDeletedReport([current, fixed], base.workspaceId, base.reportId, 'old', false)
+  assert.equal(current.getSnapshot().deleteCleanup, undefined)
+  assert.equal(fixed.getSnapshot().error, 'marivo.presentation.report-deleted')
+  current.dispose()
+  fixed.dispose()
+})
+
+test('publication recheck only revokes an open report for a missing report', async () => {
+  const f = fixture()
+  let result: unknown
+  const rpc = {
+    call: async (...args: Parameters<typeof f.rpc.call>) =>
+      args[1] === 'reports/resolve' && result ? result : f.rpc.call(...args),
+  }
+  const current = new TabPage(
+    's1',
+    { kind: 'report', workspaceId: base.workspaceId, reportId: base.reportId },
+    rpc,
+  )
+  const fixed = new TabPage(
+    's1',
+    { kind: 'report', workspaceId: base.workspaceId, reportId: base.reportId, buildId: 'old' },
+    rpc,
+  )
+  await Promise.all([current.navigate(1), fixed.navigate(1)])
+  result = { ok: false, error: { message: 'asset-missing' } }
+  await Promise.all([
+    current.publicationChanged(base.workspaceId),
+    fixed.publicationChanged(base.workspaceId),
+  ])
+  assert.ok(current.reader.getSnapshot().analysisDocument)
+  assert.ok(fixed.reader.getSnapshot().analysisDocument)
+  result = { ok: false, error: { message: 'report-not-found' } }
+  await Promise.all([
+    current.publicationChanged(base.workspaceId),
+    fixed.publicationChanged(base.workspaceId),
+  ])
+  assert.equal(current.getSnapshot().error, 'marivo.presentation.report-deleted')
+  assert.equal(fixed.getSnapshot().error, 'marivo.presentation.report-deleted')
+  assert.equal(fixed.reader.getSnapshot().analysisDocument, undefined)
+  current.dispose()
+  fixed.dispose()
+})
+
+test('delete request uses displayed version and reports conflicting and uncertain results', async () => {
+  const generation = {},
+    context = {
+      connection: { generation: { getSnapshot: () => generation } },
+      workspaces: {
+        list: {
+          getSnapshot: () => ({
+            phase: 'ready',
+            items: [{ workspaceId: 'workspace', path: '/w', sessionIds: ['s1'] }],
+          }),
+        },
+      },
+    }
+  const page = { sessionId: 's1', workspacePath: '/w', target: { workspaceId: 'workspace' } }
+  const tab = { signal: new AbortController().signal }
+  const report = { workspaceId: 'workspace', reportId: 'report', buildId: 'old' }
+  let response: unknown = { ok: false, error: { message: 'report-delete-conflict' } }
+  let request: unknown
+  const rpc = {
+    call: async (_channel: string, _endpoint: string, payload: unknown) => {
+      request = payload
+      return response
+    },
+  }
+  const deleted: unknown[] = []
+  const run = () =>
+    deleteReport(
+      context,
+      rpc,
+      page,
+      tab,
+      report,
+      () => true,
+      (...args) => deleted.push(args),
+    )
+  assert.equal(await run(), 'stale')
+  assert.deepEqual(request, {
+    workspaceId: 'workspace',
+    reportId: 'report',
+    expectedBuildId: 'old',
+  })
+  assert.deepEqual(deleted, [])
+  response = { ok: true, value: { cleanupPending: true } }
+  assert.equal(await run(), 'cleanup-pending')
+  assert.deepEqual(deleted, [['workspace', 'report', 'old', true]])
+  response = { ok: true, value: { cleanupPending: false } }
+  assert.equal(await run(), 'deleted')
+  assert.deepEqual(deleted.at(-1), ['workspace', 'report', 'old', false])
+  response = { ok: true, value: {} }
+  assert.equal(await run(), 'uncertain')
+})
+test('late deletion responses cannot invalidate a changed connection or Workspace', async () => {
+  for (const change of ['connection', 'workspace', 'closed'] as const) {
+    let generation = {}
+    let workspacePath = '/original'
+    const page = { sessionId: 's1', workspacePath, target: { workspaceId: 'workspace' } }
+    const abort = new AbortController()
+    const deleted: unknown[] = []
+    const result = await deleteReport(
+      {
+        connection: { generation: { getSnapshot: () => generation } },
+        workspaces: {
+          list: {
+            getSnapshot: () => ({
+              phase: 'ready',
+              items: [{ workspaceId: 'workspace', path: workspacePath, sessionIds: ['s1'] }],
+            }),
+          },
+        },
+      },
+      {
+        call: async () => {
+          if (change === 'connection') generation = {}
+          if (change === 'workspace') page.workspacePath = workspacePath = '/replacement'
+          if (change === 'closed') abort.abort()
+          return { ok: true, value: { cleanupPending: false } }
+        },
+      },
+      page,
+      { signal: abort.signal },
+      { workspaceId: 'workspace', reportId: 'report', buildId: 'build' },
+      () => true,
+      (...args) => deleted.push(args),
+    )
+    assert.equal(result, 'uncertain')
+    assert.deepEqual(deleted, [])
+  }
+})
+
 test('late reads cannot revive revoked, disposed or superseded pages, even when transport ignores abort', async () => {
   const f = fixture(),
     waiting: (() => void)[] = []

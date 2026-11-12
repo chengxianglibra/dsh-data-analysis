@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
-import { lstat, open, opendir, realpath, rename, rm } from 'node:fs/promises'
+import { link, lstat, mkdir, open, opendir, realpath, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { commitPresentationForPublication } from './commit.ts'
@@ -159,8 +159,89 @@ export async function listReports(
   return { workspaceId, reports, unavailable }
 }
 
+/** Locks live outside the report directory so deletion cannot move a held lock. */
+async function reportLockPath(root: string, reportId: string, assertOwner: () => Promise<void>) {
+  const report = presentationReportPath(root, reportId)
+  const paths = [root]
+  const rootStat = await lstat(root)
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || (await realpath(root)) !== root)
+    throw new Error('presentation-workspace-mismatch')
+  const identities = [rootStat]
+  const check = async () => {
+    await assertOwner()
+    for (const [index, filename] of paths.entries()) {
+      const current = await lstat(filename)
+      if (
+        !current.isDirectory() ||
+        current.isSymbolicLink() ||
+        current.dev !== identities[index]!.dev ||
+        current.ino !== identities[index]!.ino ||
+        (await realpath(filename)) !== filename
+      )
+        throw new Error('presentation-directory-changed')
+    }
+  }
+  let parent = root
+  for (const name of ['.dsh-data-analysis', 'presentations']) {
+    await check()
+    const next = path.join(parent, name)
+    try {
+      await mkdir(next, { mode: 0o700 })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+    const stat = await lstat(next)
+    if (!stat.isDirectory() || stat.isSymbolicLink() || (await realpath(next)) !== next)
+      throw new Error('presentation-directory-mismatch')
+    paths.push(next)
+    identities.push(stat)
+    await check()
+    parent = next
+  }
+  return { path: path.join(parent, `.report-lock-${path.basename(report)}`), check }
+}
+
 /** The mutable pointer is the publication boundary; completed builds are never overwritten. */
 export async function publishPresentation(
+  root: string,
+  document: AnalysisDocument,
+  expectedBuildId: string | null,
+  assertOwner: () => Promise<void>,
+  signal: AbortSignal | undefined,
+  source: PublicationSource,
+  onPublished?: () => void,
+): Promise<PresentationReceipt> {
+  const lock = await reportLockPath(root, document.reportId, assertOwner)
+  return withFileLock(
+    lock.path,
+    async () => {
+      await lock.check()
+      signal?.throwIfAborted()
+      // An edit must not recreate a directory after deletion.
+      if (expectedBuildId !== null) {
+        try {
+          await readReportHistory(root, document.workspaceId, document.reportId, signal)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+            throw new Error('report-not-found')
+          throw error
+        }
+      }
+      return publishPresentationLocked(
+        root,
+        document,
+        expectedBuildId,
+        lock.check,
+        signal,
+        source,
+        onPublished,
+      )
+    },
+    { waitMs: 5000, signal },
+  )
+}
+
+async function publishPresentationLocked(
   root: string,
   document: AnalysisDocument,
   expectedBuildId: string | null,
@@ -306,6 +387,224 @@ export async function publishPresentation(
     }
     throw error
   }
+}
+
+/** Permanently remove a whole report; repeat the same request to retry interrupted cleanup. */
+export async function deletePresentation(
+  root: string,
+  workspaceId: string,
+  reportId: string,
+  expectedBuildId: string,
+  assertOwner: () => Promise<void>,
+  signal?: AbortSignal,
+): Promise<{ cleanupPending: boolean; cleanupPath?: string }> {
+  const lock = await reportLockPath(root, reportId, assertOwner)
+  const directory = presentationReportPath(root, reportId)
+  const parent = path.dirname(directory)
+  const suffix = createHash('sha256').update(workspaceId).digest('hex').slice(0, 24)
+  const cleanupPath = path.join(parent, `.deleted-${reportId}-${suffix}`)
+  const markerPath = `${cleanupPath}.json`
+  return withFileLock(
+    lock.path,
+    async () => {
+      await lock.check()
+      signal?.throwIfAborted()
+      const parentIdentity = await lstat(parent)
+      if (
+        !parentIdentity.isDirectory() ||
+        parentIdentity.isSymbolicLink() ||
+        (await realpath(parent)) !== parent
+      )
+        throw new Error('presentation-directory-mismatch')
+      const checkParent = async () => {
+        await lock.check()
+        const current = await lstat(parent)
+        if (
+          current.dev !== parentIdentity.dev ||
+          current.ino !== parentIdentity.ino ||
+          !current.isDirectory() ||
+          current.isSymbolicLink() ||
+          (await realpath(parent)) !== parent
+        )
+          throw new Error('presentation-directory-changed')
+      }
+      let pending = false
+      let pendingIdentity: Awaited<ReturnType<typeof lstat>> | undefined
+      try {
+        const stat = await lstat(cleanupPath)
+        if (
+          !stat.isDirectory() ||
+          stat.isSymbolicLink() ||
+          (await realpath(cleanupPath)) !== cleanupPath
+        )
+          throw new Error('presentation-directory-mismatch')
+        pending = true
+        pendingIdentity = stat
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      let marker: unknown
+      try {
+        marker = JSON.parse((await readReportFile(root, markerPath, 4096, signal)).toString('utf8'))
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      const expectedMarker = JSON.stringify({ workspaceId, reportId, buildId: expectedBuildId })
+      if (
+        marker !== undefined &&
+        (!marker ||
+          typeof marker !== 'object' ||
+          Array.isArray(marker) ||
+          Object.keys(marker).sort().join(',') !== 'buildId,reportId,workspaceId' ||
+          Reflect.get(marker, 'workspaceId') !== workspaceId ||
+          Reflect.get(marker, 'reportId') !== reportId ||
+          typeof Reflect.get(marker, 'buildId') !== 'string')
+      )
+        throw new Error('report-delete-cleanup-invalid')
+      if (pending && JSON.stringify(marker) !== expectedMarker)
+        throw new Error('report-delete-conflict')
+      if (pending && marker === undefined) throw new Error('report-delete-cleanup-invalid')
+      if (pending) {
+        try {
+          await lstat(directory)
+          throw new Error('report-delete-cleanup-invalid')
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+      }
+      if (!pending) {
+        let history: ReportHistory
+        try {
+          history = await readReportHistory(root, workspaceId, reportId, signal)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+            if (marker !== undefined) {
+              if (JSON.stringify(marker) !== expectedMarker)
+                throw new Error('report-delete-conflict')
+              try {
+                await lstat(directory)
+                throw new Error('report-delete-cleanup-invalid')
+              } catch (missing) {
+                if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing
+              }
+              await checkParent()
+              await rm(markerPath)
+              return { cleanupPending: false }
+            }
+            throw new Error('report-not-found')
+          }
+          throw error
+        }
+        if (history.currentBuildId !== expectedBuildId) throw new Error('report-delete-conflict')
+        if (marker !== undefined && JSON.stringify(marker) !== expectedMarker) {
+          await checkParent()
+          await rm(markerPath)
+          marker = undefined
+        }
+        const identity = await lstat(directory)
+        if (
+          !identity.isDirectory() ||
+          identity.isSymbolicLink() ||
+          (await realpath(directory)) !== directory
+        )
+          throw new Error('presentation-directory-mismatch')
+        await checkParent()
+        signal?.throwIfAborted()
+        if (marker === undefined) {
+          const temporary = path.join(parent, `.pending-delete-marker-${randomUUID()}.tmp`)
+          try {
+            const file = await open(
+              temporary,
+              constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+              0o600,
+            )
+            try {
+              await file.writeFile(expectedMarker)
+              await file.sync()
+            } finally {
+              await file.close()
+            }
+            await checkParent()
+            signal?.throwIfAborted()
+            await link(temporary, markerPath)
+          } finally {
+            await rm(temporary, { force: true })
+          }
+          const parentHandle = await open(
+            parent,
+            constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+          )
+          try {
+            await parentHandle.sync()
+          } finally {
+            await parentHandle.close()
+          }
+        }
+        await checkParent()
+        signal?.throwIfAborted()
+        const current = await lstat(directory)
+        if (current.dev !== identity.dev || current.ino !== identity.ino)
+          throw new Error('presentation-directory-changed')
+        await rename(directory, cleanupPath)
+        pendingIdentity = identity
+      }
+      // Once renamed, cancellation cannot undo deletion. Report cleanup separately.
+      try {
+        await checkParent()
+        const parentHandle = await open(
+          parent,
+          constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+        )
+        try {
+          await parentHandle.sync()
+        } finally {
+          await parentHandle.close()
+        }
+        const stat = await lstat(cleanupPath)
+        if (
+          !stat.isDirectory() ||
+          stat.isSymbolicLink() ||
+          (await realpath(cleanupPath)) !== cleanupPath
+        )
+          throw new Error('presentation-directory-mismatch')
+        if (
+          !pendingIdentity ||
+          stat.dev !== pendingIdentity.dev ||
+          stat.ino !== pendingIdentity.ino
+        )
+          throw new Error('presentation-directory-changed')
+        await rm(cleanupPath, { recursive: true })
+        const syncedParent = await open(
+          parent,
+          constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+        )
+        try {
+          await syncedParent.sync()
+        } finally {
+          await syncedParent.close()
+        }
+        // The report removal is durable before its retry marker is removed.
+        await rm(markerPath)
+        try {
+          const markerParent = await open(
+            parent,
+            constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+          )
+          try {
+            await markerParent.sync()
+          } finally {
+            await markerParent.close()
+          }
+        } catch {
+          // A crash may leave only a harmless retry marker; report data is already gone.
+        }
+        return { cleanupPending: false }
+      } catch {
+        return { cleanupPending: true, cleanupPath }
+      }
+    },
+    { waitMs: 5000, signal },
+  )
 }
 
 function historyFull() {

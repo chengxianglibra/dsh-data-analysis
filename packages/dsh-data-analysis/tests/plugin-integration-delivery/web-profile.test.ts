@@ -262,6 +262,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
         'marivo_help',
         'marivo_next_steps',
         'marivo_python',
+        'marivo_report_delete',
         'marivo_report_read',
         'marivo_report_write',
       ],

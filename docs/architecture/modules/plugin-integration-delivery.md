@@ -4,7 +4,7 @@
 
 本模块把 profile 级 Marivo Runtime、per-Workspace binding、跨边界 Tool、内部展示投影、
 Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装入同一个 DSH plugin lifecycle。它不修改 Harness
-的普通 Tool、Session 或 profile 语义，也不拥有报告对象。
+的普通 Tool、Session 或 profile 语义；插件管理分析视图的保存、读取与删除。
 
 实现入口：
 
@@ -24,7 +24,7 @@ Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装�
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与任务路由提示。
 5. 相同 Environment 共享 Help/Datasource/Presentation bridge set；Agent activation state 独立。
 6. profile 级 Connection RPC 与 storageDomain 承载[语义对象引用输入](semantic-reference-input.md)，Browser 注册独立 `@` source。
-7. profile 同时注册只读 presentation RPC；它只依赖当前 Workspace 成员关系和保存文件。
+7. profile 同时注册 presentation RPC，按当前 Workspace 成员关系读取和删除保存文件。
 8. plugin disposal 取消展示读取和在途 present，停止语义引用/Catalog 接线并 drain usage 写入，取消并 drain 凭据准备、测试与 Python 执行；移除自身 Tool、prompt 和事件。
 
 Agent 安装位于 `src/plugin-agents.ts`：已有 Agent 批量安装失败会回滚本批全部安装；后续新 Agent
@@ -61,6 +61,7 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 | `marivo_python` | 一次调用内的全部 datasource 准入、fresh snapshot 与前台执行 | DSH 提供等价的执行准入与 Marivo resolver 注入 |
 | `marivo_report_write` | 引用/Lang 准入、不可变 JSON 与默认 tool/显式 tab 交付 | DSH 提供等价的完整快照交付 |
 | `marivo_report_read` | 恢复准确/当前正式版本或当前 Turn 草稿的定义、资源声明与必要 schema，不读取业务数据 | Harness 提供等价的文档定义恢复 |
+| `marivo_report_delete` | 按准确 saved ref 永久删除分析视图及历史，核验当前版本与 Workspace | Harness 提供等价的视图删除 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
 semantic readiness、datasource/table inspect、Artifact materialize/export 等 convenience wrappers。

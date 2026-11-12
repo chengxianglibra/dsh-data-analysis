@@ -12,6 +12,7 @@ export interface PageState {
   error?: string
   notice?: string
   newer?: PresentationReceipt
+  deleteCleanup?: { reportId: string; expectedBuildId: string }
 }
 /** Lifetime belongs to a Host tab occurrence, never to a React body mount. */
 export class TabPage {
@@ -111,12 +112,7 @@ export class TabPage {
       await this.catalog.refresh()
       return
     }
-    if (
-      this.target.kind !== 'report' ||
-      this.target.buildId ||
-      (reportId && reportId !== this.target.reportId)
-    )
-      return
+    if (this.target.kind !== 'report' || (reportId && reportId !== this.target.reportId)) return
     const generation = ++this.#updateRevision
     try {
       const response = (await this.#rpc.call(
@@ -125,6 +121,11 @@ export class TabPage {
         { workspaceId, reportId: this.target.reportId },
         this.#navigation.signal,
       )) as any
+      if (!response?.ok && response?.error?.message === 'report-not-found') {
+        if (generation === this.#updateRevision && !this.#closed)
+          this.unavailable('marivo.presentation.report-deleted')
+        return
+      }
       if (!response?.ok)
         throw new Error(
           response?.error?.message ?? 'marivo.navigation.cannot-verify-the-new-version',
@@ -133,6 +134,7 @@ export class TabPage {
       if (receipt.workspaceId !== workspaceId || receipt.reportId !== this.target.reportId)
         throw new Error('marivo.navigation.report-identity-changed')
       if (generation !== this.#updateRevision || this.#closed) return
+      if (this.target.buildId) return
       this.patch({
         newer:
           receipt.buildId !== this.reader.getSnapshot().analysisDocument?.buildId
@@ -167,5 +169,26 @@ export class TabPage {
     this.semantic.dispose()
     this.datasources.dispose()
     this.#listeners.clear()
+  }
+}
+
+/** Revoke every open occurrence and refresh the catalog after a confirmed delete. */
+export function invalidateDeletedReport(
+  pages: Iterable<TabPage>,
+  workspaceId: string,
+  reportId: string,
+  expectedBuildId: string,
+  cleanupPending: boolean,
+) {
+  for (const page of pages) {
+    if (page.target.workspaceId !== workspaceId) continue
+    if (page.target.kind === 'report' && page.target.reportId === reportId) {
+      page.patch({ deleteCleanup: cleanupPending ? { reportId, expectedBuildId } : undefined })
+      page.unavailable(
+        cleanupPending
+          ? 'marivo.presentation.report-deleted-cleanup-pending'
+          : 'marivo.presentation.report-deleted',
+      )
+    } else if (page.target.kind === 'reports') void page.publicationChanged(workspaceId, reportId)
   }
 }

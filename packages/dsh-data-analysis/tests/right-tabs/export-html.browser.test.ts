@@ -153,6 +153,6 @@ createRoot(document.getElementById('root')).render(<CopyProvider t={translator('
   assert(titleBounds.y < buttonBounds.y + buttonBounds.height, 'title starts alongside the actions')
   assert(buttonBounds.y < titleBounds.y + 40, 'actions start alongside the title')
   await menu.click()
-  assert.equal(await page.getByRole('menuitem').count(), 3)
+  assert.equal(await page.getByRole('menuitem').count(), 4)
   await page.getByRole('menuitem', { name: 'History' }).waitFor()
 })

@@ -149,10 +149,12 @@ sha256 标识完整 execution record，由 Host 校验记录，客户端核对�
 
 分析视图目录按 Workspace 列出新格式记录，支持标题搜索，统一显示所有保存结果，不按 surface 分类。
 报告地址为 `dsh-resource://marivo-report/<workspace>/<report>/current` 或 `.../build/<build>`；
-打开时在右侧 tab 中显示对应版本；右上角的「分析视图操作」菜单提供数据更新、历史版本和 HTML 导出入口。版本历史列出同一报告的不可变 Build，展示发布时间、标题、来源会话、当前版本与正在查看的版本，可切换到历史版本或回到 current，也可关闭历史区域。
+打开时在右侧 tab 中显示对应版本；右上角的「分析视图操作」菜单提供数据更新、历史版本、HTML 导出和删除入口。版本历史列出同一报告的不可变 Build，展示发布时间、标题、来源会话、当前版本与正在查看的版本，可切换到历史版本或回到 current，也可关闭历史区域。
 Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不隐式创建 Session。
 
 「更新数据」只从已保存且仍为 current 的 Build 发起。插件通过 Host 按 Session、Workspace 和 Build 核验目标，取得准确 saved ref，再向所属 Harness Session 发送更新全部现有数据资源的请求；已有输入草稿和附件不受影响。连接、会话或 Workspace 不可用、会话忙碌，以及所看版本不再是 current 时不发送，并显示状态。发送被接纳只表示请求已提交；Agent 按既有 `refresh-data` 流程审阅来源、重算和保存，具体结果在会话中反馈。请求要求版本变化时停止，保存时仍依赖现有冲突检查；固定 Build 不会因新版本发布自动替换。候选预览和离线 HTML 不提供该操作。插件卸载后，尚未提交的请求失效，迟到的 Host 校验结果不会触发发送。
+
+删除操作在确认后删除整个已保存分析视图及其历史；服务端核验 Workspace 和当前版本，冲突时不删除。删除后目录不再列出该视图，旧入口重新读取时不可用；不删除 Marivo 结果、数据源或已导出的 HTML。文件清理未完成时明确提示，不把视图已移除等同于文件已全部清除。连接或 Workspace 绑定在请求期间变化时，迟到响应不改变新绑定的阅读状态，结果按未确认处理。删除契约见[展示交付](presentation-delivery.md)。
 
 Reader 接受 current v4 历史指针、受支持的文档和快照格式。读取时保留保存的 Catalog build 作为来源信息，不要求它与当前 build 相同；仍检查 Catalog ID、文档身份、资源和当前 Catalog 的程序与视图契约。当前 reader 无法支持的内容明确报错，不静默丢弃。通过校验表示当前 reader 可以呈现，不保证旧版组件的默认值或渲染语义与保存时完全一致。基于旧文档保存的新版本使用当前 Catalog，旧 Build 文件不改写。
 

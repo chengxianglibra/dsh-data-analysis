@@ -52,8 +52,9 @@ import {
   reportViewFromAddress,
   resourceAddress,
 } from './navigation.ts'
-import { TabPage } from './page.ts'
+import { invalidateDeletedReport, TabPage } from './page.ts'
 import { ReportActions } from './report-actions.tsx'
+import { deleteReport } from './report-delete.ts'
 import { createReportRefresh } from './report-refresh.ts'
 import { rightTabStyles } from './styles.ts'
 
@@ -141,6 +142,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   }
   const changed = (workspaceId, reportId) => {
     for (const page of pages.values()) void page.publicationChanged(workspaceId, reportId)
+  }
+  const deleted = (workspaceId, reportId, expectedBuildId, cleanupPending) => {
+    invalidateDeletedReport(pages.values(), workspaceId, reportId, expectedBuildId, cleanupPending)
   }
   const openDirectory = (sessionId, workspaceId, page) => {
     check(sessionId, workspaceId, true)
@@ -404,6 +408,8 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   }
   function Contents({ page, tab, panelId, workspaces, sessions, currentSession, workspaceReady }) {
     const t = useCopy()
+    const [cleanupRetrying, setCleanupRetrying] = useState(false)
+    const [cleanupError, setCleanupError] = useState(false)
     useSyncExternalStore(refreshStore.subscribe, refreshStore.getSnapshot)
 
     const owners = workspaces.filter((workspace) => workspace.sessionIds.includes(page.sessionId))
@@ -483,7 +489,42 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       >
         <style>{catalogStyles + credentialStyles + rightTabStyles}</style>
         {state.error ? (
-          <p role="alert">{t(state.error)}</p>
+          <div role="alert">
+            <p>{t(state.error)}</p>
+            {state.deleteCleanup && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={cleanupRetrying}
+                onClick={async () => {
+                  const target = state.deleteCleanup
+                  setCleanupRetrying(true)
+                  setCleanupError(false)
+                  try {
+                    const result = await deleteReport(
+                      ctx,
+                      rpc,
+                      page,
+                      tab,
+                      {
+                        workspaceId: page.target.workspaceId,
+                        reportId: target.reportId,
+                        buildId: target.expectedBuildId,
+                      },
+                      () => page.getSnapshot().deleteCleanup === target,
+                      deleted,
+                    )
+                    if (result !== 'deleted' && result !== 'cleanup-pending') setCleanupError(true)
+                  } finally {
+                    setCleanupRetrying(false)
+                  }
+                }}
+              >
+                {t('marivo.presentation.delete-report-retry-cleanup')}
+              </Button>
+            )}
+            {cleanupError && <p>{t('marivo.presentation.delete-report-cleanup-failed')}</p>}
+          </div>
         ) : (
           <>
             {page.target.kind === 'reports' && (
@@ -568,6 +609,17 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                           key={report.analysisDocument.recordId}
                           document={report.analysisDocument}
                           onHistory={() => void page.reader.toggleHistory()}
+                          onDelete={(isCurrent) =>
+                            deleteReport(
+                              ctx,
+                              rpc,
+                              page,
+                              tab,
+                              report.analysisDocument,
+                              isCurrent,
+                              deleted,
+                            )
+                          }
                           refreshLocked={refreshLocks.has(page.sessionId)}
                           onRefreshData={(isCurrent) =>
                             refreshReport(page, tab, report.analysisDocument, isCurrent)
@@ -1110,7 +1162,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
           automaticAttempts.delete(id)
           feeds.get(id)?.stop()
           feeds.delete(id)
-        } else if (settled && state.openState !== 'open') {
+        } else if (settled) {
           // A cold background Session has no event window. Its public run
           // settlement is a hint to re-read publication facts, never to open.
           const workspaceId = workspaceFor(id)

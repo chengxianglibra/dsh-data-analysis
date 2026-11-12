@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdtemp, realpath, rm } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -18,11 +18,16 @@ import {
 import { parseReportRef, savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
 import {
+  deletePresentation,
   publishPresentation,
   readAnalysisRecord,
   readReportHistory,
 } from '../../src/presentation/reports.ts'
-import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
+import {
+  createMarivoPresentTool,
+  createMarivoReportDeleteTool,
+  createMarivoUiReadTool,
+} from '../../src/presentation/tool.ts'
 import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
 
 const output = z.object({
@@ -144,6 +149,162 @@ test('ReportRef is bounded, versioned, canonical, and Workspace scoped', () => {
   for (const value of [null, '', 'mr2:s:e30', 'mr1:s:e30', `${ref}=`, 'x'.repeat(4097)])
     assert.throws(() => parseReportRef(value), /report-ref-invalid/)
   assert.throws(() => parseReportRef('invalid'), /marivo_report_read\(\{draft:true\}\)/)
+})
+
+test('Agent deletion rejects stale or draft refs and removes all published versions', async (t) => {
+  const f = await fixture(t)
+  const first = await f.write({ stage: 'save', program: 'root = TextContent("first");' })
+  const second = await f.write({
+    stage: 'save',
+    ref: first.ref,
+    program: 'root = TextContent("second");',
+  })
+  const draft = await f.write({
+    stage: 'preview',
+    ref: second.ref,
+    program: 'root = TextContent("draft");',
+  })
+  const tool = createMarivoReportDeleteTool(f.source)
+  await assert.rejects(tool.execute({ ref: first.ref }, f.exec), /report-delete-conflict/)
+  await assert.rejects(tool.execute({ ref: draft.ref }, f.exec), /report-saved-ref-required/)
+  const parsed = parseReportRef(second.ref)
+  if (parsed.kind !== 'saved') throw new Error('expected saved ref')
+  const deleted = await tool.execute({ ref: second.ref }, f.exec)
+  assert.deepEqual(deleted, {
+    deleted: true,
+    workspaceId: 'workspace',
+    reportId: parsed.reportId,
+    cleanupPending: false,
+  })
+  await assert.rejects(f.read(first.ref))
+  await assert.rejects(f.read(second.ref))
+  await assert.rejects(f.write({ stage: 'save', ref: draft.ref }), /report-not-found/)
+})
+
+test('interrupted cleanup leaves the view unavailable and can be retried after a restart', async (t) => {
+  const f = await fixture(t)
+  const saved = await f.write({ stage: 'save', program: 'root = TextContent("first");' })
+  const ref = parseReportRef(saved.ref)
+  if (ref.kind !== 'saved') throw new Error('expected saved ref')
+  const parent = path.join(f.root, '.dsh-data-analysis', 'presentations')
+  const interrupted = await deletePresentation(
+    f.root,
+    'workspace',
+    ref.reportId,
+    ref.buildId,
+    async () => {
+      if (
+        (await readdir(parent)).some(
+          (name) => name.startsWith('.deleted-') && !name.endsWith('.json'),
+        )
+      )
+        throw new Error('interrupted')
+    },
+  )
+  assert.equal(interrupted.cleanupPending, true)
+  await assert.rejects(f.read(saved.ref))
+  const retried = await deletePresentation(
+    f.root,
+    'workspace',
+    ref.reportId,
+    ref.buildId,
+    async () => {},
+  )
+  assert.deepEqual(retried, { cleanupPending: false })
+  assert.equal((await readdir(parent)).filter((name) => name.startsWith('.deleted-')).length, 0)
+})
+
+test('interruption before the deletion marker is published leaves the view readable and deletable', async (t) => {
+  const f = await fixture(t)
+  const saved = await f.write({ stage: 'save', program: 'root = TextContent("first");' })
+  const ref = parseReportRef(saved.ref)
+  if (ref.kind !== 'saved') throw new Error('expected saved ref')
+  const parent = path.join(f.root, '.dsh-data-analysis', 'presentations')
+  await assert.rejects(
+    deletePresentation(f.root, 'workspace', ref.reportId, ref.buildId, async () => {
+      if ((await readdir(parent)).some((name) => name.startsWith('.pending-delete-marker-')))
+        throw new Error('interrupted')
+    }),
+    /interrupted/,
+  )
+  assert.equal((await f.read(saved.ref)).ref, saved.ref)
+  assert.deepEqual(
+    await deletePresentation(f.root, 'workspace', ref.reportId, ref.buildId, async () => {}),
+    { cleanupPending: false },
+  )
+})
+
+test('a draft save racing a permanent deletion cannot recreate the deleted view', async (t) => {
+  const f = await fixture(t)
+  const saved = await f.write({ stage: 'save', program: 'root = TextContent("first");' })
+  const draft = await f.write({
+    stage: 'preview',
+    ref: saved.ref,
+    program: 'root = TextContent("draft");',
+  })
+  const ref = parseReportRef(saved.ref)
+  if (ref.kind !== 'saved') throw new Error('expected saved ref')
+  const lock = path.join(
+    f.root,
+    '.dsh-data-analysis',
+    'presentations',
+    `.report-lock-${ref.reportId}.lock`,
+  )
+  let enter!: () => void
+  let release!: () => void
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve
+  })
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let held = false
+  const deleting = deletePresentation(f.root, 'workspace', ref.reportId, ref.buildId, async () => {
+    if (held) return
+    try {
+      await lstat(lock)
+    } catch {
+      return
+    }
+    held = true
+    enter()
+    await gate
+  })
+  await entered
+  const saving = assert.rejects(f.write({ stage: 'save', ref: draft.ref }))
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  release()
+  assert.deepEqual(await deleting, { cleanupPending: false })
+  await saving
+  await assert.rejects(f.read(saved.ref))
+})
+
+test('deletion refuses a replaced ancestor instead of following its symlink', async (t) => {
+  const f = await fixture(t)
+  const saved = await f.write({ stage: 'save', program: 'root = TextContent("first");' })
+  const ref = parseReportRef(saved.ref)
+  if (ref.kind !== 'saved') throw new Error('expected saved ref')
+  const base = path.join(f.root, '.dsh-data-analysis')
+  const lock = path.join(base, 'presentations', `.report-lock-${ref.reportId}.lock`)
+  const target = path.join(f.root, 'outside')
+  await mkdir(target)
+  let replaced = false
+  await assert.rejects(
+    deletePresentation(f.root, 'workspace', ref.reportId, ref.buildId, async () => {
+      if (replaced) return
+      try {
+        await lstat(lock)
+      } catch {
+        return
+      }
+      replaced = true
+      await rename(base, path.join(f.root, 'saved-state'))
+      await symlink(target, base)
+    }),
+    /presentation-directory-changed/,
+  )
+  assert.equal(replaced, true)
+  assert.deepEqual(await readdir(target), [])
 })
 
 test('stage and new input protocol are mandatory; refresh guards run before result reads', async (t) => {

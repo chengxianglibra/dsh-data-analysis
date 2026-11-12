@@ -4,6 +4,53 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 
+test('deletion requires confirmation, preserves cancellation, and reports conflicts', async (t) => {
+  const bundle = await build({
+    stdin: {
+      resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
+      loader: 'tsx',
+      contents: `
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {CopyProvider} from './src/client/i18n/context.tsx';
+import {translator} from './src/client/i18n/copy.ts';
+import {ReportActions} from './src/client/right-tabs/report-actions.tsx';
+let result='stale', calls=0;
+createRoot(document.getElementById('root')).render(<CopyProvider t={translator('en-US')}><ReportActions document={{reportId:'r',buildId:'b',title:'Revenue'}} isCurrent={()=>true} onHistory={()=>{}} refreshLocked={false} onRefreshData={async()=> 'accepted'} onDelete={async()=>{calls++;return result}} /></CopyProvider>);
+window.fixture={calls:()=>calls,set:value=>{result=value}};
+`,
+    },
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    write: false,
+    logLevel: 'silent',
+  })
+  const browser = await chromium.launch()
+  t.after(() => browser.close())
+  const page = await browser.newPage()
+  await page.setContent('<div id="root"></div>')
+  await page.addScriptTag({ content: bundle.outputFiles[0]?.text })
+  const open = async () => {
+    await page.getByRole('button', { name: 'Analysis view actions' }).click()
+    await page.getByRole('menuitem', { name: 'Delete analysis view' }).click()
+  }
+  await open()
+  const dialog = page.getByRole('dialog')
+  assert.equal(await dialog.getByText('Revenue', { exact: false }).count(), 1)
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  assert.equal(await page.evaluate('window.fixture.calls()'), 0)
+  await open()
+  await dialog.getByRole('button', { name: 'Delete analysis view' }).click()
+  await page.getByRole('alert').waitFor()
+  assert.equal(await page.evaluate('window.fixture.calls()'), 1)
+  await page.getByRole('button', { name: 'Dismiss deletion notification' }).click()
+  await page.evaluate('window.fixture.set("deleted")')
+  await open()
+  await dialog.getByRole('button', { name: 'Delete analysis view' }).click()
+  assert.equal(await page.evaluate('window.fixture.calls()'), 2)
+})
+
 test('report data update sends once while pending and reports stale and accepted requests', async (t) => {
   const bundle = await build({
     stdin: {

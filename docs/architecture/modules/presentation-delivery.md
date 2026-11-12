@@ -98,13 +98,19 @@ Tab 与报告视图身份由客户端和原生地址管理，不写入报告内�
 - 数据刷新发生冲突时只合并与当前组件契约兼容的资源替换，保持已审阅当前正式版本的页面。省略 program/title/locale/labels，只传相对新基版本的资源增量；无法判断资源或业务冲突时明确阻塞。
 - 合并优先复用新正式基版本中同名同声明的资源，其次复用原草稿中的对应资源，只有新声明读取来源。无效输入、陈旧版本及校验失败不替换草稿；合并不自动决定业务内容冲突。结束 Turn 后不能继续承诺草稿可保存。
 
+## 永久删除分析视图
+
+`marivo_report_delete({ref})` 接受当前 Workspace 内准确的 current saved ref；草稿和旧版本不能作为删除目标。客户端使用 `reports/delete` RPC 传入 Workspace、report ID 和预期 current Build。两者共用插件删除服务，在锁内重新核验归属与当前版本；版本冲突不删除。菜单删除需要用户确认，删除范围包括视图及全部历史版本。
+
+保存与删除共用报告目录外的锁，覆盖 Build 写入、发布及删除。删除将报告移出正常目录后清理文件；正常读取和旧引用不再可用，已有草稿不能重新发布。若清理未完成，返回 `cleanupPending`，使用同一目标重试清理，不将其报告为磁盘文件已全部移除。删除不级联 Marivo 结果或数据源，也不能撤回已导出的离线 HTML。
+
 ## 单次调用与文件身份
 
 1. 从 Harness `workspaceRegistry` 的 `sessionIds` 取得唯一当前 Workspace，保存过程不初始化 Runtime。
 2. 更新时先解析 saved ref 并读取目标 Report 的准确版本。
 3. 新建时生成 report ID，更新时沿用；每次生成新 build ID 并构建完整 JSON 字节。
-4. 在同一 Workspace 的新临时目录写入 JSON 并同步，检查归属和目录身份后以一次 rename 提交。
-5. 重读校验完整 JSON 文件，再在跨进程锁内发布 current 指针并返回 receipt。指针生效前失败不破坏已有构建。
+4. 取得报告目录外的跨进程锁后，在同一 Workspace 的新临时目录写入 JSON 并同步，检查归属和目录身份后以一次 rename 提交。
+5. 保持该锁，重读校验完整 JSON 文件后发布 current 指针并返回 receipt。指针生效前失败不破坏已有构建。
 
 ```text
 <workspace>/.dsh-data-analysis/presentations/<reportId>/builds/<buildId>/presentation.json
