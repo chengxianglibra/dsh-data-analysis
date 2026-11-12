@@ -26,6 +26,7 @@ import {
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { type PythonCodeRef, savePythonExecution } from '../../src/python-execution.ts'
+import { skipBrowserTest } from '../browser-test.ts'
 import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
 import { bundleRenderer, comparedScalar } from '../unified-analysis-ui/frame-render-fixtures.ts'
 import { frameSnapshotV2 } from './frame-v2-fixture.ts'
@@ -173,6 +174,7 @@ async function fixture(
 }
 
 test('saved anonymous comparison labels survive OpenUI admission and render after reload', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = comparedScalar({ current: 120, baseline: 100, absolute: 20, relative: 0.2 })
   const facts = snapshot.frame.sections.interpretation
   if (facts.status !== 'captured') throw new Error('expected interpretation')

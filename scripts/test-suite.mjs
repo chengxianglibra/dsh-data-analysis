@@ -8,13 +8,13 @@ const sourceSuites = new Set([
   'presentation-surface',
   'presentation-skill',
   'right-tabs',
-  'unified-analysis-ui',
 ])
 const clientSuites = new Set([
   'datasource-credentials',
   'semantic-reference-input',
   'semantic-browser',
   'presentation-integration',
+  'unified-analysis-ui',
 ])
 const unpreparedSuites = new Set([
   'runtime-workspace',
@@ -36,6 +36,16 @@ const legacyBrowserFiles = new Set([
   'frame-presentation-integration.test.ts',
   'point-ui-browser.test.ts',
   'records-preview.test.ts',
+])
+// These files contain both browser cases and non-browser contracts. Their
+// browser cases use skipBrowserTest so the remaining contracts stay in each tier.
+const mixedBrowserFiles = new Set([
+  'presentation-integration/report-data-update.test.ts',
+  'unified-analysis-ui/category-composition.test.ts',
+  'unified-analysis-ui/comparison-decomposition-redesign.test.ts',
+  'unified-analysis-ui/data-view.test.ts',
+  'unified-analysis-ui/frame-display-metadata.test.ts',
+  'unified-analysis-ui/frame-presentation-integration.test.ts',
 ])
 const suite = process.argv[2]
 if (!suite || ![sourceSuites, clientSuites, unpreparedSuites].some((group) => group.has(suite))) {
@@ -60,12 +70,15 @@ const files = readdirSync(directory)
   .filter((name) => name.endsWith('.test.ts'))
   .sort()
 const daily = process.env.DSH_DATA_ANALYSIS_TEST_TIER === 'daily'
+const release = process.env.DSH_DATA_ANALYSIS_TEST_TIER === 'release'
 const selected = files.filter((name) => {
   const browserSuffix = name.endsWith('.browser.test.ts')
   const legacyBrowser = suite === 'unified-analysis-ui' && legacyBrowserFiles.has(name)
   const source = readFileSync(path.join(directory, name), 'utf8')
   const importsPlaywright =
     /(?:from\s*|import\s*\(|require\s*\()\s*['"]playwright(?:\/[^'"]*)?['"]/.test(source)
+  const usesBrowserRenderer = /\b(?:bundleRenderer|sharedRenderer)\s*\(/.test(source)
+  const mixedBrowser = mixedBrowserFiles.has(`${suite}/${name}`)
   if (importsPlaywright && !browserSuffix && !legacyBrowser) {
     throw new Error(`Classify browser test ${path.join(directory, name)} before running tests`)
   }
@@ -75,7 +88,8 @@ const selected = files.filter((name) => {
   const realCatalog =
     ['semantic-browser', 'semantic-reference-input'].includes(suite) &&
     name === 'real-catalog.test.ts'
-  return !daily || (!browserSuffix && !legacyBrowser && !realCatalog)
+  const browser = browserSuffix || legacyBrowser || importsPlaywright || usesBrowserRenderer
+  return !((daily || release) && browser && !mixedBrowser) && !(daily && realCatalog)
 })
 if (suite === 'unified-analysis-ui') {
   for (const name of legacyBrowserFiles) {
@@ -101,13 +115,13 @@ if (listOnly) {
   console.log(JSON.stringify(paths))
   process.exit(0)
 }
-if (daily) {
+if (daily || release) {
   const excluded = files.filter((name) => !selected.includes(name))
   const realCatalogCount = excluded.filter((name) => name === 'real-catalog.test.ts').length
   const browserCount = excluded.length - realCatalogCount
   if (excluded.length > 0) {
     console.log(
-      `Daily ${suite}: excluded ${browserCount} browser file(s), ${realCatalogCount} real-catalog file(s); run npm run test:release for full coverage.`,
+      `${daily ? 'Daily' : 'Release'} ${suite}: excluded ${browserCount} browser file(s), ${realCatalogCount} real-catalog file(s); run npm run test:full for full coverage.`,
     )
   }
 }

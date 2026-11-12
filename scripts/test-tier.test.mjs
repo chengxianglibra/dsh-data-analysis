@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { readdirSync, readFileSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import path from 'node:path'
 import { test } from 'node:test'
 
-/** @param {string} suite @param {'daily' | 'release'} tier */
+/** @param {string} suite @param {'daily' | 'release' | 'full'} tier */
 function list(suite, tier) {
   const result = spawnSync(process.execPath, ['scripts/test-suite.mjs', suite, '--list'], {
     encoding: 'utf8',
@@ -16,7 +16,7 @@ function list(suite, tier) {
   return paths
 }
 
-test('release includes all suite files, while daily excludes browser and real catalog tests', () => {
+test('release excludes browser files while retaining mixed contracts and real catalog tests', () => {
   for (const suite of [
     'unified-analysis-ui',
     'right-tabs',
@@ -28,22 +28,35 @@ test('release includes all suite files, while daily excludes browser and real ca
       .filter((name) => name.endsWith('.test.ts'))
       .map((name) => path.join(directory, name))
       .sort()
+    const full = list(suite, 'full')
     const release = list(suite, 'release')
     const daily = list(suite, 'daily')
-    assert.deepEqual(release, all)
-    assert.ok(daily.length < release.length)
-    const skipped = release.filter((file) => !daily.includes(file))
-    for (const file of skipped) {
-      assert.ok(
-        file.endsWith('.browser.test.ts') ||
-          file.endsWith('/real-catalog.test.ts') ||
-          /from\s*['"]playwright['"]/.test(readFileSync(file, 'utf8')),
-        file,
-      )
+    assert.deepEqual(full, all)
+    for (const file of release) assert.ok(full.includes(file), file)
+    for (const file of daily) assert.ok(release.includes(file), file)
+    assert.ok(release.every((file) => !file.endsWith('.browser.test.ts')))
+    const catalog = all.find((file) => path.basename(file) === 'real-catalog.test.ts')
+    if (catalog) {
+      assert.ok(release.includes(catalog))
+      assert.ok(!daily.includes(catalog))
     }
-    for (const file of daily) {
-      assert.doesNotMatch(readFileSync(file, 'utf8'), /from\s*['"]playwright['"]/, file)
-      assert.ok(!file.endsWith('/real-catalog.test.ts'), file)
+    if (suite === 'unified-analysis-ui') {
+      for (const name of [
+        'frame-browser.test.ts',
+        'domain-points.test.ts',
+        'frame-comparison-render.test.ts',
+      ]) {
+        assert.ok(full.some((file) => path.basename(file) === name))
+        assert.ok(!release.some((file) => path.basename(file) === name))
+      }
+      for (const name of ['data-view.test.ts', 'frame-display-metadata.test.ts']) {
+        assert.ok(release.some((file) => path.basename(file) === name))
+      }
     }
   }
+  assert.ok(
+    list('presentation-integration', 'release').some(
+      (file) => path.basename(file) === 'report-data-update.test.ts',
+    ),
+  )
 })

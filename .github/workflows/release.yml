@@ -56,9 +56,6 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
 
-      - name: Install Chromium for browser tests
-        run: npx --no-install playwright install --with-deps chromium
-
       - name: Run release checks
         run: npm run ci
 

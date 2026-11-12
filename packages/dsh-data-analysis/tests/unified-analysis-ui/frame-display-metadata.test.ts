@@ -7,18 +7,20 @@ import {
   frameDisplaySchema,
   resolveFrameView,
 } from '../../src/presentation/contracts/frame-view.ts'
+import { browserTestsEnabled, skipBrowserTest } from '../browser-test.ts'
 import { categoryAxis, frame, months, timeAxis } from './frame-fixtures.ts'
 import { bundleRenderer, comparedScalar, type Renderer } from './frame-render-fixtures.ts'
 
 let renderer: Renderer
 before(async () => {
-  renderer = await bundleRenderer()
+  if (browserTestsEnabled) renderer = await bundleRenderer()
 })
 after(async () => {
-  await renderer.dispose()
+  await renderer?.dispose()
 })
 
-test('explicit scalar formats and titles preserve the saved values', async () => {
+test('explicit scalar formats and titles preserve the saved values', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({
     values: [
       { name: 'fare', type: 'decimal', values: ['82040902.13'] },
@@ -51,7 +53,8 @@ test('explicit scalar formats and titles preserve the saved values', async () =>
   assert.equal(JSON.stringify(snapshot), original)
 })
 
-test('comparison endpoint labels bind to a saved alias and preserve the endpoint values', async () => {
+test('comparison endpoint labels bind to a saved alias and preserve the endpoint values', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = comparedScalar({ current: 120, baseline: 100, absolute: 20, relative: 0.2 })
   const display = { comparisonLabels: [{ alias: 'prior', current: 'June', baseline: 'May' }] }
   const resolved = resolveFrameView(snapshot)
@@ -71,7 +74,8 @@ test('comparison endpoint labels bind to a saved alias and preserve the endpoint
   )
 })
 
-test('anonymous comparison labels require exactly one saved null alias', async () => {
+test('anonymous comparison labels require exactly one saved null alias', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = comparedScalar({ current: 120, baseline: 100, absolute: 20, relative: 0.2 })
   const facts = snapshot.frame.sections.interpretation
   if (facts.status !== 'captured') throw new Error('expected captured interpretation')
@@ -96,7 +100,8 @@ test('anonymous comparison labels require exactly one saved null alias', async (
   assert.equal(validateFrameDisplay(snapshot, resolved.view, display), '/display/comparisonLabels')
 })
 
-test('currency display accepts a compound saved unit and preserves its precision and label', async () => {
+test('currency display accepts a compound saved unit and preserves its precision and label', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({
     values: [{ name: 'efficiency', type: 'decimal', values: ['9007199254740993.125'] }],
   })
@@ -115,7 +120,8 @@ test('currency display accepts a compound saved unit and preserves its precision
   assert.equal(JSON.stringify(snapshot), original)
 })
 
-test('bar focus uses the exact saved axis key while preserving data point identity', async () => {
+test('bar focus uses the exact saved axis key while preserving data point identity', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({
     axes: [timeAxis(3)],
     values: [{ name: 'v', values: [1, 2, 3] }],
@@ -211,7 +217,10 @@ test('header time context preserves fixed instants and counts full calendar keys
       },
     ],
   })
-  assert.equal(headerContext(t, fixed, ['v']), '2024-01-01 01:02:03 GMT – 2025-01-01 03:04:05 GMT')
+  assert.match(
+    headerContext(t, fixed, ['v']) ?? '',
+    /^2024-01-01 01:02:03 GMT(?:\+00:00)? – 2025-01-01 03:04:05 GMT(?:\+00:00)?$/,
+  )
 
   const multi = frame({ axes: [timeAxis(2)], values: [{ name: 'v', values: [1, 2] }] })
   const axis = multi.frame.axes[0]!

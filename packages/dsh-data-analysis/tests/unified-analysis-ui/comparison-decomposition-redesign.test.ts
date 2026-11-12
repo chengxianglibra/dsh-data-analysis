@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 import { compareMagnitude, divergingScale } from '../../src/client/analysis-ui/frame/magnitude.ts'
+import { browserTestsEnabled, skipBrowserTest } from '../browser-test.ts'
 import {
   categoryAxis,
   comparedIntervalMonth,
@@ -14,13 +15,14 @@ import { bundleRenderer, type Renderer } from './frame-render-fixtures.ts'
 
 let renderer: Renderer
 before(async () => {
-  renderer = await bundleRenderer()
+  if (browserTestsEnabled) renderer = await bundleRenderer()
 })
 after(async () => {
   await renderer?.dispose()
 })
 
-test('comparison KPI heading names a saved period only when endpoint metadata is specific', async () => {
+test('comparison KPI heading names a saved period only when endpoint metadata is specific', async (t) => {
+  if (skipBrowserTest(t)) return
   const specific = await renderer.render(comparedIntervalMonth())
   const heading = /<h4>([^<]*)<\/h4>/.exec(specific)?.[1]
   assert.ok(heading?.includes('2025-06'), heading)
@@ -49,7 +51,8 @@ test('zero axis preserves a common scale for both signs and handles extreme valu
   assert.equal(extreme.zero, 50)
 })
 
-test('comparison sorts by saved absolute change while preserving saved point identity', async () => {
+test('comparison sorts by saved absolute change while preserving saved point identity', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({
     axes: [categoryAxis(4)],
     values: [
@@ -76,7 +79,8 @@ test('comparison sorts by saved absolute change while preserving saved point ide
   assert.doesNotMatch(table, /data-frame-point="3:prior.absolute.sales"/)
 })
 
-test('attribution orders signed saved contributions, keeps endpoint presence and explains shares', async () => {
+test('attribution orders signed saved contributions, keeps endpoint presence and explains shares', async (t) => {
+  if (skipBrowserTest(t)) return
   const facts = decompositionOf([
     ['contribution', 'contribution'],
     ['total', 'total'],
@@ -115,7 +119,8 @@ test('attribution orders signed saved contributions, keeps endpoint presence and
   assert.doesNotMatch(table, /data-frame-point="2:current"|999,999/)
 })
 
-test('comparison retains tiny decimal change signs and never reveals a masked endpoint', async () => {
+test('comparison retains tiny decimal change signs and never reveals a masked endpoint', async (t) => {
+  if (skipBrowserTest(t)) return
   const comparison = comparisonOf({ kind: 'ordinary' }, [
     { name: 'sales', values: comparedRoles('sales') },
   ])
@@ -141,7 +146,8 @@ test('comparison retains tiny decimal change signs and never reveals a masked en
   assert.doesNotMatch(rows.find((row) => row.includes('r2'))!, /[▲▼]&lt;0\.01%/)
 })
 
-test('relative attribution keeps the signs of tiny saved Decimal contributions and totals', async () => {
+test('relative attribution keeps the signs of tiny saved Decimal contributions and totals', async (t) => {
+  if (skipBrowserTest(t)) return
   const facts = decompositionOf([
     ['contribution', 'contribution'],
     ['total', 'total'],
@@ -165,7 +171,8 @@ test('relative attribution keeps the signs of tiny saved Decimal contributions a
   assert.match(html, /\+&lt;0\.01%/)
 })
 
-test('comparison KPI and transposed table retain tiny saved decimal signs', async () => {
+test('comparison KPI and transposed table retain tiny saved decimal signs', async (t) => {
+  if (skipBrowserTest(t)) return
   const values = ['sales', 'orders'].flatMap((name, index) => [
     { name, values: [1] },
     { name: `prior.baseline.${name}`, values: [1] },
