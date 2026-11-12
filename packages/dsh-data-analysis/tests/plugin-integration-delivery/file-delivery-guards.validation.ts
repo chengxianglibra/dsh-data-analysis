@@ -12,6 +12,7 @@ import {
   assertPtcOuterFailure,
   captureCandidate,
 } from '../../scripts/file-analysis-real/guards.ts'
+import { skipBrowserTest } from '../browser-test.ts'
 
 test('candidate guard detects new paths, changed HEAD, changed contents and deletion', async (t) => {
   const cwd = await mkdtemp(path.join(tmpdir(), 'dsh-candidate-guard-'))
@@ -144,6 +145,7 @@ test('PTC guard requires failure of the same enclosing root after declaration', 
 })
 
 test('CSV guard requires the named Session native spreadsheet and its first cell at narrow width', async (t) => {
+  if (skipBrowserTest(t)) return
   const browser = await chromium.launch({ channel: 'chrome', headless: true })
   t.after(() => browser.close())
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })

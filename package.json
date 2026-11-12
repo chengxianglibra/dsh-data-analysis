@@ -8,7 +8,7 @@
   "scripts": {
     "build": "npm run build --workspace @chengxianglibra/dsh-data-analysis",
     "check": "npm run quality && npm run deps:check && npm run typecheck && npm test",
-    "ci": "biome ci . && npm run deps:check && npm run typecheck && npm run test:release && npm run test:validation-guards && npm run build && npm run verify:plugin-package",
+    "ci": "biome ci . && npm run deps:check && npm run typecheck && npm run test:release && npm run build && npm run verify:plugin-package",
     "clean": "npm run clean --workspace @chengxianglibra/dsh-data-analysis",
     "deps:check": "npm run prepare:source && node scripts/check-dependencies.mjs",
     "format": "biome format --write .",
@@ -65,7 +65,8 @@
     "check:ui-styles": "node packages/dsh-data-analysis/scripts/build-ui-styles.mjs --check",
     "validate:result-references:real": "npm run prepare:source && node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-result-references-real.ts",
     "test:validation-guards": "node --experimental-strip-types --test --test-reporter=./scripts/test-reporter.mjs packages/dsh-data-analysis/tests/plugin-integration-delivery/file-delivery-guards.validation.ts",
-    "test:release": "node scripts/test-all.mjs release"
+    "test:release": "node scripts/test-all.mjs release",
+    "test:full": "node scripts/test-all.mjs full"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",

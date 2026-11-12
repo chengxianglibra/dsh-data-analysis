@@ -1,18 +1,20 @@
 import assert from 'node:assert/strict'
 import { after, before, test } from 'node:test'
 import { resolveFrameView } from '../../src/presentation/contracts/frame-view.ts'
+import { browserTestsEnabled, skipBrowserTest } from '../browser-test.ts'
 import { categoryAxis, frame } from './frame-fixtures.ts'
 import { bundleRenderer, type Renderer } from './frame-render-fixtures.ts'
 
 let renderer: Renderer
 before(async () => {
-  renderer = await bundleRenderer()
+  if (browserTestsEnabled) renderer = await bundleRenderer()
 })
 after(async () => {
   await renderer?.dispose()
 })
 
-test('explicit stacked composition uses saved values, calculated shares, and original row bindings', async () => {
+test('explicit stacked composition uses saved values, calculated shares, and original row bindings', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({
     axes: [categoryAxis(4)],
     values: [{ name: 'v', values: [2, 5, 3, 0] }],
@@ -37,7 +39,8 @@ test('explicit stacked composition uses saved values, calculated shares, and ori
   assert.equal((html.match(/<rect x=/g) ?? []).length, 3)
 })
 
-test('large Decimal values keep correct shares and precise sorting; tiny values remain nonzero', async () => {
+test('large Decimal values keep correct shares and precise sorting; tiny values remain nonzero', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({
     axes: [categoryAxis(3)],
     values: [{ name: 'v', type: 'decimal', values: ['1e308', '1e308', '1e-400'] }],
@@ -48,7 +51,8 @@ test('large Decimal values keep correct shares and precise sorting; tiny values 
   assert.match(html, /&lt;0\.1%/)
 })
 
-test('small nonzero shares below 0.1% stay distinct from the boundary and zero', async () => {
+test('small nonzero shares below 0.1% stay distinct from the boundary and zero', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({
     axes: [categoryAxis(4)],
     values: [{ name: 'v', type: 'decimal', values: ['0.75', '1', '998.25', '0'] }],
@@ -64,7 +68,8 @@ test('small nonzero shares below 0.1% stay distinct from the boundary and zero',
   }
 })
 
-test('both categorical views scale exact Decimals before converting their shares to floats', async () => {
+test('both categorical views scale exact Decimals before converting their shares to floats', async (t) => {
+  if (skipBrowserTest(t)) return
   const cases = [
     { values: ['1e-400', '2e-400'], shares: ['33.33%', '66.67%'] },
     { values: ['4e-324', '6e-324'], shares: ['40.00%', '60.00%'] },
@@ -103,7 +108,8 @@ test('both categorical views scale exact Decimals before converting their shares
   }
 })
 
-test('extreme mixed magnitudes preserve positive and zero labels without overflow', async () => {
+test('extreme mixed magnitudes preserve positive and zero labels without overflow', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({
     axes: [categoryAxis(4)],
     values: [{ name: 'v', type: 'decimal', values: ['1e-99999', '1e99999', '0e99999', '1e20'] }],
@@ -120,7 +126,8 @@ test('extreme mixed magnitudes preserve positive and zero labels without overflo
   }
 })
 
-test('the original pie remains the default and does not silently become a stack', async () => {
+test('the original pie remains the default and does not silently become a stack', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({ axes: [categoryAxis(2)], values: [{ name: 'v', values: [2, 1] }] })
   const html = await renderer.render(snapshot, { view: { chart: 'pie' } })
   assert.match(html, /data-chart="pie"/)

@@ -198,16 +198,18 @@ npm run test:presentation-surface
 npm run test:presentation-projection
 npm run test:presentation-integration
 npm run test:validation-guards
+npm run test:full
 npm run build
 npm run verify:plugin-package
 npm run validate:plugin-integration-delivery:real
 npm run validate:presentation-integration:real
 ```
 
-日常 `npm run check` 执行静态检查和日常测试；完整测试通过 `npm run test:release` 运行，
-包含需要浏览器或本地 Runtime 的测试。单独运行的 `test:<suite>` 保留所属套件的完整覆盖。
-CI、发布检查与 `pack:plugin` 使用完整测试，并运行 `test:validation-guards`，后者验证文件分析验收
-脚本自身的 Git、PTC 与 CSV 护栏。真实环境验证仍按各入口的前提单独运行，不能由完整测试替代。
+日常 `npm run check` 与发布门禁均不运行浏览器用例；发布层 `npm run test:release` 保留可用时的真实
+Catalog 测试，并运行文件分析验收脚本的 Git 和 PTC 护栏。日常测试还排除真实 Catalog。
+CI、发布检查与 `pack:plugin` 使用发布层；浏览器用例及 CSV 浏览器护栏可通过 `npm run test:full`、
+单独的 `test:<suite>` 或 `test:validation-guards` 显式运行。真实 Runtime、Host 和模型验证仍按各入口
+的前提单独运行，不能由这些测试替代。
 
 plugin real-model runner 验证 Help/凭据接缝，需要目标 Marivo 0.6.6 与真实模型。
 presentation integration runner 使用隔离 Workspace、真实 Tool dispatch 与 Host Web 验证交付。

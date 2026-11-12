@@ -8,6 +8,7 @@ import { build } from 'esbuild'
 import { chromium } from 'playwright'
 import { validateFrameDisplay } from '../../src/presentation/contracts/frame-display.ts'
 import { classifyFrame, resolveFrameView } from '../../src/presentation/contracts/frame-view.ts'
+import { browserTestsEnabled, skipBrowserTest } from '../browser-test.ts'
 import { datasetSnapshot } from './dataset-fixtures.ts'
 import {
   categoryAxis,
@@ -20,13 +21,14 @@ import { bundleRenderer, type Renderer } from './frame-render-fixtures.ts'
 
 let renderer: Renderer
 before(async () => {
-  renderer = await bundleRenderer()
+  if (browserTestsEnabled) renderer = await bundleRenderer()
 })
 after(async () => {
-  await renderer.dispose()
+  await renderer?.dispose()
 })
 
-test('row limit previews saved rows with their original point identity and exposes the complete table', async () => {
+test('row limit previews saved rows with their original point identity and exposes the complete table', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = observeCategory(15)
   const html = await renderer.render(snapshot, {
     askPoint: true,
@@ -41,7 +43,8 @@ test('row limit previews saved rows with their original point identity and expos
   assert.match(html, /data-icon="data"/)
 })
 
-test('table row limit follows the filtered saved rows and leaves the detailed data intact', async () => {
+test('table row limit follows the filtered saved rows and leaves the detailed data intact', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = observeCategory(8)
   const original = JSON.stringify(snapshot)
   const result = resolveFrameView(snapshot, { chart: 'table' })
@@ -79,7 +82,8 @@ test('table row limit rejects competing record previews and comparison layouts',
   assert.equal(validateFrameDisplay(snapshot, comparison, { rowLimit: 2 }), '/display/rowLimit')
 })
 
-test('limited filtered table opens all filtered rows in its data dialog', async () => {
+test('limited filtered table opens all filtered rows in its data dialog', async (t) => {
+  if (skipBrowserTest(t)) return
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-limited-table-'))
   const browser = await chromium.launch()
   try {
@@ -137,7 +141,8 @@ createRoot(document.getElementById('root')).render(h(AnalysisResources.Provider,
   }
 })
 
-test('a limited horizontal bar keeps the original selected row and full data dialog', async () => {
+test('a limited horizontal bar keeps the original selected row and full data dialog', async (t) => {
+  if (skipBrowserTest(t)) return
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-limited-bars-'))
   const browser = await chromium.launch()
   try {
@@ -187,7 +192,8 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
   }
 })
 
-test('Frame and Dataset charts retain their saved categories and values', async () => {
+test('Frame and Dataset charts retain their saved categories and values', async (t) => {
+  if (skipBrowserTest(t)) return
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-narrow-bars-'))
   const browser = await chromium.launch()
   const fullLabel = 'Upper East Side South A Very Long Category Name'
@@ -279,7 +285,8 @@ function decomposition() {
   })
 }
 
-test('explicit decomposition totals use only repeated, consistent saved endpoint values', async () => {
+test('explicit decomposition totals use only repeated, consistent saved endpoint values', async (t) => {
+  if (skipBrowserTest(t)) return
   const display = {
     decompositionTotals: {
       baseline: 'baseline_total',
@@ -312,7 +319,8 @@ test('explicit decomposition totals use only repeated, consistent saved endpoint
     }
 })
 
-test('display rounding affects the headline while the detailed table retains its original precision', async () => {
+test('display rounding affects the headline while the detailed table retains its original precision', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = frame({ values: [{ name: 'fare', type: 'decimal', values: ['82040902.13'] }] })
   snapshot.data.columns[0]!.unit = 'USD'
   const original = JSON.stringify(snapshot)

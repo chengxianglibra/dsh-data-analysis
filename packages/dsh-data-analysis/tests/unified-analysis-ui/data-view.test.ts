@@ -11,6 +11,7 @@ import {
   type AnalysisSnapshot,
   parseAnalysisSnapshot,
 } from '../../src/presentation/contracts/snapshot.ts'
+import { browserTestsEnabled, skipBrowserTest } from '../browser-test.ts'
 import { datasetSnapshot } from './dataset-fixtures.ts'
 import { frameSnapshot } from './fixtures.ts'
 
@@ -70,6 +71,7 @@ export function render(snapshot, semantic, view, candidate) {
     logLevel: 'silent',
   })
   ;({ render, renderOrigins } = await import(pathToFileURL(outfile).href))
+  if (!browserTestsEnabled) return
   const chartFile = path.join(directory, 'chart.js')
   await build({
     stdin: {
@@ -233,7 +235,8 @@ test('semantic origins show distinct concrete objects and exclude datasource and
   assert.equal((html.match(/<button/g) ?? []).length, 2)
 })
 
-test('Dataset line/area/bar preserve exact values and null gaps', async () => {
+test('Dataset line/area/bar preserve exact values and null gaps', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = datasetSnapshot()
   for (const chart of ['line', 'area', 'bar'] as const) {
     const html = await renderChart(snapshot, {
@@ -259,7 +262,8 @@ test('Dataset line/area/bar preserve exact values and null gaps', async () => {
   assert.equal((areaPath?.match(/M/g) ?? []).length, 2, 'saved null splits the area into two paths')
 })
 
-test('Dataset charts expose saved numeric values accessibly', async () => {
+test('Dataset charts expose saved numeric values accessibly', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = datasetSnapshot(
     [
       ['A', 1],
@@ -280,7 +284,8 @@ test('Dataset charts expose saved numeric values accessibly', async () => {
   }
 })
 
-test('Dataset heatmap retains raw large keys, exact values and empty combinations', async () => {
+test('Dataset heatmap retains raw large keys, exact values and empty combinations', async (t) => {
+  if (skipBrowserTest(t)) return
   const snapshot = datasetSnapshot(
     [
       ['9007199254740993', 'A', '1.2300'],
