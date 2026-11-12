@@ -11,6 +11,7 @@ import {
   MARIVO_PROJECT_INIT_PROGRAM,
   type ProjectPreparation,
 } from '../environment/project-preparation.ts'
+import { type PythonException, PythonOperationError } from '../python-exception.ts'
 import { type PythonCodeRef, savePythonExecution } from '../python-execution.ts'
 import {
   pythonResults,
@@ -42,25 +43,28 @@ export interface MarivoPythonExecutionSummary {
   nextAction: string | null
 }
 
-/** The message survives Harness error normalization; it contains only safe adapter facts. */
+/** Preserve execution facts and public Python diagnostics through Harness error normalization. */
 export class MarivoPythonExecutionError extends Error {
   readonly execution: MarivoPythonExecutionSummary
   readonly code: string
   readonly phase: MarivoPythonExecutionSummary['phase']
   readonly recovery: string | null
+  readonly exception?: PythonException
   constructor(
     message: string,
     execution: MarivoPythonExecutionSummary,
     code = 'python-execution-failed',
+    exception?: PythonException,
   ) {
     super(
-      `${message}; error=${JSON.stringify({ code, phase: execution.phase, recovery: execution.nextAction })}; execution=${JSON.stringify(execution)}`,
+      `${message}; error=${JSON.stringify({ code, phase: execution.phase, recovery: execution.nextAction, ...(exception ? { exception } : {}) })}; execution=${JSON.stringify(execution)}`,
     )
     this.name = 'MarivoPythonExecutionError'
     this.execution = execution
     this.code = code
     this.phase = execution.phase
     this.recovery = execution.nextAction
+    this.exception = exception
   }
 }
 
@@ -120,6 +124,33 @@ const pythonOutputSchema = {
         aborted: { type: 'boolean', required: true },
         stdout: { type: 'string', required: true },
         stderr: { type: 'string', required: true },
+        exception: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            type: { type: 'string', required: true },
+            message: { type: 'string', required: true },
+            code: { oneOf: [{ type: 'string' }, { type: 'number' }] },
+            kind: { type: 'string' },
+            expected: { type: 'string' },
+            received: { type: 'string' },
+            location: {
+              oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }],
+            },
+            repair: {
+              oneOf: [
+                {
+                  type: 'object',
+                  properties: { action: { type: 'string', required: true } },
+                  additionalProperties: true,
+                },
+                { type: 'null' },
+              ],
+              required: true,
+            },
+          },
+          description: 'Python exception and its upstream repair, when available.',
+        },
         truncated: { type: 'boolean', required: true },
         sandbox: {
           oneOf: [
@@ -413,18 +444,11 @@ export function registerMarivoPythonTool(
           const result = await service.track(execution.result())
           executionElapsedMs = performance.now() - shellStartedAt
           const finishedAt = new Date().toISOString()
-          const exported = resultVariables
-            ? readPythonResultOutput(
-                result.stderr.text,
-                resultVariables,
-                Object.values(prepared.values),
-              )
-            : {
-                stderr: result.stderr.text,
-                resultRefs: undefined,
-                resultCaptureError: undefined,
-                resultMetadata: undefined,
-              }
+          const exported = readPythonResultOutput(
+            result.stderr.text,
+            resultVariables ?? {},
+            Object.values(prepared.values),
+          )
           const stderr = exported.stderr
           const succeeded = result.exitCode === 0 && !result.timedOut && !result.aborted
           const completed =
@@ -433,7 +457,9 @@ export function registerMarivoPythonTool(
             !result.aborted &&
             !result.sandbox?.denied &&
             !result.sandbox?.runnerFailed
-          const resultCaptureError = completed ? exported.resultCaptureError : undefined
+          const resultCaptureError =
+            completed && resultVariables ? exported.resultCaptureError : undefined
+          const exception = completed && !succeeded ? exported.error : undefined
           const credentialValues = prepared.values
           // Defense at the result seam as well as before Harness collection/spill.
           const redact = (text: string) =>
@@ -505,6 +531,7 @@ export function registerMarivoPythonTool(
               aborted: result.aborted,
               stdout: redact(result.stdout.text),
               stderr: redact(stderr),
+              ...(exception ? { exception } : {}),
               truncated: result.stdout.truncated || result.stderr.truncated,
               sandbox: result.sandbox ?? null,
               ...(project ? { project } : {}),
@@ -529,6 +556,7 @@ export function registerMarivoPythonTool(
                   : undefined) ??
                   codeCaptureError ??
                   resultCaptureError ??
+                  exception?.repair?.action ??
                   (reason === 'succeeded' ? null : CHECK_EFFECTS),
               ),
             }),
@@ -556,6 +584,8 @@ export function registerMarivoPythonTool(
                 ? 'Project initialization outcome is uncertain. Inspect the Workspace and public Runtime doctor before retrying; do not automatically repeat init or delete files.'
                 : 'Repair the exact Workspace root marivo.toml using the bound Runtime public contract; existing files were not overwritten.'
               : undefined
+          const exception =
+            !cancelled && error instanceof PythonOperationError ? error.diagnostic : undefined
           throw new MarivoPythonExecutionError(
             shellStartedAt === null
               ? `Marivo Python preparation failed or was cancelled; user Python code was not started (${code})`
@@ -563,11 +593,14 @@ export function registerMarivoPythonTool(
             summary(
               reason,
               projectRecovery ??
-                (shellStartedAt === null
-                  ? 'Check credentials, Workspace binding and Host execution policy before retrying.'
-                  : CHECK_EFFECTS),
+                (exception
+                  ? (exception.repair?.action ?? null)
+                  : shellStartedAt === null
+                    ? 'Check credentials, Workspace binding and Host execution policy before retrying.'
+                    : CHECK_EFFECTS),
             ),
             code,
+            exception,
           )
         } finally {
           prepared?.release()

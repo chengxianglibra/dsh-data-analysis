@@ -10,6 +10,11 @@ import type { MarivoBridgeSource } from '../environment/source.ts'
 import { resolveMarivoBridgeSource } from '../environment/source.ts'
 import type { MarivoCheckedRunner, MarivoEnvironmentBinding } from '../environment/types.ts'
 import {
+  PythonOperationError,
+  readPythonException,
+  withPythonException,
+} from '../python-exception.ts'
+import {
   DATASOURCE_AUTHORING_PROGRAM,
   type DatasourceAuthoring,
   type DatasourceConfiguration,
@@ -464,7 +469,7 @@ export class MarivoDatasourceBridge {
 
   async describe(name: string, signal?: AbortSignal): Promise<MarivoDatasourceDescription> {
     const result = await this.#runner.runChecked({
-      program: MARIVO_DATASOURCE_DESCRIBE_PROGRAM,
+      program: withPythonException(MARIVO_DATASOURCE_DESCRIBE_PROGRAM),
       args: [name],
       limits: DATASOURCE_LIMITS,
       signal,
@@ -529,6 +534,8 @@ export class MarivoDatasourceBridge {
     phase: 'describe' | 'inventory' | 'test',
   ): void {
     if (result.exitCode === 0) return
+    const diagnostic = readPythonException(result.stdout)
+    if (diagnostic) throw new PythonOperationError(diagnostic)
     throw new MarivoEnvironmentError(
       'subprocess-failed',
       `Marivo datasource ${phase} failed with exit code ${String(result.exitCode)}`,

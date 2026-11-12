@@ -51,6 +51,7 @@ import { parseReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { readAnalysisRecord } from '../../src/presentation/reports.ts'
 import { MarivoPresentationFileService } from '../../src/presentation/rpc.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
+import { pythonException } from '../../src/python-exception.ts'
 import type { PythonCodeRef } from '../../src/python-execution.ts'
 import { restorePythonResults } from '../../src/python-results-context.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
@@ -152,6 +153,76 @@ type ExecutionValue = {
   stdout: string
   timedOut: boolean
 }
+
+test('real preflight preserves the missing datasource repair before any user code starts', {
+  skip,
+}, async (t) => {
+  const h = await harness(t)
+  const result = await h.agent.ctx.tools.execute({
+    agent: h.agent,
+    signal: new AbortController().signal,
+    callId: ToolCallId('unregistered-datasource'),
+    name: 'marivo_python',
+    arguments: {
+      code: 'raise AssertionError("user-code-started")',
+      datasources: ['missing_fixture'],
+      project: 'required',
+    },
+  })
+  assert.equal(result.isError, true)
+  const text = JSON.stringify(result)
+  assert.match(text, /DatasourceMissingError/)
+  assert.match(text, /missing_fixture/)
+  assert.match(text, /datasource/)
+  assert.match(text, /register/)
+  assert.match(text, /not-started/)
+  assert.doesNotMatch(text, /user-code-started/)
+  assert.equal(h.starts, 0)
+})
+
+test('real Python forwards datasource, semantic, analysis and ordinary exceptions through one contract', {
+  skip,
+}, async (t) => {
+  const h = await harness(t)
+  const cases = [
+    [
+      'DatasourceMissingError',
+      'import marivo.datasource as md\nmd.load().describe("missing_fixture")',
+      'register',
+    ],
+    [
+      'SemanticError',
+      'from marivo.semantic.errors import SemanticError, repair\nraise SemanticError(kind="fixture", message="semantic fixture", repair=repair(kind="reload", canonical_id="load", action="Reload fixture"))',
+      'reload',
+    ],
+    [
+      'AnalysisError',
+      'from marivo.analysis.errors import AnalysisError, AnalysisRepair\nraise AnalysisError(message="analysis fixture", repair=AnalysisRepair(kind="inspect", action="Inspect fixture", help_target={"surface":"analysis"}))',
+      'inspect',
+    ],
+    ['ValueError', 'raise ValueError("ordinary fixture")', null],
+  ] as const
+  for (const [type, code, kind] of cases) {
+    const result = await h.call(code, 30_000)
+    assert.equal(result.isError, false, JSON.stringify(result))
+    const value = z
+      .object({
+        exitCode: z.literal(1),
+        exception: pythonException,
+        execution: z.object({
+          reason: z.literal('nonzero-exit'),
+          nextAction: z.string().nullable(),
+        }),
+      })
+      .parse(result.value)
+    assert.equal(value.exception.type, type)
+    if (type === 'SemanticError') assert.equal(value.exception.kind, 'fixture')
+    assert.equal(value.exception.repair?.kind ?? null, kind)
+    if (value.exception.repair)
+      assert.equal(value.execution.nextAction, value.exception.repair.action)
+    else assert.equal(value.exception.message, 'ordinary fixture')
+  }
+})
 
 const sleepingTree = String.raw`
 import json, os, subprocess, sys, time

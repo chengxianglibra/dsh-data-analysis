@@ -1,3 +1,4 @@
+import { PYTHON_EXCEPTION_PROGRAM } from '../python-exception.ts'
 import { PYTHON_RESULT_HEADER } from '../python-result-references.ts'
 
 /** Shared Python adapter. All inputs below arrive on a Host-owned pipe. */
@@ -44,7 +45,7 @@ class SnapshotResolver:
 `.trim()
 
 /** The worker checks the exact binding and enters scope before any user code. */
-export const PYTHON_WORKER = `${RESOLVER_PROGRAM}\n${String.raw`
+export const PYTHON_WORKER = `${PYTHON_EXCEPTION_PROGRAM}\n${RESOLVER_PROGRAM}\n${String.raw`
 payload = json.load(sys.stdin)
 expected = payload["identity"]
 if (os.path.abspath(sys.executable) != expected["pythonExecutable"] or
@@ -134,6 +135,18 @@ try:
                     export_results(namespace)
                 except Exception:
                     pass  # Keep the original user-code outcome.
+except Exception as error:
+    try:
+        result_file = Path(payload["result_file"])
+        output = json.loads(result_file.read_text()) if result_file.exists() else {
+            "status": "collected", "references": {}, "errors": {}}
+        output["error"] = python_exception(error)
+        encoded = json.dumps(output, allow_nan=False).encode("utf-8")
+        if len(encoded) <= 32768:
+            result_file.write_bytes(encoded)
+    except Exception:
+        pass  # Preserve the original failure if diagnostic capture fails.
+    raise
 finally:
     resolver.values.clear()
     payload.clear()
@@ -146,9 +159,8 @@ from pathlib import Path
 payload = json.load(sys.stdin)
 worker = payload.pop("worker")
 values = sorted(set(payload["values"].values()), key=len, reverse=True)
-result_directory = tempfile.TemporaryDirectory(prefix="dsh-marivo-results-") if payload.get("result_variables") else None
-if result_directory:
-    payload["result_file"] = str(Path(result_directory.name) / "references.json")
+result_directory = tempfile.TemporaryDirectory(prefix="dsh-marivo-results-")
+payload["result_file"] = str(Path(result_directory.name) / "references.json")
 child = subprocess.Popen([sys.executable, "-c", worker], stdin=subprocess.PIPE,
     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 streams = [bytearray(), bytearray()]
@@ -175,21 +187,31 @@ except BrokenPipeError:
 child.wait()
 for thread in threads:
     thread.join()
-if result_directory:
-    control = b'{"status":"unavailable"}'
-    try:
-        with Path(payload["result_file"]).open("rb") as result_stream:
-            candidate = result_stream.read(32769)
-        if len(candidate) <= 32768:
-            control = candidate
-    except OSError:
-        pass
-    text = control.decode("utf-8", errors="replace")
-    for value in values:
-        if value:
-            text = text.replace(value, "[REDACTED]")
-    sys.stderr.write("${PYTHON_RESULT_HEADER}" + base64.b64encode(text.encode("utf-8")).decode("ascii") + "\n")
-    result_directory.cleanup()
+control = b'{"status":"collected","references":{},"errors":{}}'
+try:
+    with Path(payload["result_file"]).open("rb") as result_stream:
+        candidate = result_stream.read(32769)
+    if len(candidate) <= 32768:
+        control = candidate
+except OSError:
+    pass
+def redact_control(item):
+    if isinstance(item, str):
+        for value in values:
+            if value:
+                item = item.replace(value, "[REDACTED]")
+        return item
+    if isinstance(item, list):
+        return [redact_control(value) for value in item]
+    if isinstance(item, dict):
+        return {redact_control(key): redact_control(value) for key, value in item.items()}
+    return item
+try:
+    text = json.dumps(redact_control(json.loads(control)), allow_nan=False)
+except (ValueError, UnicodeError):
+    text = '{"status":"collected","references":{},"errors":{}}'
+sys.stderr.write("${PYTHON_RESULT_HEADER}" + base64.b64encode(text.encode("utf-8")).decode("ascii") + "\n")
+result_directory.cleanup()
 if overflow.is_set():
     print("Marivo Python output limit exceeded", file=sys.stderr)
     raise SystemExit(74)

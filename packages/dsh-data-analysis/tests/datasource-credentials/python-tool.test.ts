@@ -13,6 +13,7 @@ import {
 } from '../../src/datasource/python.ts'
 import type { MarivoPythonOptionsSource } from '../../src/datasource/python-options.ts'
 import { MarivoEnvironmentError } from '../../src/environment/errors.ts'
+import { PythonOperationError } from '../../src/python-exception.ts'
 import { barrier, fixture, operation, waiting } from './fixtures.ts'
 
 function pythonTool(f: ReturnType<typeof fixture>, options: MarivoPythonOptionsSource = {}) {
@@ -557,6 +558,29 @@ test('preparation exceptions carry safe facts without starting Python', async (t
     assertSummary(error.execution, 'preparing', 'not-started')
     assert.doesNotMatch(error.message, /private-provider-failure/)
     assert.equal(error.execution.effectiveTimeoutMs, null)
+    return true
+  })
+  assert.equal(p.launches.length, 0)
+})
+
+test('preparation exposes the Python diagnostic and takes recovery from its repair', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const diagnostic = {
+    type: 'CustomFailure',
+    message: 'Fixture failure',
+    repair: { action: 'Repair the fixture', kind: 'reload' },
+  }
+  f.bridge.describe = async () => {
+    throw new PythonOperationError(diagnostic)
+  }
+  const p = pythonTool(f)
+  await assert.rejects(p.call(), (error: unknown) => {
+    assert(error instanceof MarivoPythonExecutionError)
+    assert.deepEqual(error.exception, diagnostic)
+    assert.equal(error.recovery, diagnostic.repair.action)
+    assert.equal(error.execution.reason, 'not-started')
+    assert(error.message.includes(JSON.stringify(diagnostic)))
     return true
   })
   assert.equal(p.launches.length, 0)

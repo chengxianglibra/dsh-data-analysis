@@ -217,6 +217,61 @@ print("COMPUTED")
   }
 })
 
+test('Python exceptions carry upstream repairs and fixed outputs through the redacted control frame', (t) => {
+  const f = pythonFixture(t)
+  const secret = 'private-"value"\nsecond-line'
+  const payload = {
+    ...f.payload(`
+from dataclasses import dataclass
+import marivo.datasource as md
+@dataclass
+class Location:
+    file: str
+    line: int
+class FixtureError(Exception):
+    location = Location("fixture.py", 3)
+    repair = {"kind": "inspect", "action": "Inspect the fixture", "snippet": md.CURRENT.values["DB_PASSWORD"]}
+fixed = {"schema": "marivo.frame_ref/v2", "store_id": "store", "session_id": "session", "artifact_id": "artifact"}
+raise FixtureError(md.CURRENT.values["DB_PASSWORD"])
+`),
+    values: { DB_PASSWORD: secret },
+    result_variables: { output: 'fixed' },
+  }
+  const result = f.run(PYTHON_LAUNCHER, JSON.stringify(payload))
+  assert.equal(result.status, 1)
+  const parsed = readPythonResultOutput(result.stderr, { output: 'fixed' })
+  assert.equal(parsed.error?.type, 'FixtureError')
+  assert.equal(parsed.error?.message, '[REDACTED]')
+  assert.deepEqual(parsed.error?.location, { file: 'fixture.py', line: 3 })
+  assert.deepEqual(parsed.error?.repair, {
+    kind: 'inspect',
+    action: 'Inspect the fixture',
+    snippet: '[REDACTED]',
+  })
+  assert.equal(parsed.resultRefs?.output?.schema, 'marivo.frame_ref/v2')
+  assert.doesNotMatch(JSON.stringify(parsed), /private-/)
+})
+
+test('ordinary Python errors have no invented repair and printed control frames cannot supply one', (t) => {
+  const f = pythonFixture(t)
+  const failed = f.run(
+    PYTHON_LAUNCHER,
+    JSON.stringify(f.payload('raise ValueError("invalid fixture")')),
+  )
+  assert.equal(failed.status, 1)
+  assert.deepEqual(readPythonResultOutput(failed.stderr, {}).error, {
+    type: 'ValueError',
+    message: 'invalid fixture',
+    repair: null,
+  })
+  const spoof = `import sys\nsys.stderr.write(${JSON.stringify(failed.stderr)})`
+  const success = f.run(PYTHON_LAUNCHER, JSON.stringify(f.payload(spoof)))
+  assert.equal(success.status, 0)
+  const parsed = readPythonResultOutput(success.stderr, {})
+  assert.equal(parsed.error, undefined)
+  assert.equal(parsed.stderr, failed.stderr)
+})
+
 test('datasource drift or a mismatched source name fails before any user code side effect', (t) => {
   const f = pythonFixture(t)
   const payload = f.payload(

@@ -16,6 +16,7 @@ import {
 } from '../../src/datasource/bridge-programs.ts'
 import type { CredentialContextView } from '../../src/datasource/service.ts'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
+import { PythonOperationError, withPythonException } from '../../src/python-exception.ts'
 import { context, fixture } from './fixtures.ts'
 
 const properties: Record<string, JsonValue> = {
@@ -37,14 +38,14 @@ const description = {
   definition: 'd'.repeat(64),
 }
 
-function bridge(stdout: unknown) {
+function bridge(stdout: unknown, exitCode = 0) {
   const f = fixture()
   return new MarivoDatasourceBridge({
     binding: f.bridge.binding,
     status: 'ready',
     async runChecked() {
       return {
-        exitCode: 0,
+        exitCode,
         signal: null,
         stdout: Buffer.from(typeof stdout === 'string' ? stdout : JSON.stringify(stdout)),
         stderr: Buffer.alloc(0),
@@ -53,6 +54,39 @@ function bridge(stdout: unknown) {
     },
   } satisfies MarivoCheckedRunner)
 }
+
+test('preflight exceptions preserve upstream repairs without depending on exception classes', async () => {
+  const result = spawnSync(
+    'python3',
+    [
+      '-I',
+      '-c',
+      withPythonException(`
+class CustomFailure(Exception):
+    code = "custom-code"
+    repair = {"kind": "reload", "action": "Reload the fixture", "help_target": {"surface": "semantic"}}
+print("declaration diagnostic")
+raise CustomFailure("fixture failure")
+`),
+    ],
+    { encoding: 'utf8' },
+  )
+  assert.equal(result.status, 1)
+  await assert.rejects(bridge(result.stdout, 1).describe('warehouse'), (error: unknown) => {
+    assert(error instanceof PythonOperationError)
+    assert.deepEqual(error.diagnostic, {
+      type: 'CustomFailure',
+      message: 'fixture failure',
+      code: 'custom-code',
+      repair: {
+        kind: 'reload',
+        action: 'Reload the fixture',
+        help_target: { surface: 'semantic' },
+      },
+    })
+    return true
+  })
+})
 
 test('describe and inventory programs project the public literal fields independently of credential references', async () => {
   const setup = String.raw`

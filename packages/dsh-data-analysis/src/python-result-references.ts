@@ -8,6 +8,7 @@ import {
   viewFieldMetadata,
   viewNames,
 } from './presentation/contracts/view-fields.ts'
+import { type PythonException, pythonException, redactPythonException } from './python-exception.ts'
 import type { PythonCodeRef } from './python-execution.ts'
 
 export const PYTHON_RESULT_HEADER = '__DSH_MARIVO_RESULTS_V1__:'
@@ -141,6 +142,7 @@ const resultOutput = z.discriminatedUnion('status', [
     status: z.literal('collected'),
     references: z.record(resultName, z.unknown()),
     errors: z.record(resultName, z.enum(['missing-variable', 'not-fixed'])),
+    error: pythonException.optional(),
     metadata: z.unknown().optional(),
   }),
   z.strictObject({
@@ -181,6 +183,7 @@ export function readPythonResultOutput(
   resultRefs?: Record<string, ResultReference>
   resultMetadata?: Record<string, z.infer<typeof resultMetadata>>
   resultCaptureError?: string
+  error?: PythonException
 } {
   const end = stderr.indexOf('\n')
   if (!stderr.startsWith(PYTHON_RESULT_HEADER) || end < 0)
@@ -188,8 +191,10 @@ export function readPythonResultOutput(
   const text = stderr.slice(PYTHON_RESULT_HEADER.length, end)
   const remainder = stderr.slice(end + 1)
   const secrets = secretValues.filter(Boolean)
+  let error: PythonException | undefined
   const failure = (name?: string, reason?: string) => ({
     stderr: remainder,
+    ...(error ? { error } : {}),
     resultCaptureError:
       name && Object.hasOwn(variables, name) && !containsSecret([name, variables[name]], secrets)
         ? `${RESULT_CAPTURE_ERROR} Output ${JSON.stringify(name)}, variable ${JSON.stringify(variables[name])}: ${reason} Expected a computed Frame, pandas DataFrame or an exact fixed reference (frame_ref/v2 or dataframe_ref/v2).`
@@ -209,6 +214,10 @@ export function readPythonResultOutput(
           : 'Value is not a dictionary.',
       )
     const errors = output.status === 'collected' ? output.errors : {}
+    error =
+      output.status === 'collected' && output.error
+        ? redactPythonException(output.error, secrets)
+        : undefined
     const names = [...Object.keys(output.references), ...Object.keys(errors)]
     if (names.sort().join(',') !== Object.keys(variables).sort().join(','))
       throw new Error('result-export-names')
@@ -241,6 +250,7 @@ export function readPythonResultOutput(
     const missing = Object.keys(references).length !== names.length
     return {
       stderr: remainder,
+      ...(error ? { error } : {}),
       ...(Object.keys(references).length ? { resultRefs: { ...references } } : {}),
       ...(missing ? { resultCaptureError: [RESULT_CAPTURE_ERROR, ...diagnostics].join(' ') } : {}),
       ...(output.metadata === undefined

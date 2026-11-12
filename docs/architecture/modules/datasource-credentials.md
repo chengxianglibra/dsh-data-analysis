@@ -93,10 +93,21 @@ Agent 接入和 Tool 注册前校验；参数在凭据准备前校验。Harness 
 
 `executing` 只表示交给 Shell，不证明用户代码或 Trino 查询已开始。超时与取消使用 Shell 标志分类，
 不会从 stderr 猜测；无已知退出码且未报告超时/取消时为 `unknown`。
-准备返回 `needs-credentials` 或 datasource 失败时原因是 `not-started`，保留已有 `failure`、`repair`。
+准备返回 `needs-credentials` 或 datasource 准入失败时原因是 `not-started`。连接测试的
+`failure`、`repair` 属于 `marivo_datasource_test` 结果，Python 异常使用下面的 `exception`。
 
 输入、Host 服务、准备异常及 Shell 抛错保持错误通道，使用 `MarivoPythonExecutionError`：其 `code`、`phase`、`recovery` 与 `execution`
-属性及安全 message 中的对应 JSON 提供稳定错误码、阶段与下一步，不透传原始异常或注入值。项目准备失败保留具体错误码，初始化结果不确定时明确要求先检查现有状态，不自动重复 init。参数 schema 在 Tool body
+属性及 message 中的对应 JSON 提供稳定错误码、阶段与下一步。Host 异常只披露插件已知事实。
+datasource 准入的 checked Python 与用户 Python 执行使用同一个通用异常投影，捕获普通 `Exception`，
+读取已有 `type`、`message`、可用的 `code`、`kind`、`expected`、`received`、`location` 和 `repair`。
+`repair` 复用异常公开字典或 `model_dump(mode="json")` 的结果；插件不按领域或异常子类生成恢复动作。
+预检失败在错误通道的 `error.exception` 中携带投影，`recovery` 取原有 `repair.action`，缺失时为 null。
+已完成的非零退出在工具结果的 `exception` 中携带同一投影；用户 stdout/stderr、退出码和已固定输出独立保留。
+执行异常通过 launcher 拥有的首个结果控制帧传递，控制帧也用于没有 resultVariables 的调用，
+解析后从 stderr 移除；用户打印的后续控制帧不会被当成异常回执。投影沿用 32 KiB 控制帧限额，
+捕获失败或超过限额时保留原始执行失败及经脱敏的 stderr。已知凭据值在控制帧编码前及工具接缝逐字段脱敏，
+投影不导出 traceback 或任意异常内部属性。取消、超时和进程控制继续使用执行层语义。
+项目准备失败保留具体错误码，初始化结果不确定时明确要求先检查现有状态，不自动重复 init。参数 schema 在 Tool body
 之前拒绝的调用保持 Harness 原生校验错误。准备异常明确尚未启动；交给 Shell 后发生异常只报告结果未确认，
 取消可确认时标记 `cancelled`，不能宣称不存在副作用。
 
