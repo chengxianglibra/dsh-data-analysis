@@ -1,6 +1,5 @@
 import { lstat, realpath } from 'node:fs/promises'
 import path from 'node:path'
-import { admitDoctorReport, parseDoctorReport } from './doctor.ts'
 import { MarivoEnvironmentError } from './errors.ts'
 import type { MarivoCheckedRunner } from './types.ts'
 
@@ -52,30 +51,6 @@ async function manifestPresent(root: string): Promise<boolean> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
     throw error
   }
-}
-
-async function validateProject(runner: MarivoCheckedRunner, signal?: AbortSignal) {
-  const { binding } = runner
-  const result = await runner.runChecked({
-    program: cli,
-    args: ['doctor', '--project-root', binding.projectRoot, '--format', 'json'],
-    environmentOverlay: { MARIVO_TELEMETRY: 'off' },
-    limits,
-    signal,
-  })
-  const report = parseDoctorReport(result.stdout)
-  admitDoctorReport(report, binding.projectRoot, binding.pythonExecutable)
-  if (
-    report.marivo.version !== binding.marivoVersion ||
-    path.normalize(report.marivo.package_path) !== path.normalize(binding.packagePath) ||
-    !report.sections.some((section) =>
-      section.checks.some((check) => check.id === 'project.marivo_toml' && check.status === 'ok'),
-    )
-  )
-    throw new MarivoEnvironmentError(
-      'project-manifest-invalid',
-      'Bound Runtime did not validate the Workspace root manifest',
-    )
 }
 
 function waitFor<T>(
@@ -144,13 +119,12 @@ export async function ensureMarivoProject(
         created = true
       }
       options.signal?.throwIfAborted()
-      await options.assertCurrent?.()
       if (!(await manifestPresent(root)))
         throw new MarivoEnvironmentError(
           'project-manifest-invalid',
           'Workspace manifest is missing',
         )
-      await validateProject(runner, options.signal)
+      options.signal?.throwIfAborted()
       await options.assertCurrent?.()
       return { status: created ? 'created' : 'already-ready', projectRoot: root }
     })

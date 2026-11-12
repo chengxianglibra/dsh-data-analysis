@@ -214,6 +214,41 @@ test('Workspace or datasource definition change during final snapshot rejects th
   }
 })
 
+test('a datasource definition changed while preparing credentials cannot reach execution', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.store.put('DB_PASSWORD')
+  const describe = f.store.describe.bind(f.store)
+  f.store.describe = async (ref) => {
+    const state = await describe(ref)
+    f.description.definition = 'e'.repeat(64)
+    return state
+  }
+  await assert.rejects(
+    f.service.prepareExecution(f.exec, f.resolve, ['warehouse']),
+    /context-changed/,
+  )
+})
+
+test('a changed Runtime binding is rejected before credentials are read', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  f.store.put('DB_PASSWORD')
+  let fingerprint = f.bridge.binding.fingerprint
+  const describe = f.store.describe.bind(f.store)
+  f.store.describe = async (ref) => {
+    const state = await describe(ref)
+    fingerprint = 'changed'
+    return state
+  }
+  const resolve = async () => ({ ...f.bridge, binding: { ...f.bridge.binding, fingerprint } })
+  await assert.rejects(
+    f.service.prepareExecution(f.exec, resolve, ['warehouse']),
+    /context-changed/,
+  )
+  assert.equal(f.store.calls.resolve, 0)
+})
+
 test('cancellation ends a waiting execution and prevents its form from resuming it', async (t) => {
   const f = fixture('web')
   t.after(() => f.service.close())

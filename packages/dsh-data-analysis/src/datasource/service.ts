@@ -225,11 +225,20 @@ export class MarivoCredentialService {
     for (const ref of refs) this.#versions.set(ref, (this.#versions.get(ref) ?? 0) + 1)
     this.#changed()
   }
-  async #current(context: BoundContext, signal: AbortSignal): Promise<void> {
+  async #currentBinding(
+    context: BoundContext,
+    signal: AbortSignal,
+  ): Promise<MarivoDatasourceBridgePort> {
     assert(!context.invalidated, 'context-changed')
     signal.throwIfAborted()
     const bridge = await context.resolve()
     assert(bridge.binding.fingerprint === context.bridge.binding.fingerprint, 'context-changed')
+    assert(!context.invalidated, 'context-changed')
+    signal.throwIfAborted()
+    return bridge
+  }
+  async #current(context: BoundContext, signal: AbortSignal): Promise<void> {
+    const bridge = await this.#currentBinding(context, signal)
     const described = await bridge.describe(context.description.name, signal)
     assert(described.definition === context.description.definition, 'context-changed')
     assert(!context.invalidated, 'context-changed')
@@ -283,7 +292,10 @@ export class MarivoCredentialService {
       resolve,
       touched: this.now(),
     }
-    await this.#current(context, signal)
+    // Check the binding after the asynchronous description without launching a
+    // second identical describe. The definition is checked again after
+    // resolving credentials in #snapshot, before they leave this service.
+    await this.#currentBinding(context, signal)
     return context
   }
   async overview(
@@ -346,7 +358,7 @@ export class MarivoCredentialService {
     const values: Record<string, string> = Object.create(null)
     try {
       return await this.#locked(async () => {
-        for (const context of contexts) await this.#current(context, signal)
+        for (const context of contexts) await this.#currentBinding(context, signal)
         const versions = contexts.map((context) => this.#version(context))
         for (const ref of new Set(contexts.flatMap((context) => context.description.refs))) {
           let resolved: Awaited<ReturnType<CredentialStore['resolve']>>

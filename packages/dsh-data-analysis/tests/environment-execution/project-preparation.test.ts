@@ -20,7 +20,6 @@ async function fixture(t: TestContext) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'project-preparation-')))
   t.after(() => rm(root, { recursive: true, force: true }))
   let initializes = 0
-  let manifestStatus = 'ok'
   const requests: Parameters<MarivoCheckedRunner['runChecked']>[0][] = []
   const runner: MarivoCheckedRunner = {
     binding: {
@@ -40,31 +39,13 @@ async function fixture(t: TestContext) {
         await writeFile(path.join(root, 'marivo.toml'), '[project]\nname = "prepared"\n', {
           flag: 'wx',
         })
-      }
+      } else throw new Error('Unexpected project preparation subprocess')
       return {
         exitCode: 0,
         signal: null,
         durationMs: 0,
         stderr: Buffer.alloc(0),
-        stdout: Buffer.from(
-          JSON.stringify({
-            status: 'ok',
-            project_root: runner.binding.projectRoot,
-            python_executable: runner.binding.pythonExecutable,
-            marivo: { version: 'test', package_path: runner.binding.packagePath },
-            sections: [
-              {
-                id: 'project',
-                status: 'ok',
-                checks: [
-                  { id: 'installation.python', status: 'ok', summary: 'Python' },
-                  { id: 'installation.marivo', status: 'ok', summary: 'Marivo' },
-                  { id: 'project.marivo_toml', status: manifestStatus, summary: 'Manifest' },
-                ],
-              },
-            ],
-          }),
-        ),
+        stdout: Buffer.alloc(0),
       } satisfies SubprocessResult
     },
   }
@@ -74,9 +55,6 @@ async function fixture(t: TestContext) {
     requests,
     get initializes() {
       return initializes
-    },
-    setManifestStatus: (value: string) => {
-      manifestStatus = value
     },
   }
 }
@@ -125,11 +103,13 @@ test('project preparation rejects symlinks and nonregular manifests before initi
   }
 })
 
-test('existing invalid manifests fail public validation and are never overwritten', async (t) => {
+test('project preparation leaves existing manifests for user code to interpret', async (t) => {
   const f = await fixture(t)
   await writeFile(path.join(f.root, 'marivo.toml'), 'invalid')
-  f.setManifestStatus('fail')
-  await assert.rejects(ensureMarivoProject(f.runner), /project.marivo_toml/)
+  assert.deepEqual(await ensureMarivoProject(f.runner), {
+    status: 'already-ready',
+    projectRoot: f.root,
+  })
   assert.equal(f.initializes, 0)
   assert.equal(await readFile(path.join(f.root, 'marivo.toml'), 'utf8'), 'invalid')
 })
@@ -220,7 +200,7 @@ test('a cancelled queued preparation releases no lock ahead of the active initia
 })
 
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
-test('real bound Runtime prepares an empty Workspace using its public init and doctor', {
+test('real bound Runtime prepares an empty Workspace using its public init', {
   skip: !pythonExecutable && 'Set DSH_DATA_ANALYSIS_PYTHON to the exact supported Runtime',
 }, async (t) => {
   const f = await fixture(t)

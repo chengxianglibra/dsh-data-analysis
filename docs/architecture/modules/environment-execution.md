@@ -35,7 +35,7 @@
 
 没有已准入共享 Runtime 的独立 `bindMarivoEnvironment()` 使用 `doctor --format json` 建立身份。
 显式传入的解释器必须是绝对路径，未提供时使用 Workspace 内的 `.venv/bin/python`（Windows 为
-`.venv/Scripts/python.exe`）。显式项目准备也使用 doctor 验证根目录 manifest。
+`.venv/Scripts/python.exe`）。
 
 doctor report 顶层 status 可以反映 Datasource 凭证、模型或其他项目诊断，因此不能直接等同于本插件
 是否可披露 Help。当前准入只要求：
@@ -144,6 +144,6 @@ Presentation 的公开读取、来源身份与数据预算由 `tests/presentatio
 bridge runner 绕过 Host 执行边界。独立 launcher 捕获并脱敏输出后才交回 Shell，worker 在复核解释器、
 package 和 cwd 后建立公开 credential scope。实现与限制见 [凭证模块](datasource-credentials.md)。
 
-内部 `ensureMarivoProject()` 在明确项目意图下执行 exact-root manifest 检查与公开 CLI/doctor 适配，不属于 binding 或安装的隐式副作用。它按 canonical root 串行协调插件请求，在锁内重新核验 Host 上下文、manifest 和 Runtime；不接受根目录 manifest 的符号链接、不使用父目录发现、不使用 force。doctor 验证还要求 `project.marivo_toml=ok`，zero-init admission 的 `info` 不代表项目准备完成。
+内部 `ensureMarivoProject()` 在明确项目意图下检查 exact-root manifest，缺失时通过公开 CLI 初始化；它不属于 binding 或安装的隐式副作用。它按 canonical root 串行协调插件请求，在锁内重新核验 Host 上下文和 manifest；不接受根目录 manifest 的符号链接、不使用父目录发现、不使用 force。已有项目的准备不运行完整 doctor；首次 binding 仍校验项目配置，绑定后配置发生的错误由实际使用时报告。
 
-Python 工具注入初始化 executor，使实际 init 写入经过 Harness Shell 及当前 Session sandbox policy；同一 Python 进程先核对 bound import identity，再调用公开 Marivo CLI。只读项目检查仍使用 bound checked runner。取消或失败后仅检查已有影响，失败结果不自动再次初始化或清理文件。
+Python 工具注入初始化 executor，使实际 init 写入经过 Harness Shell 及当前 Session sandbox policy；同一 Python 进程先核对 bound import identity，再调用公开 Marivo CLI。取消或失败后仅检查已有影响，失败结果不自动再次初始化或清理文件。
