@@ -4,6 +4,7 @@ export interface PublicationSource {
   kind: 'agent'
   sessionId: string
   surface: 'tool' | 'tab'
+  callId?: string
 }
 export interface ReportVersion {
   receipt: PresentationReceipt
@@ -33,7 +34,14 @@ export function parseReportVersion(value: unknown): ReportVersion {
     !Number.isFinite(Date.parse(entry.publishedAt)) ||
     new Date(entry.publishedAt).toISOString() !== entry.publishedAt ||
     !entry.source ||
-    Object.keys(entry.source).sort().join(',') !== 'kind,sessionId,surface' ||
+    Object.keys(entry.source)
+      .filter((key) => key !== 'callId')
+      .sort()
+      .join(',') !== 'kind,sessionId,surface' ||
+    ('callId' in entry.source &&
+      (typeof entry.source.callId !== 'string' ||
+        !entry.source.callId ||
+        entry.source.callId.length > 512)) ||
     (entry.source.surface !== 'tool' && entry.source.surface !== 'tab') ||
     entry.source.kind !== 'agent' ||
     typeof entry.source.sessionId !== 'string' ||

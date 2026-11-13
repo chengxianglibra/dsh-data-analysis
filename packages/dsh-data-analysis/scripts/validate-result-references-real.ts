@@ -14,7 +14,7 @@ import { resultReference } from '../src/presentation/contracts/result-reference.
 import { parseSelectionText } from '../src/presentation/contracts/selection-text.ts'
 import { isFrameSnapshotV2 } from '../src/presentation/contracts/snapshot.ts'
 import { publishPresentation } from '../src/presentation/reports.ts'
-import { readMarivoResult } from '../src/presentation/result-reader.ts'
+import { readMarivoCandidates, readMarivoResult } from '../src/presentation/result-reader.ts'
 import { analysisResultSummary } from '../src/presentation/result-summary.ts'
 import { MarivoPresentationFileService } from '../src/presentation/rpc.ts'
 import { readPythonResultOutput } from '../src/python-result-references.ts'
@@ -56,7 +56,8 @@ reference = mv.persist_dataframe(pd.DataFrame({
 }))
 empty = mv.persist_dataframe(pd.DataFrame({"amount": pd.Series([], dtype=pd.ArrowDtype(pa.decimal128(24, 4)))}))
 large = mv.persist_dataframe(pd.DataFrame({"n": range(5001)}))
-print(json.dumps({"frame": frame.ref.to_dict(), "dataframe": reference.to_dict(), "empty": empty.to_dict(), "large": large.to_dict()}))
+wide = mv.persist_dataframe(pd.DataFrame({f"amount_{i:03}": [i] for i in range(73)}))
+print(json.dumps({"frame": frame.ref.to_dict(), "dataframe": reference.to_dict(), "empty": empty.to_dict(), "large": large.to_dict(), "wide": wide.to_dict()}))
 `,
     environmentOverlay: { MARIVO_TELEMETRY: 'off' },
   })
@@ -69,6 +70,18 @@ print(json.dumps({"frame": frame.ref.to_dict(), "dataframe": reference.to_dict()
     large: resultReference.parse(raw.large),
   }
   const signal = new AbortController().signal
+  const frameValues = await readMarivoCandidates(runner, refs.frame, 'numericValues', 0, signal)
+  assert.deepEqual(frameValues.candidates, ['amount'])
+  const wide = resultReference.parse(raw.wide)
+  const firstPage = await readMarivoCandidates(runner, wide, 'columns', 0, signal)
+  assert.equal(firstPage.nextOffset, 12)
+  assert.deepEqual(
+    firstPage.candidates,
+    Array.from({ length: 12 }, (_, i) => `amount_${String(i).padStart(3, '0')}`),
+  )
+  const lastPage = await readMarivoCandidates(runner, wide, 'columns', 72, signal)
+  assert.deepEqual(lastPage.candidates, ['amount_072'])
+  assert.equal(lastPage.nextOffset, null)
   // Each checked run is a new process; no producer objects or helper installation survive.
   const frame = await readMarivoResult(runner, refs.frame, signal)
   assert(isFrameSnapshotV2(frame))

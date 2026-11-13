@@ -158,7 +158,11 @@ export async function applyWithIntegration(
     const existing = bindings.get(agent)
     if (existing?.root === root) return existing.environment
     const environment = manager.resolve(root)
-    bindings.set(agent, { root, environment })
+    const binding = { root, environment }
+    bindings.set(agent, binding)
+    void environment.catch(() => {
+      if (bindings.get(agent) === binding) bindings.delete(agent)
+    })
     return environment
   }
   const credentialService = new MarivoCredentialService(

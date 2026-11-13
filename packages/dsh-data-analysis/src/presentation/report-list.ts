@@ -4,13 +4,15 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { savedReportRef } from './contracts/report-ref.ts'
+import { PresentationRecoveryError, workspaceChanged } from './recovery.ts'
 import { listReports } from './reports.ts'
-import type { PresentationWorkspaceSource } from './tool.ts'
+import { type PresentationWorkspaceSource, reportWorkspace } from './tool.ts'
 
 const inputSchema = z.strictObject({
   query: z.string().max(200).optional(),
   limit: z.number().int().min(1).max(50).default(20),
   cursor: z.string().min(1).max(2048).optional(),
+  callId: z.string().min(1).max(512).optional(),
 })
 const cursorSchema = z.strictObject({
   digest: z.string().regex(/^[a-f0-9]{64}$/),
@@ -28,6 +30,11 @@ export function createMarivoReportListTool(source: PresentationWorkspaceSource) 
       query: { type: 'string', description: 'Optional title search, at most 200 characters.' },
       limit: { type: 'integer', description: 'Page size from 1 to 50, default 20.' },
       cursor: { type: 'string', description: 'Opaque nextCursor from the preceding page.' },
+      callId: {
+        type: 'string',
+        description:
+          'Optional exact writer call ID from this Session (nested call ID in PTC). Finds that committed Build, even if superseded.',
+      },
     },
     output: {
       schema: {
@@ -63,8 +70,32 @@ export function createMarivoReportListTool(source: PresentationWorkspaceSource) 
     async execute(args, exec) {
       const input = inputSchema.parse(args)
       exec.signal.throwIfAborted()
-      const binding = await source()
-      const catalog = await listReports(binding.path, binding.id, exec.signal)
+      const binding = await reportWorkspace(source, 'report-list')
+      if (input.callId && !exec.agent)
+        throw new PresentationRecoveryError(
+          'report-input-invalid',
+          'Recover a write by call ID from its owning Session.',
+          {},
+          'report-list',
+        )
+      const publication =
+        input.callId && exec.agent
+          ? { sessionId: String(exec.agent.session.id), callId: input.callId }
+          : undefined
+      const catalog = await listReports(binding.path, binding.id, exec.signal, publication).catch(
+        (error: unknown) => {
+          exec.signal.throwIfAborted()
+          const tooLarge = error instanceof Error && error.message === 'report-catalog-too-large'
+          throw new PresentationRecoveryError(
+            tooLarge ? 'report-catalog-too-large' : 'report-catalog-unavailable',
+            tooLarge
+              ? 'The Workspace catalog exceeds its scan limit. Use an existing exact saved ref, or ask the operator to review the catalog.'
+              : 'Check the Workspace report directory and access, or use an existing exact saved ref.',
+            {},
+            'report-list',
+          )
+        },
+      )
       const words = normalize(input.query ?? '')
         .trim()
         .split(/\s+/)
@@ -73,7 +104,7 @@ export function createMarivoReportListTool(source: PresentationWorkspaceSource) 
         words.every((word) => normalize(item.receipt.title).includes(word)),
       )
       const digest = createHash('sha256')
-        .update(JSON.stringify([binding.id, binding.path, words, catalog]))
+        .update(JSON.stringify([binding.id, binding.path, words, publication, catalog]))
         .digest('hex')
       let offset = 0
       if (input.cursor) {
@@ -105,9 +136,9 @@ export function createMarivoReportListTool(source: PresentationWorkspaceSource) 
             buildId: receipt.buildId,
           }),
         }))
-      const current = await source()
+      const current = await reportWorkspace(source, 'report-list')
       if (current.id !== binding.id || current.path !== binding.path)
-        throw new Error('presentation-workspace-changed')
+        throw workspaceChanged('report-list')
       exec.signal.throwIfAborted()
       const nextOffset = offset + reports.length
       return {

@@ -145,6 +145,28 @@ export class CredentialServiceError extends Error {
     this.name = 'CredentialServiceError'
   }
 }
+
+export function credentialRecovery(code: string): string | undefined {
+  switch (code) {
+    case 'invalid-datasources':
+    case 'invalid-datasource-context':
+      return 'Use exact configured datasource names from the current Workspace. Supply each name once, up to 16.'
+    case 'context-changed':
+    case 'credentials-changed':
+      return 'Confirm the current Workspace, datasource definition and credential references, then submit a fresh call.'
+    case 'credential-missing':
+    case 'credential-state-unavailable':
+    case 'credential-unavailable':
+      return 'Check the datasource references in Harness Credential management. Retry when the credential store is available and the references are configured.'
+    case 'call-ended':
+    case 'disposed':
+    case 'execution-ended':
+      return 'The previous call ended. Check its outcome before starting a fresh call in the active Session.'
+    case 'capacity-exceeded':
+      return 'Complete or cancel pending credential forms before retrying.'
+  }
+  return undefined
+}
 export function credentialError(error: unknown): string {
   return error instanceof CredentialServiceError ? error.code : 'credential-operation-failed'
 }

@@ -260,7 +260,7 @@ test('production present saves independent Lang documents and returns complete h
   assert(!text.includes(second.receipt.files.document.path))
   await assert.rejects(
     tool.execute({ stage: 'save', draft_path: 'draft.json' }, exec),
-    /Unrecognized key/,
+    /report-input-invalid.*"path":"draft_path"/,
   )
   await assert.rejects(
     tool.execute(input, {

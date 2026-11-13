@@ -1,4 +1,6 @@
+import { realpath } from 'node:fs/promises'
 import path from 'node:path'
+import { MarivoEnvironmentError } from '../environment/errors.ts'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
 import { readPythonResults } from '../python-execution.ts'
 import { analysisCatalogBuild, analysisCatalogId } from './contracts/analysis-catalog.ts'
@@ -26,7 +28,7 @@ import { PRESENTATION_BUDGETS } from './contracts/types.ts'
 import { readDatasetSnapshot, readFrameSnapshot } from './dataset-snapshot.ts'
 import { presentationSha256, readReportFile } from './files.ts'
 import { PresentationRecoveryError } from './recovery.ts'
-import { readMarivoResult } from './result-reader.ts'
+import { ResultReadError, readMarivoResult } from './result-reader.ts'
 import { analysisResultSummary } from './result-summary.ts'
 
 /** Present-level labels live only in the embedded snapshot; they never become a document field. */
@@ -174,20 +176,27 @@ export async function createAnalysisDocument(
       return
     }
     if (declaration.kind === 'analysis-frame' || declaration.kind === 'dataframe') {
+      if (!source.runner) throw new Error('result-runtime-required')
+      selectedRunner ??= source.runner()
+      const runner = await selectedRunner
+      const projectRoot =
+        runner.binding.projectRoot === source.projectRoot
+          ? source.projectRoot
+          : await realpath(source.projectRoot).catch(() => {
+              signal.throwIfAborted()
+              throw new ResultReadError('result-workspace-mismatch')
+            })
+      if (runner.binding.projectRoot !== projectRoot)
+        throw new ResultReadError('result-workspace-mismatch')
       let producer: Awaited<ReturnType<typeof readPythonResults>> | undefined
       if (declaration.codeRef) {
-        producer = await readPythonResults(source.projectRoot, declaration.codeRef, signal)
+        producer = await readPythonResults(projectRoot, declaration.codeRef, signal)
         const key = resultReferenceKey(declaration.ref)
         if (!producer.references.some((ref) => resultReferenceKey(ref) === key))
           throw new Error(
             'analysis-resource-code-not-bound: this readable execution exported other result references. Use codeRef from the successful marivo_python call that exported this exact reference through resultVariables, or present the existing reference without codeRef. Do not rerun successful analysis only to attach provenance.',
           )
       }
-      if (!source.runner) throw new Error('result-runtime-required')
-      selectedRunner ??= source.runner()
-      const runner = await selectedRunner
-      if (runner.binding.projectRoot !== source.projectRoot)
-        throw new Error('result-workspace-mismatch')
       const snapshot = await readMarivoResult(runner, declaration.ref, signal)
       resources[name] = {
         kind: 'snapshot',
@@ -302,7 +311,26 @@ export async function createAnalysisDocument(
       }
     } catch (error) {
       signal.throwIfAborted()
-      failure ??= error
+      failure ??= new PresentationRecoveryError(
+        'analysis-resource-read-failed',
+        error instanceof ResultReadError ||
+          (error instanceof Error &&
+            /^(python-execution-source-unavailable|python-result-exports-missing|analysis-resource-code-not-bound):/.test(
+              error.message,
+            ))
+          ? error.message
+          : error instanceof MarivoEnvironmentError ||
+              (error instanceof Error && /^result-(runtime|workspace)/.test(error.message))
+            ? 'Check the original Workspace and bound Runtime, then retry with the same fixed resource.'
+            : 'Verify this resource is readable and matches its exact declaration. Keep the other fixed results.',
+        {
+          resource: group.name,
+          applied: false,
+          ...(error instanceof Error && /^[a-z-]+$/.test(error.message)
+            ? { detail: error.message }
+            : {}),
+        },
+      )
       delete resources[group.name]
     }
   }

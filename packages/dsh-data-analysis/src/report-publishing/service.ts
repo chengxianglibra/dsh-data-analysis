@@ -11,6 +11,15 @@ import {
 
 type Store = Pick<CredentialProvider, 'describe' | 'set' | 'unset' | 'resolve'>
 
+export class ReportUploadUnconfirmed extends Error {
+  readonly key: string
+  constructor(key: string) {
+    super('report-publishing-upload-unconfirmed')
+    this.name = 'ReportUploadUnconfirmed'
+    this.key = key
+  }
+}
+
 function pathName(value: string, fallback: string): string {
   const name = Array.from(value.normalize('NFKC').replace(/[^\p{L}\p{N}_-]+/gu, '-'))
     .slice(0, 48)
@@ -130,7 +139,7 @@ export class ReportPublishingService {
         { abortSignal: signal },
       )
     } catch {
-      throw new Error('report-publishing-upload-unconfirmed')
+      throw new ReportUploadUnconfirmed(key)
     } finally {
       client.destroy()
     }

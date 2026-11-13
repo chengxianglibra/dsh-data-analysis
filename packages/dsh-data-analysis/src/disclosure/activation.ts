@@ -8,6 +8,7 @@ import { scopeParentOf } from '@deepseek-ai/dsh-scope'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import { renderSkillContent, type SkillResourceBase } from '@deepseek-ai/dsh-skill'
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
+import { MarivoEnvironmentError } from '../environment/errors.ts'
 import { finishCleanup, PendingTasks } from '../lifecycle.ts'
 import {
   MARIVO_HELP_TOOL_NAME,
@@ -88,10 +89,16 @@ interface MarivoSkillIdentitySource {
   readonly skillBodyDigest: string
 }
 
+interface MarivoHelpUnavailableSource {
+  readonly kind: 'marivo-help-unavailable'
+  readonly targets: readonly MarivoRootHelpTarget[]
+}
+
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'marivo-disclosure': MarivoDisclosureSource
     'marivo-skill-identity': MarivoSkillIdentitySource
+    'marivo-help-unavailable': MarivoHelpUnavailableSource
   }
 }
 
@@ -327,6 +334,7 @@ export class MarivoDisclosureController {
   #closing: Promise<void> | undefined
   #disposed = false
   #telemetry: MarivoDisclosureTelemetry = { activations: [], rootHelp: [], failures: [] }
+  #failedRootBatch?: { turn: number; targets: string }
 
   constructor(
     agent: Agent,
@@ -394,7 +402,7 @@ export class MarivoDisclosureController {
       }
       return
     }
-    if (exec.name !== MARIVO_HELP_TOOL_NAME) return
+    if (exec.name !== MARIVO_HELP_TOOL_NAME || exec.parent !== undefined) return
     const value = successfulHelpValue(result)
     if (value === undefined) return
     for (const item of value.targets) {
@@ -417,13 +425,18 @@ export class MarivoDisclosureController {
     return visible === undefined ? 'delivered' : 'replacement'
   }
 
-  prepareStep(messages: readonly UserMessage[], signal: AbortSignal): Promise<UserMessage[]> {
-    return this.#tasks.track(this.#prepareStep(messages, signal))
+  prepareStep(
+    messages: readonly UserMessage[],
+    signal: AbortSignal,
+    turn?: number,
+  ): Promise<UserMessage[]> {
+    return this.#tasks.track(this.#prepareStep(messages, signal, turn))
   }
 
   async #prepareStep(
     messages: readonly UserMessage[],
     signal: AbortSignal,
+    turn?: number,
   ): Promise<UserMessage[]> {
     if (this.#disposed) throw this.#lifecycleAbort.signal.reason
     this.#observeExplicitInvocations(messages)
@@ -543,6 +556,14 @@ export class MarivoDisclosureController {
     }
     if (requested.length === 0) return []
 
+    const targets = [...new Set(requested.map((skill) => MARIVO_ROOT_HELP_TARGETS[skill]))]
+    const batch = targets.join(',')
+    if (
+      turn !== undefined &&
+      this.#failedRootBatch?.turn === turn &&
+      this.#failedRootBatch.targets === batch
+    )
+      return []
     const batchAbort = new AbortController()
     const readSignal = AbortSignal.any([signal, this.#lifecycleAbort.signal, batchAbort.signal])
     let primaryCause: unknown
@@ -569,9 +590,41 @@ export class MarivoDisclosureController {
     if (this.#disposed) throw this.#lifecycleAbort.signal.reason
     const rejected = settled.find((result) => result.status === 'rejected')
     if (rejected !== undefined) {
-      const error = new MarivoDisclosureError(requested, primaryCause ?? rejected.reason)
+      const cause = primaryCause ?? rejected.reason
+      const error = new MarivoDisclosureError(requested, cause)
       this.#telemetry.failures.push({ skills: [...requested], message: error.message })
-      throw error
+      if (signal.aborted) throw error
+      if (
+        cause instanceof MarivoEnvironmentError &&
+        (cause.code === 'binding-identity-mismatch' || cause.code === 'binding-failed')
+      )
+        throw error
+      if (turn !== undefined) this.#failedRootBatch = { turn, targets: batch }
+      const visible = new Set(this.agent.session.surface.nodes)
+      const matches = (source: UserMessage['source']) =>
+        source.kind === 'marivo-help-unavailable' &&
+        JSON.stringify(source.targets) === JSON.stringify(targets)
+      if (
+        messages.some((message) => matches(message.source)) ||
+        this.agent.session
+          .snapshotEvents()
+          .some(
+            (event) =>
+              visible.has(event.seq) && event.type === 'user/message' && matches(event.data.source),
+          )
+      )
+        return []
+      return [
+        createUserMessage({
+          source: { kind: 'marivo-help-unavailable', targets },
+          content: [
+            {
+              type: 'text',
+              text: `Automatic Marivo Help unavailable for ${targets.join(', ')}. Query the needed target with marivo_help. If it still fails, report the blocked Marivo operation and continue independent work.`,
+            },
+          ],
+        }),
+      ]
     }
     readSignal.throwIfAborted()
     const reads = settled.map((result) => {
@@ -871,10 +924,10 @@ export function installMarivoDisclosure(
     controller.addDisposer(
       agent.ctx.on(
         'agent/pre-step',
-        async ({ signal }, next): Promise<PreStepDecision> => {
+        async ({ signal, turn }, next): Promise<PreStepDecision> => {
           const decision = await next()
           if (decision.kind === 'reject') return decision
-          const injections = await controller.prepareStep(decision.messages, signal)
+          const injections = await controller.prepareStep(decision.messages, signal, turn)
           signal.throwIfAborted()
           return injections.length === 0
             ? decision

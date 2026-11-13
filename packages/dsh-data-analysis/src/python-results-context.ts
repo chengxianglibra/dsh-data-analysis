@@ -111,7 +111,7 @@ export async function restorePythonResults(
     content: [
       {
         type: 'text',
-        text: `Recent fixed outputs from earlier Python calls in this Workspace. Reuse an output when its scope matches the task; pass its resource unchanged for presentation.\n${JSON.stringify(groups)}`,
+        text: `Recent fixed outputs in this Workspace. Reuse matching resources unchanged. If chart fields are needed, use marivo_report_read with resource.ref and candidateGroup.\n${JSON.stringify(groups)}`,
       },
     ],
   })

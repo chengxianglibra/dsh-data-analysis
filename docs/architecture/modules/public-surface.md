@@ -4,6 +4,8 @@
 
 报告发现使用 `marivo_report_list`，支持标题检索和分页，返回当前 Workspace 已发布报告的准确 saved ref；回执缺失或损坏时先检索，再读取确认目标。报告读取与写入分别使用 `marivo_report_read` / `marivo_report_write`，输入使用 opaque ref；所有写入必填 stage，首次 mode 默认为 edit，refresh-data 强制整批原子校验。开启 `reportPublishing` 时，`marivo_publish_report` 使用准确 saved ref 发布指定版本。推荐必填准确 saved ref，empty 与 declined 为正常完成，不结束 Harness Turn。
 
+保存回执缺失时可按同一 Session 中的 writer call ID 找到准确 Build。固定结果字段候选缺失时，`marivo_report_read` 支持按准确资源引用和候选组分页读取。调用选择和恢复见[展示交付](presentation-delivery.md)。
+
 `marivo_python` 根据声明的数据源或结果导出推导省略的 `project`，详见[数据源与凭证](datasource-credentials.md)。`results[name].resource` 是唯一公共资源交接。
 
 旧工具名、旧参数和 Python 顶层 resultRefs/codeRef/resultMetadata 不再接受或返回。升级前排队的旧名称由 Harness 按未知工具在执行前拒绝，不自动翻译或重放副作用。恢复会话取得当前 schema 与新 Skill；Host receipt/RPC 内部 recordId 不作为模型参数协议。现行报告读写使用 `dsh.analysis-ui/v3` 文档和 v4 current 指针，详细契约见[展示交付](presentation-delivery.md)。

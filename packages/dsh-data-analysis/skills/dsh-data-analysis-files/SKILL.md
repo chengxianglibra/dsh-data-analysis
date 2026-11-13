@@ -11,7 +11,7 @@ description: 分析附件或 Workspace 中的 CSV、JSON、Parquet、Excel 数�
 
 使用 Harness 提供的当前附件可读路径，或用户指定的 Workspace 文件。同名附件按消息和完整路径区分；路径不可读时说明实际问题，不猜缓存位置。在读取代码中保留准确路径，不为缩短路径复制成 Workspace 同名文件。
 
-Harness `read` 可预览文本，但计算仍需通过 `marivo_python` 从原路径读取。计算和最终文件生成使用绑定 Runtime，不切换 Bash 的 python/python3 或其他解释器。纯本地文件使用 pandas 或原生 DuckDB，传 `project:"none"`、`datasources: []`，无需 `md.raw_sql`、Marivo 分析 Skill、live Help 或语义建模。实际访问 Marivo datasource 时声明精确名称并查询相关契约。
+用 Harness `read` 预览文本，用 `marivo_python` 从原路径计算和生成文件。纯本地文件可用 pandas 或原生 DuckDB，传 `project:"none"`、`datasources: []`。访问 Marivo datasource 时声明准确名称，用 `marivo_help` 查询公开 API；用户要求测试或需诊断连接时用 `marivo_datasource_test`。
 
 按实际输入选择 reader、sheet、字段和解析范围，区分样本与全量。Excel `.xlsx` 可用 DuckDB `read_xlsx`，首次获取官方扩展可能联网；不承诺旧 `.xls` 或冷缓存离线读取，不临时安装 Python 依赖。
 

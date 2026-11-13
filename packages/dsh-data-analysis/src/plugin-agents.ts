@@ -20,6 +20,7 @@ import { finishCleanup, PendingTasks } from './lifecycle.ts'
 import { installNextStepsAgent } from './next-steps/agent.ts'
 import type { NextStepsNotice } from './next-steps/contracts.ts'
 import { SavedWriteProofs } from './next-steps/saved-writes.ts'
+import { restorePtcSaves } from './presentation/delivery.ts'
 import { AnalysisDrafts } from './presentation/drafts.ts'
 import {
   installMarivoPresentationCodeDelivery,
@@ -34,14 +35,10 @@ import type { ReportPublishingService } from './report-publishing/service.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const ROUTING_PROMPT = [
-  'For attachment or Workspace data files, load dsh-data-analysis-files. For governed analysis, load marivo-analysis; load marivo-semantic when shared definitions are needed or authoring is requested. For project HTTP services, load marivo-service when the bound Runtime provides it.',
-  'This Host owns delivery choices; Runtime Skills own analytical methods and stopping. Proactively create the smallest useful analysis view when charts or interaction help understand, compare, or verify findings, even without an explicit report request. Also use it for requested charts, reports, dashboards, or analysis views. Answer in chat when text alone is sufficient and a view adds no useful evidence. Honor explicit output formats, including text-only and file-only requests.',
-  'Load dsh-data-analysis-presentation before preparing data for an analysis view, or as soon as its value becomes clear during analysis. For a new view needing data preparation, preview the confirmed question and scope before the first analysis computation, then update the same draft as results become ready. Direct save is for results already ready at task entry or a small edit; do not finish new calculations first and then treat their outputs as pre-existing ready results. The Skill owns composition, preview/save sequencing, and the final reply.',
-  'For governed inputs with supported typed analysis, prefer producing and retaining AnalysisFrame results for AnalysisFrameView. Do not convert a Frame to a DataFrame merely for display. Use DatasetView for ordinary file results, external computations, or suitable tabular detail; do not invent semantic models just to change the view type.',
-  'Use marivo_help for current Marivo API contracts, including upstream marivo help examples. It uses the verified Runtime; report failures without switching installations.',
-  'Run analysis and create, edit, or remove datasource definitions with marivo_python in the bound Workspace. Use marivo_help and the live Runtime contracts for datasource authoring. Put only non-secret configuration and credential references in code; use Harness credential forms for secret values, never chat or code. Use marivo_datasource_test when a connection test is requested or useful.',
-  'Deliver analysis views with marivo_report_write and requested files with Harness native present. State the actual delivery status.',
-  'Declare computed outputs supporting your answer with marivo_python resultVariables. Reuse matching fixed outputs from prior calls for charts and reports; refresh only when the task calls for new data. A rejected preview can be repaired with the same resources.',
+  'Load dsh-data-analysis-files for files, marivo-analysis for governed analysis, and marivo-semantic for shared definitions. Load marivo-service for project HTTP services when available.',
+  'Use marivo_help for upstream Marivo Help and marivo_python for analysis or datasource authoring in the bound Runtime. Use Harness credential forms for secrets and marivo_datasource_test for connection diagnosis.',
+  'Create the smallest useful analysis view when requested or when charts or interaction clarify the answer. Honor text-only and file-only requests. Load dsh-data-analysis-presentation before preparing view data, preview scope before computation, then update the same draft with ready results.',
+  'Prefer AnalysisFrameView for governed results and DatasetView for suitable tabular results. Capture fixed outputs with resultVariables, reuse matching resources, and deliver with marivo_report_write. Use Harness native present for requested files.',
 ].join('\n')
 
 export type MarivoPluginEnvironmentResolver = (
@@ -127,6 +124,7 @@ export function createMarivoAgentInstallation(
     const helpSource = options.helpBridgeSource ?? (async () => (await resolveBridgeSet()).help)
     const datasourceSource = async () => (await resolveBridgeSet()).datasource
     const workspace = () => resolvePresentationWorkspace(ctx, String(agent.session.id))
+    const runner = async () => resolveMarivoEnvironmentSource(source)
     const controller = installMarivoDisclosure(ctx, agent, helpSource, options)
     const savedWrites = new SavedWriteProofs()
     controller.addDisposer(() => savedWrites.close())
@@ -140,10 +138,13 @@ export function createMarivoAgentInstallation(
           datasourceSource,
           credentialService,
           options.pythonOptionsSource ?? pythonOptions,
+          workspace,
         ),
       )
       controller.addDisposer(() => credentialService.disposeAgent(agent))
-      controller.addDisposer(registerMarivoUiReadTool(agent.ctx, workspace, presentationDrafts))
+      controller.addDisposer(
+        registerMarivoUiReadTool(agent.ctx, workspace, presentationDrafts, runner),
+      )
       controller.addDisposer(registerMarivoReportDeleteTool(agent.ctx, workspace))
       controller.addDisposer(registerMarivoReportListTool(agent.ctx, workspace))
       if (options.reportPublishing)
@@ -156,8 +157,9 @@ export function createMarivoAgentInstallation(
           workspace,
           agent.session,
           presentationDrafts,
-          async () => resolveMarivoEnvironmentSource(source),
+          runner,
           savedWrites.committed,
+          (token) => savedWrites.get(token),
         ),
       )
       controller.addDisposer(installMarivoPresentationCodeDelivery(agent.ctx))
@@ -192,7 +194,11 @@ export function createMarivoAgentInstallation(
               () => workspace().path,
               signal,
             )
-            return restored ? { ...decision, messages: [...decision.messages, restored] } : decision
+            const saved = restorePtcSaves(agent.session, decision.messages, () => workspace().id)
+            const recovery = [restored, saved].filter((message) => message !== undefined)
+            return recovery.length
+              ? { ...decision, messages: [...decision.messages, ...recovery] }
+              : decision
           },
           true,
         ),

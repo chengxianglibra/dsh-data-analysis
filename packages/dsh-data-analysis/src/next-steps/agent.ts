@@ -10,6 +10,7 @@ import {
   MARIVO_PRESENTATION_DELIVERY_KIND,
   parsePresentationToolDelivery,
 } from '../presentation/receipt.ts'
+import { reportLookupFailure } from '../presentation/recovery.ts'
 import { readAnalysisRecord } from '../presentation/reports.ts'
 import { type PresentationWorkspaceSource, presentationTurn } from '../presentation/tool.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
@@ -97,7 +98,12 @@ export function installNextStepsAgent(
           agent.ctx.tools.get(exec.name, agent) === presentationTool
         ) {
           const generation = inputGeneration
-          const identity = await workspace()
+          let identity: Awaited<ReturnType<PresentationWorkspaceSource>>
+          try {
+            identity = await workspace()
+          } catch {
+            return next()
+          }
           exec.signal.throwIfAborted()
           saveAdmissions.set(exec.token, { generation, workspace: identity })
         }
@@ -151,12 +157,20 @@ export function installNextStepsAgent(
             const input = nextStepsInput.parse(args)
             const turn = presentationTurn(agent.session, exec)
             if (exec.agent !== agent || turn !== activeTurn)
-              throw new Error('next-steps-requires-current-saved-analysis')
+              throw new Error(
+                'next-steps-requires-current-saved-analysis: submit from the active report Session and Turn.',
+              )
             const generation = inputGeneration
             const identity = await workspace()
             const target = parseReportRef(input.ref)
-            if (target.kind !== 'saved') throw new Error('report-saved-ref-required')
-            if (target.workspaceId !== identity.id) throw new Error('report-workspace-mismatch')
+            if (target.kind !== 'saved')
+              throw new Error(
+                'report-saved-ref-required: use the final saved ref from the writer or read the intended saved report.',
+              )
+            if (target.workspaceId !== identity.id)
+              throw new Error(
+                'report-workspace-mismatch: open the report in its original Workspace.',
+              )
             if (
               armed &&
               (armed.turn !== turn ||
@@ -165,7 +179,9 @@ export function installNextStepsAgent(
                 armed.reportId !== target.reportId ||
                 armed.buildId !== target.buildId)
             )
-              throw new Error('next-steps-requires-final-saved-analysis')
+              throw new Error(
+                'next-steps-requires-final-saved-analysis: submit suggestions with the final successful save ref from this Turn.',
+              )
             if (!armed) {
               await readAnalysisRecord(
                 identity.path,
@@ -173,7 +189,7 @@ export function installNextStepsAgent(
                 target.reportId,
                 target.buildId,
                 exec.signal,
-              )
+              ).catch((error: unknown) => reportLookupFailure(error, 'report-read', exec.signal))
               const latest = await workspace()
               exec.signal.throwIfAborted()
               if (
@@ -182,9 +198,12 @@ export function installNextStepsAgent(
                 latest.id !== identity.id ||
                 latest.path !== identity.path
               )
-                throw new Error('next-steps-owner-changed')
+                throw new Error(
+                  'next-steps-owner-changed: submit again only from the current report Session and Turn.',
+                )
               // A concurrent save owns the final version, even while an existing report was read.
-              if (armed) throw new Error('next-steps-report-changed')
+              if (armed)
+                throw new Error('next-steps-report-changed: use the final successful save ref.')
               armed = {
                 turn,
                 workspaceId: identity.id,
@@ -203,7 +222,9 @@ export function installNextStepsAgent(
               identity.id !== current.workspaceId ||
               identity.path !== current.workspacePath
             )
-              throw new Error('next-steps-owner-changed')
+              throw new Error(
+                'next-steps-owner-changed: submit again only from the current report Session and Turn.',
+              )
             callStates.set(exec.token, {
               armed: current,
               generation,

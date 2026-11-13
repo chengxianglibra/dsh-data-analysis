@@ -462,7 +462,10 @@ for (const interruption of ['failure', 'cancel', 'dispose'] as const) {
         : { slowTarget: 'analysis' },
     )
     t.after(fixture.cleanup)
-    const adapter = new MockAdapter([textResponse('recovered')])
+    const adapter = new MockAdapter([
+      ...(interruption === 'failure' ? [textResponse('automatic Help unavailable')] : []),
+      textResponse('recovered'),
+    ])
     const ctx = await harness(adapter)
     const agent = await createAgent(ctx, `interrupted-explicit-${interruption}`)
     let dispose = installProduction(ctx, fixture.environment)
@@ -491,7 +494,10 @@ for (const interruption of ['failure', 'cancel', 'dispose'] as const) {
       else dispose()
     }
     await agent.whenIdle()
-    assert.equal(adapter.requests.length, 0)
+    const failedRequestCount = interruption === 'failure' ? 1 : 0
+    assert.equal(adapter.requests.length, failedRequestCount)
+    if (failedRequestCount)
+      assert.match(requestMessages(adapter.requests[0]), /marivo-help-unavailable/)
     assert.doesNotMatch(
       JSON.stringify(agent.session.snapshotEvents()),
       /<marivo_execution_guidance>|<marivo_help_context/,
@@ -506,10 +512,10 @@ for (const interruption of ['failure', 'cancel', 'dispose'] as const) {
     if (interruption === 'dispose') dispose = installProduction(ctx, fixture.environment)
     send(agent, 'retry explicitly')
     await agent.whenIdle()
-    assert.equal(adapter.requests.length, 1)
-    assert.equal(guidanceMessages(adapter.requests[0]).length, 0)
-    assert.match(requestMessages(adapter.requests[0]), /help-body:analysis/)
-    assert.match(requestMessages(adapter.requests[0]), /help-body:authoring/)
+    assert.equal(adapter.requests.length, failedRequestCount + 1)
+    assert.equal(guidanceMessages(adapter.requests.at(-1)).length, 0)
+    assert.match(requestMessages(adapter.requests.at(-1)), /help-body:analysis/)
+    assert.match(requestMessages(adapter.requests.at(-1)), /help-body:authoring/)
   })
 }
 
@@ -1157,26 +1163,23 @@ test('an already-visible receipt cannot suppress recovery after compaction hides
   assert.deepEqual((await readFile(fixture.recordPath, 'utf8')).trim().split('\n'), ['analysis'])
 })
 
-test('root help failure stops the next step once without hiding ordinary tools or retry loops', async (t) => {
+test('root Help failure exposes recovery and allows the next model step', async (t) => {
   const fixture = await environmentFixture({ failTarget: 'authoring' })
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
     toolCallsResponse([{ id: 'semantic', name: 'skill', args: { name: 'marivo-semantic' } }]),
+    textResponse('continue independent work'),
   ])
   const ctx = await harness(adapter)
   const agent = await createAgent(ctx, 'root-help-failure')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
-  const errors: unknown[] = []
-  ctx.on('agent/error', ({ agent: subject, error }) => {
-    if (subject === agent) errors.push(error)
-  })
-
   send(agent, 'activate broken root')
   await agent.whenIdle()
 
-  assert.equal(adapter.requests.length, 1)
-  assert.deepEqual(requestToolNames(adapter.requests[0]), ['marivo_help', 'ordinary', 'skill'])
-  assert.ok(errors.some((error) => error instanceof MarivoDisclosureError))
+  assert.equal(adapter.requests.length, 2)
+  assert.deepEqual(requestToolNames(adapter.requests[1]), ['marivo_help', 'ordinary', 'skill'])
+  assert.match(requestMessages(adapter.requests[1]), /marivo_help/)
+  assert.equal(controller.telemetry().rootHelp.length, 0)
   assert.equal(controller.telemetry().failures.length, 1)
 })
 
@@ -1218,11 +1221,10 @@ test('two-skill root help disclosure cancels its sibling and stays atomic when o
   ]
 
   const startedAt = performance.now()
-  await assert.rejects(
-    controller.prepareStep(invocations, new AbortController().signal),
-    (error: unknown) =>
-      error instanceof MarivoDisclosureError &&
-      error.skills.join(',') === 'marivo-analysis,marivo-semantic',
+  const messages = await controller.prepareStep(invocations, new AbortController().signal)
+  assert.deepEqual(
+    messages.map(({ source }) => source),
+    [{ kind: 'marivo-help-unavailable', targets: ['analysis', 'authoring'] }],
   )
   assert.deepEqual(controller.telemetry().rootHelp, [])
   assert.equal(controller.telemetry().failures.length, 1)

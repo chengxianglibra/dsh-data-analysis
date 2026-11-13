@@ -40,7 +40,7 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 
 数据更新使用 `mode:"refresh-data"` 和准确 saved ref；可先 preview 再计算，也可直接保存已准备好的结果。服务端在读取新资源前禁止 program/title/locale/labels、任何 remove 及新增资源名。原页面程序、正文、标题、语言和同 ID 列的显示标签保留；所有受影响视图及完整文档必须通过校验。比较新旧解析后的图形类型，auto 换图明确拒绝；数据条数变化导致的内部几何变化不等同于页面修改。
 
-每次 preview/save 整批原子准入：任一资源读取、视图或完整文档失败，均保留最后成功 revision、document、current 和 history；临时资源流不能成为成功草稿。调用者可显式提交已就绪子集，未提交项保持旧数据，不能自动剔除已失败资源。结果中的 changed/reused 区分真正替换与复用；同一固定引用即使更换来源记录也不冒充新计算，同路径图片继续复用。reader 的 reuseGroups 按准确固定引用分组，不按 codeRef 或相同值推断；writer 的 unchangedAliases 提示仍保留旧数据的共享别名，不自动扩大更新范围。
+每次 preview/save 整批原子准入。资源读取、视图或完整文档在提交前失败时，保留最后成功 revision、document、current 和 history。资源读取失败回传资源名、当前 ref（若有）和恢复动作。调用者可显式提交已就绪子集，未提交项保持旧数据，不能自动剔除已失败资源。结果中的 changed/reused 区分真正替换与复用；同一固定引用即使更换来源记录也不冒充新计算，同路径图片继续复用。reader 的 reuseGroups 按准确固定引用分组，不按 codeRef 或相同值推断；writer 的 unchangedAliases 提示仍保留旧数据的共享别名，不自动扩大更新范围。
 
 视图配置失败保持 Harness 工具失败状态。错误消息末尾的 `error=` 后是完整 JSON 对象，含 `code`、`phase`、`path`、可确定的 `resource` 及 `recovery.applied:false`。已有基准时提供 `recovery.currentRef`。可定位到名称参数时附 `received`（若已填写）、`expectedKind` 和最多 8 个 `candidates`。错误内的 `resultMetadata` 与成功回执使用同一结构。当前 Harness 的工具异常接缝只传递消息和标准错误标识，Native 与 PTC 均从错误消息读取该 JSON。
 
@@ -73,9 +73,15 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
 
 `marivo_report_list({query?,limit?,cursor?})` 复用 Workspace 的已发布目录，返回当前版本的 `{title,publishedAt,sourceSessionId,ref}`，不返回业务行、文件路径或完整文档。无需旧 Session、草稿或 Runtime；当前 Session 的 Workspace 仍是访问边界，请求结束前复核绑定。`query` 最多 200 字符，按 NFKC 和小写归一化后以空白分词，各词均须匹配标题；同名报告保持独立。按发布时间倒序、report ID 排序，limit 默认 20、范围 1–50。`nextCursor:null` 表示结束；后续页原样传回 cursor 并保持 query，Workspace、查询或目录变化导致 `report-list-cursor-stale`，须重新检索。`unavailable` 是整个 Workspace 中不可读发布指针数，不是标题搜索结果数；列出的指针对应文档仍须经 read 校验。检索不恢复未发布的构建或未保存草稿，不隐式选定报告。
 
+`marivo_report_list({callId})` 在当前 Session 与 Workspace 按保存调用身份恢复准确 Build，包括已被更新替代的版本。PTC 使用嵌套 writer call ID。旧报告历史仍可按标题检索。
+
 `marivo_report_read({ref,version?:"exact"|"current",includeCode?})` 读取准确版本（默认 exact），current 只用于 saved ref；`{draft:true,includeCode?}` 恢复当前 Session/Turn 草稿，两类输入互斥。读取结果为结构化 definition，包含实际读取到的 ref、reuseGroups、title、locale、Catalog、program、完整资源声明及有界 schema/coverage；不返回业务行。草稿还返回 mode 及可用的 basedOn saved ref。
 
 Harness 先校验参数类型与枚举，失败由 Harness 返回参数错误；通过该层后不符合读取选择器契约时，以工具失败返回 `report-read-invalid-input`，`error=` JSON 包含 tool、input phase、issues 和恢复建议。引用无效、Workspace 不匹配与草稿不可用保留各自状态。读取草稿不可用时的 phase 为 `report-read`，不将其当作写入或参数错误。
+
+同一活动草稿的旧 revision 返回 `analysis-draft-conflict` 和当前 ref；`{draft:true}` 可读取最新修订。有活动草稿时再次从无草稿 ref 的 preview 开始会返回冲突。
+
+固定结果候选缺失时，可用 `marivo_report_read({resource: resource.ref, candidateGroup, offset?})` 查询单组字段。它只读取准确持久结果，返回最多 12 个名称、用途和 `nextOffset`，不查询业务源或运行生成脚本。
 
 definition 和 sources 使用具体本地 schema 逐项校验；当前 Harness 只支持 boolean additionalProperties，无法在 PTC 中为动态 resources/resultMetadata 名称映射推导 entry 类型。Tool schema 明确披露顶层字段及来源结构，并用准确 description 标明 map entry 的列、coverage 和 Frame 元数据约束，不宣称 Host 已提供 typed map。
 
@@ -163,7 +169,7 @@ Native 使用 Tool metadata；Code 子调用通过 Harness `tools/ptc-dispatch-l
 
 `marivo_report_write` 的外层执行预算为 180 秒，包含新引用的 checked Python 读取，不重放生成脚本，由
 [execution-policy.ts](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts) 定义；
-超时或取消不发布本次 Build、不更新 current／历史，也不返回成功 receipt。超时诊断见
+提交前超时或取消保留 current 和历史。提交后即使回执失败，仍可从错误或按保存调用 ID 恢复准确 saved ref；PTC 下一步可恢复外层代码未输出的保存状态。超时诊断见
 [展示投影](presentation-projection.md#数据流程)。外层取消覆盖完整操作，180 秒不是保证完成的时限。
 
 current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 串行化。锁内重新比较基版本 buildId，

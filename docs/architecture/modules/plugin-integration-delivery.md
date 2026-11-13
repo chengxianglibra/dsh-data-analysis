@@ -56,14 +56,15 @@ profile 创建的 credential service 由 profile 关闭；Agent 只结束自身 
 
 | Surface | 独有责任 | 删除条件 |
 | --- | --- | --- |
-| `marivo_help` | Native mode 的受控解释器与实时 Help transport | Harness/Marivo 提供等价原生 transport |
+| `marivo_help` | 在 Native 和 PTC 中通过已验证解释器读取 Marivo 实时 Help | Harness/Marivo 提供等价原生 transport |
 | `marivo_datasource_test` | 缺失 DSH Credentials 的 Web 收集与显式 connection test | DSH 提供通用 credential-aware datasource lifecycle |
 | `marivo_python` | 一次调用内的全部 datasource 准入、fresh snapshot 与前台执行 | DSH 提供等价的执行准入与 Marivo resolver 注入 |
 | `marivo_report_write` | 引用/Lang 准入、不可变 JSON 与默认 tool/显式 tab 交付 | DSH 提供等价的完整快照交付 |
 | `marivo_report_list` | 按当前 Workspace 检索已发布报告标题，有界分页返回准确 saved ref，不读取业务行 | Harness 提供等价的报告发现与引用恢复 |
-| `marivo_report_read` | 恢复准确/当前正式版本或当前 Turn 草稿的定义、资源声明与必要 schema，不读取业务数据 | Harness 提供等价的文档定义恢复 |
+| `marivo_report_read` | 恢复已保存版本或当前 Turn 草稿的定义，或从固定结果按组查询图表字段 | Harness 提供等价的定义和字段恢复 |
 | `marivo_report_delete` | 按准确 saved ref 永久删除分析视图及历史，核验当前版本与 Workspace | Harness 提供等价的视图删除 |
 | `marivo_publish_report` | 开启 `reportPublishing` 时发布固定 Build 的 HTML 到配置的 S3 目标 | Harness 提供等价的固定报告发布 |
+| `marivo_next_steps` | 为准确 saved ref 提交当前 Turn 的下一步推荐 | Harness 提供等价的分析视图收尾入口 |
 
 以下 Tool 不注册：Artifact inspect/quality/contract/lineage、Session resume/context/graph、Artifact check、
 semantic readiness、datasource/table inspect、Artifact materialize/export 等 convenience wrappers。

@@ -1,12 +1,19 @@
 import { randomUUID } from 'node:crypto'
+import { realpath } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Session } from '@deepseek-ai/dsh-session'
-import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import {
+  defineTool,
+  type ToolDefinition,
+  type ToolExecutionToken,
+  type ToolRunContext,
+} from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import type { MarivoCheckedRunner } from '../environment/types.ts'
 import type { SavedWriteCommitted } from '../next-steps/saved-writes.ts'
 import { type PythonCodeRef, readPythonExecution } from '../python-execution.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
+import { PresentationWorkspaceUnavailable } from '../workspace-identity.ts'
 import { createAnalysisDocument, validateRefreshShape } from './analysis.ts'
 import {
   type AnalysisDocument,
@@ -29,7 +36,9 @@ import {
   savedReportRef,
 } from './contracts/report-ref.ts'
 import { sameAnalysisResult } from './contracts/resource-declaration.ts'
+import { resultReference } from './contracts/result-reference.ts'
 import { isFrameSnapshotV2 } from './contracts/snapshot.ts'
+import { viewFieldMetadata } from './contracts/view-fields.ts'
 import { type AnalysisDraftLease, AnalysisDrafts } from './drafts.ts'
 import { PRESENTATION_EXECUTION_BUDGETS } from './execution-policy.ts'
 import {
@@ -40,18 +49,41 @@ import {
   parsePresentationToolDelivery,
   presentationReceiptText,
 } from './receipt.ts'
-import { PresentationRecoveryError, unavailableDraft } from './recovery.ts'
+import {
+  PresentationRecoveryError,
+  reportLookupFailure,
+  reportSaveOutcomeUnknown,
+  savedReportRecovery,
+  savedReportRecoveryPrefix,
+  unavailableDraft,
+  workspaceChanged,
+  workspaceMismatch,
+  workspaceUnavailable,
+} from './recovery.ts'
 import {
   deletePresentation,
   publishPresentation,
   readAnalysisRecord,
   resolvePresentation,
 } from './reports.ts'
+import { ResultReadError, readMarivoCandidates } from './result-reader.ts'
 import { analysisResultSummary, analysisResultSummaryToolSchema } from './result-summary.ts'
 
 export type PresentationWorkspaceSource = () =>
   | { id: string; path: string }
   | Promise<{ id: string; path: string }>
+
+export async function reportWorkspace(
+  source: PresentationWorkspaceSource,
+  phase: PresentationRecoveryError['phase'],
+) {
+  try {
+    return await source()
+  } catch (error) {
+    if (error instanceof PresentationWorkspaceUnavailable) throw workspaceUnavailable(phase)
+    throw error
+  }
+}
 
 const presentationToolInput = analysisPresentInput
   .omit({ surface: true, basedOnRecordId: true })
@@ -71,7 +103,9 @@ export function presentationTurn(
     .reverse()
     .find((event) => event.type === 'tool/call' && String(event.data.callId) === rootCallId)
   if (call?.type !== 'tool/call' || !Number.isSafeInteger(call.data.turn) || call.data.turn < 0)
-    throw new Error('presentation-turn-unavailable')
+    throw new Error(
+      'presentation-turn-unavailable: use this tool from the active analysis Session and Turn.',
+    )
   return call.data.turn
 }
 
@@ -83,11 +117,12 @@ export function createMarivoPresentTool(
   drafts = new AnalysisDrafts(),
   runner?: () => Promise<MarivoCheckedRunner>,
   onSaved?: SavedWriteCommitted,
+  committedRef?: (token: ToolExecutionToken) => string | undefined,
 ): ToolDefinition {
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Create or update an analysis view in the right sidebar. Load dsh-data-analysis-presentation for composition and delivery. Reuse matching fixed outputs with AnalysisFrameView for analysis-frame resources and DatasetView for dataframe resources. For a new view needing computation, preview the question and scope before computing, update the same draft as results become ready, and save once. Only results already ready at task entry or small edits can save directly. Send only changed resources and named program statements. Choose exact names from metadata.viewCandidates in marivo_python; viewCandidateUsage maps each group to its nameKind and chart.parameter paths: columns for tables and metrics, axis for axis/series/x/y, timeAxis for line/area axis, numericValues for numeric encodings, and values for comparison/decomposition targets. A rejected patch does not apply. For configuration failures read error= JSON for the path, candidates and resultMetadata, then retry with the same fixed resources and latest ref. Drafts expire after saving, at Turn end or Host restart. Use marivo_report_list if a saved ref is missing or invalid, then marivo_report_read to confirm the target or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources.',
+      'Create or update an analysis view. Load dsh-data-analysis-presentation. Preview scope before new computation, update the same draft, then save once. For uncertain saves, find the committed Build with marivo_report_list({callId}) before retrying.',
     parameters: {
       stage: {
         type: 'string',
@@ -99,7 +134,7 @@ export function createMarivoPresentTool(
       ref: {
         type: 'string',
         description:
-          'Opaque saved ref to edit an analysis view, or latest draft ref to continue it. Omit only for a new view.',
+          'Opaque saved ref to edit, or latest draft ref to continue. Omit for a new view. An active draft must be completed before starting another preview.',
       },
       mode: {
         type: 'string',
@@ -115,7 +150,7 @@ export function createMarivoPresentTool(
       resourcePatch: {
         type: 'object',
         description:
-          'Changes only: copy each marivo_python results[name].resource unchanged into put, including codeRef when present; do not reconstruct it from ref. External fixed results may omit codeRef. put accepts {kind:"analysis-frame",ref,codeRef?}, {kind:"dataframe",ref,codeRef?}, or {kind:"image-file",path}; remove names resources to delete. Omitted names remain. Candidates wait for complete identity and patch; {} means no changes. Use exact fixed references and their producer codeRef. For a data refresh replace only existing names and omit program/title/locale/labels. Identical declarations reuse the saved snapshot; same-path images do not refresh. No rows or arbitrary URLs.',
+          'Changes only. Copy results[name].resource unchanged into put. External fixed results can omit codeRef. Images use {kind:"image-file",path}. Use remove for deleted names. Refresh replaces existing names only. Identical declarations reuse their snapshot.',
         additionalProperties: false,
         properties: {
           put: { type: 'object', additionalProperties: true },
@@ -196,6 +231,22 @@ export function createMarivoPresentTool(
       },
       presentationMeta: (_args, value) => JSON.parse(value.deliveryJson),
     },
+    finalizeContent(exec, result) {
+      if (!result.isError || result.error.message.startsWith(savedReportRecoveryPrefix))
+        return undefined
+      const ref = committedRef?.(exec.token)
+      if (ref) return [...result.content, { type: 'text', text: savedReportRecovery(ref) }]
+      const code = result.error.info?.code
+      if (
+        (code === 'ABORTED' || code === 'TOOL_TIMEOUT') &&
+        z.object({ stage: z.literal('save') }).safeParse(exec.arguments).success
+      )
+        return [
+          ...result.content,
+          { type: 'text', text: reportSaveOutcomeUnknown(String(exec.callId)) },
+        ]
+      return undefined
+    },
     timeoutMs: PRESENTATION_EXECUTION_BUDGETS.toolTimeoutMs,
     async execute(args, exec) {
       const signal = lifecycleSignal ? AbortSignal.any([exec.signal, lifecycleSignal]) : exec.signal
@@ -204,7 +255,22 @@ export function createMarivoPresentTool(
           'analysis-draft-stage-required',
           'Select stage=preview or stage=save explicitly.',
         )
-      const request = presentationToolInput.parse(args)
+      const parsed = presentationToolInput.safeParse(args)
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0]
+        const path =
+          issue?.code === 'unrecognized_keys'
+            ? [...issue.path, issue.keys[0]].join('.')
+            : issue?.path.join('.')
+        throw new PresentationRecoveryError(
+          'report-input-invalid',
+          issue?.code === 'unrecognized_keys'
+            ? 'Omit the unrecognized key and retry the same intended patch.'
+            : 'Correct the field using the writer schema and retry the same intended patch.',
+          { path, applied: false },
+        )
+      }
+      const request = parsed.data
       const requestedRef = request.ref ? parseReportRef(request.ref) : undefined
       const onto = request.onto ? parseReportRef(request.onto) : undefined
       if (
@@ -216,22 +282,26 @@ export function createMarivoPresentTool(
           'onto requires stage=preview, a current draft ref, and a reviewed saved ref.',
         )
       const owner = exec.agent
-      if (!owner || owner.session !== session) throw new Error('presentation-session-mismatch')
+      if (!owner || owner.session !== session)
+        throw new PresentationRecoveryError(
+          'presentation-session-mismatch',
+          'Retry from the Session that owns this analysis view.',
+        )
       const turn = presentationTurn(session, exec)
       signal.throwIfAborted()
       const workspace = workspaceSource
-      const identity = await workspace()
+      const identity = await reportWorkspace(workspace, 'report-write')
       const checkWorkspace = async () => {
         signal.throwIfAborted()
         if (owner.session !== session) throw new Error('presentation-session-mismatch')
-        const current = await workspace()
+        const current = await reportWorkspace(workspace, 'report-write')
         if (current.id !== identity.id || current.path !== identity.path)
-          throw new Error('presentation-workspace-changed')
+          throw workspaceChanged('report-write')
         signal.throwIfAborted()
       }
       const sessionId = String(session.id)
       for (const ref of [requestedRef, onto])
-        if (ref && ref.workspaceId !== identity.id) throw new Error('report-workspace-mismatch')
+        if (ref && ref.workspaceId !== identity.id) throw workspaceMismatch('report-write')
       if (
         requestedRef?.kind === 'draft' &&
         (requestedRef.sessionId !== sessionId || requestedRef.turn !== turn)
@@ -251,6 +321,7 @@ export function createMarivoPresentTool(
       }
 
       const perform = async (lease?: AnalysisDraftLease) => {
+        let committed: string | undefined
         let checkResourceStream: (() => void) | undefined
         const check = async () => {
           await checkWorkspace()
@@ -259,6 +330,27 @@ export function createMarivoPresentTool(
         }
         await check()
         const current = lease ? drafts.get(sessionId) : undefined
+        if (
+          !input.draftId &&
+          input.stage === 'preview' &&
+          current?.delivery.turn === turn &&
+          current.workspacePath === identity.path &&
+          current.document.workspaceId === identity.id
+        )
+          throw new PresentationRecoveryError(
+            'analysis-draft-conflict',
+            'Read the active draft with marivo_report_read({draft:true}). Continue it with its latest ref, or start a separate draft in a new Turn.',
+            {
+              applied: false,
+              currentRef: draftReportRef({
+                workspaceId: identity.id,
+                sessionId,
+                turn,
+                draftId: current.delivery.draftId,
+                revision: current.delivery.draftRevision,
+              }),
+            },
+          )
         const active = input.draftId && current?.delivery.turn === turn ? current : undefined
         if (
           active &&
@@ -301,7 +393,7 @@ export function createMarivoPresentTool(
             identity.id,
             baseId.reportId,
             signal,
-          )
+          ).catch((error: unknown) => reportLookupFailure(error, 'report-write', signal))
           if (latest.buildId !== baseId.buildId)
             throw new PresentationRecoveryError(
               'report-save-conflict',
@@ -324,22 +416,42 @@ export function createMarivoPresentTool(
                 baseId.reportId,
                 baseId.buildId,
                 signal,
-              )
+              ).catch((error: unknown) => reportLookupFailure(error, 'report-write', signal))
             : undefined)
         const mode = active?.mode ?? input.mode ?? 'edit'
         if (active && input.mode !== undefined && input.mode !== (active.mode ?? 'edit'))
-          throw new Error('report-mode-conflict: a draft mode cannot change')
+          throw new PresentationRecoveryError(
+            'report-mode-conflict',
+            'Continue in the draft mode, or start the other operation from the saved report in a new Turn.',
+            { currentRef: request.ref, applied: false },
+          )
         if (mode === 'refresh-data') {
           if (!base || (!active && requestedRef?.kind !== 'saved'))
-            throw new Error('report-refresh-saved-ref-required')
+            throw new PresentationRecoveryError(
+              'report-refresh-saved-ref-required',
+              'Read the target saved report and start refresh-data with its saved ref.',
+              { applied: false },
+            )
           for (const field of ['program', 'title', 'locale', 'labels'] as const)
             if (input[field] !== undefined)
-              throw new Error(`report-refresh-field-forbidden: ${field}`)
+              throw new PresentationRecoveryError(
+                'report-refresh-field-forbidden',
+                'Omit this field and replace only existing resources.',
+                { path: field, currentRef: request.ref, applied: false },
+              )
           if (input.resourcePatch?.remove !== undefined)
-            throw new Error('report-refresh-field-forbidden: resourcePatch.remove')
+            throw new PresentationRecoveryError(
+              'report-refresh-field-forbidden',
+              'Omit resourcePatch.remove and replace only existing resources.',
+              { path: 'resourcePatch.remove', currentRef: request.ref, applied: false },
+            )
           for (const name of Object.keys(input.resourcePatch?.put ?? {}))
             if (!Object.hasOwn(base.resources, name))
-              throw new Error(`report-refresh-resource-unknown: ${name}`)
+              throw new PresentationRecoveryError(
+                'report-refresh-resource-unknown',
+                'Read the saved definition and use the exact existing resource name.',
+                { resource: name, currentRef: request.ref, applied: false },
+              )
         }
         // Preserve the v2 wire identity. Placement is owned by the reader, never the model.
         const surface = 'tool' as const
@@ -429,10 +541,12 @@ export function createMarivoPresentTool(
             baseBuildId,
             check,
             signal,
-            { kind: 'agent', sessionId, surface },
-            () => onSaved?.(exec, savedRef),
+            { kind: 'agent', sessionId, surface, callId: String(exec.callId) },
+            () => {
+              committed = savedRef
+              onSaved?.(exec, savedRef)
+            },
           )
-          if (active) drafts.clear(sessionId, turn)
           streamSucceeded = true
           const value = {
             stage: 'save' as const,
@@ -456,6 +570,7 @@ export function createMarivoPresentTool(
           }
           return value
         } catch (error) {
+          if (committed) throw new Error(savedReportRecovery(committed), { cause: error })
           if (error instanceof AnalysisProgramError)
             throw new PresentationRecoveryError(
               error.code,
@@ -481,9 +596,17 @@ export function createMarivoPresentTool(
               ...error.recovery,
               applied: false,
             })
-          throw error
+          signal.throwIfAborted()
+          if (error instanceof Error && error.message === 'report-not-found')
+            reportLookupFailure(error, 'report-write', signal)
+          throw new PresentationRecoveryError(
+            'report-write-failed',
+            'Check report storage and the active Workspace, then reuse the same fixed resources and ref.',
+            { applied: false, currentRef: request.ref },
+          )
         } finally {
           resourceStream.finish(streamSucceeded)
+          if (committed && active) drafts.clear(sessionId, turn)
         }
       }
       return input.stage === 'preview' || input.draftId
@@ -500,10 +623,19 @@ export function registerMarivoPresentTool(
   drafts?: AnalysisDrafts,
   runner?: () => Promise<MarivoCheckedRunner>,
   onSaved?: SavedWriteCommitted,
+  committedRef?: (token: ToolExecutionToken) => string | undefined,
 ): () => Promise<void> {
   return registerMarivoTool(
     ctx,
-    createMarivoPresentTool(workspaceSource, session, undefined, drafts, runner, onSaved),
+    createMarivoPresentTool(
+      workspaceSource,
+      session,
+      undefined,
+      drafts,
+      runner,
+      onSaved,
+      committedRef,
+    ),
   )
 }
 
@@ -515,6 +647,12 @@ const uiReadInput = z.union([
   }),
   z.strictObject({ draft: z.literal(true), includeCode: z.boolean().optional() }),
 ])
+
+const resultReadInput = z.strictObject({
+  resource: resultReference,
+  candidateGroup: viewFieldMetadata.viewCandidates.keyof(),
+  offset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
+})
 
 function parseUiReadInput(args: unknown): z.infer<typeof uiReadInput> {
   const parsed = uiReadInput.safeParse(args)
@@ -591,13 +729,19 @@ export function createMarivoReportDeleteTool(source: PresentationWorkspaceSource
     async execute(args, exec) {
       const input = z.strictObject({ ref: z.string().min(1).max(4096) }).parse(args)
       const ref = parseReportRef(input.ref)
-      if (ref.kind !== 'saved') throw new Error('report-saved-ref-required')
-      const binding = await source()
-      if (ref.workspaceId !== binding.id) throw new Error('report-workspace-mismatch')
+      if (ref.kind !== 'saved')
+        throw new PresentationRecoveryError(
+          'report-saved-ref-required',
+          'Find the saved report and confirm its current version before deleting.',
+          {},
+          'report-delete',
+        )
+      const binding = await reportWorkspace(source, 'report-delete')
+      if (ref.workspaceId !== binding.id) throw workspaceMismatch('report-delete')
       const check = async () => {
-        const current = await source()
+        const current = await reportWorkspace(source, 'report-delete')
         if (current.id !== binding.id || current.path !== binding.path)
-          throw new Error('presentation-workspace-changed')
+          throw workspaceChanged('report-delete')
       }
       const result = await deletePresentation(
         binding.path,
@@ -606,7 +750,17 @@ export function createMarivoReportDeleteTool(source: PresentationWorkspaceSource
         ref.buildId,
         check,
         exec.signal,
-      )
+      ).catch((error: unknown) => {
+        exec.signal.throwIfAborted()
+        if (error instanceof Error && error.message === 'report-delete-conflict')
+          throw new PresentationRecoveryError(
+            'report-delete-conflict',
+            'Read the current version with marivo_report_read({ref,version:"current"}). Confirm that it is the version the user wants deleted before using its ref.',
+            { applied: false },
+            'report-delete',
+          )
+        reportLookupFailure(error, 'report-delete', exec.signal)
+      })
       return {
         deleted: true,
         workspaceId: binding.id,
@@ -625,11 +779,12 @@ export function registerMarivoReportDeleteTool(ctx: Context, source: Presentatio
 export function createMarivoUiReadTool(
   source: PresentationWorkspaceSource,
   drafts?: AnalysisDrafts,
+  runner?: () => Promise<MarivoCheckedRunner>,
 ): ToolDefinition {
   return defineTool({
     name: 'marivo_report_read',
     description:
-      'Read an exact/current saved analysis view or the active Turn draft without querying data or executing scripts. If a saved ref is missing or invalid, first use marivo_report_list. Saving clears the draft. Use it to establish data-refresh context, recover missing editing context or resolve conflicts. ref selects an exact version; version=current selects the current version of that view; draft=true selects the calling Session Turn draft. A draft ref reads only its original active Turn. Choose ref or draft input. definition contains the actual ref, program, reusable declarations, codeRefs and bounded schemas, not business rows. includeCode reads available bound execution records in deduplicated sources. For data refresh, review inputs and scripts, prepare explicit new fixed results, reuse shared results across their dependent views, and preview same-name resource replacements while preserving the page definition. Do not routinely read back after successful previews or saves.',
+      'Read an exact/current saved analysis view or the active Turn draft. Find missing saved refs with marivo_report_list. If fixed result metadata is missing, request one candidateGroup using the exact results[name].resource.ref. Reads use saved data and never rerun analysis.',
     parameters: {
       ref: { type: 'string', description: 'Opaque ref returned by a successful write or read.' },
       version: {
@@ -646,25 +801,108 @@ export function createMarivoUiReadTool(
         description:
           'Read only Host-stored scripts bound to these resources, with codeRef and datasource declarations. Use for script traceability or an authorized data update; never executes a script or returns rows.',
       },
+      resource: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'Exact fixed results[name].resource.ref. Use with candidateGroup instead of a report selector.',
+      },
+      candidateGroup: {
+        type: 'string',
+        enum: resultReadInput.shape.candidateGroup.options,
+        description: 'One group of chart field names. Use nextOffset to continue.',
+      },
+      offset: {
+        type: 'integer',
+        description: 'Optional nextOffset from the same resource and group.',
+      },
     },
     output: {
       schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: { definition: { ...reportDefinitionToolSchema, required: true } },
+        oneOf: [
+          {
+            type: 'object',
+            additionalProperties: false,
+            properties: { definition: { ...reportDefinitionToolSchema, required: true } },
+          },
+          {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              candidates: { type: 'array', items: { type: 'string' }, required: true },
+              nameKind: { type: 'string', required: true },
+              parameters: { type: 'array', items: { type: 'string' }, required: true },
+              nextOffset: { oneOf: [{ type: 'integer' }, { type: 'null' }], required: true },
+            },
+          },
+        ],
       },
-      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value.definition) }],
+      render: (_args, value) => [
+        { type: 'text', text: JSON.stringify('definition' in value ? value.definition : value) },
+      ],
     },
     async execute(args, exec) {
+      if (
+        args.resource !== undefined ||
+        args.candidateGroup !== undefined ||
+        args.offset !== undefined
+      ) {
+        const parsed = resultReadInput.safeParse(args)
+        if (!parsed.success)
+          throw new PresentationRecoveryError(
+            'report-input-invalid',
+            'Pass an exact resource.ref and one candidateGroup, without a report selector.',
+            { path: parsed.error.issues[0]?.path.join('.') },
+            'report-read',
+          )
+        if (!runner)
+          throw new PresentationRecoveryError(
+            'report-read-failed',
+            'Fixed-result lookup requires the bound Runtime. Read saved report metadata if available.',
+            {},
+            'report-read',
+          )
+        const { resource, candidateGroup, offset } = parsed.data
+        const workspace = await reportWorkspace(source, 'report-read')
+        const page = await (async () => {
+          try {
+            const bound = await runner()
+            if (bound.binding.projectRoot !== (await realpath(workspace.path)))
+              throw workspaceMismatch('report-read')
+            return await readMarivoCandidates(bound, resource, candidateGroup, offset, exec.signal)
+          } catch (error) {
+            exec.signal.throwIfAborted()
+            if (error instanceof PresentationRecoveryError) throw error
+            throw new PresentationRecoveryError(
+              'report-read-failed',
+              error instanceof ResultReadError
+                ? error.message
+                : 'Check the exact fixed result and its bound Runtime.',
+              {},
+              'report-read',
+            )
+          }
+        })()
+        const current = await reportWorkspace(source, 'report-read')
+        if (current.id !== workspace.id || current.path !== workspace.path)
+          throw workspaceChanged('report-read')
+        exec.signal.throwIfAborted()
+        return page
+      }
       const input = parseUiReadInput(args)
-      const binding = await source()
+      const binding = await reportWorkspace(source, 'report-read')
       let document: AnalysisDocument
       let identifiers: { ref: string; mode?: 'edit' | 'refresh-data'; basedOn?: string }
       const selectedRef = 'ref' in input ? parseReportRef(input.ref) : undefined
       if (selectedRef && selectedRef.workspaceId !== binding.id)
-        throw new Error('report-workspace-mismatch')
+        throw workspaceMismatch('report-read')
       if (selectedRef?.kind === 'draft' && 'version' in input && input.version === 'current')
-        throw new Error('report-draft-version-forbidden')
+        throw new PresentationRecoveryError(
+          'report-draft-version-forbidden',
+          'Use {draft:true} for the active draft, or omit version to read an exact draft ref.',
+          {},
+          'report-read',
+        )
       let checkDraft = () => {}
       if ('draft' in input || selectedRef?.kind === 'draft') {
         const session = exec.agent?.session
@@ -679,8 +917,7 @@ export function createMarivoUiReadTool(
           (selectedRef?.kind === 'draft' &&
             (selectedRef.sessionId !== String(session.id) ||
               selectedRef.turn !== turn ||
-              selectedRef.draftId !== draft.delivery.draftId ||
-              selectedRef.revision !== draft.delivery.draftRevision))
+              selectedRef.draftId !== draft.delivery.draftId))
         )
           throw unavailableDraft('report-read')
         document = draft.document
@@ -703,6 +940,13 @@ export function createMarivoUiReadTool(
               }
             : {}),
         }
+        if (selectedRef?.kind === 'draft' && selectedRef.revision !== draft.delivery.draftRevision)
+          throw new PresentationRecoveryError(
+            'analysis-draft-conflict',
+            'Read the latest draft with marivo_report_read({draft:true}). Review the revision before editing.',
+            { currentRef: identifiers.ref },
+            'report-read',
+          )
 
         checkDraft = () => {
           if (exec.agent?.session !== session || drafts?.get(String(session.id)) !== draft)
@@ -713,7 +957,11 @@ export function createMarivoUiReadTool(
         const { reportId, buildId } = selectedRef
         const selected =
           'version' in input && input.version === 'current'
-            ? (await resolvePresentation(binding.path, binding.id, reportId, exec.signal)).buildId
+            ? (
+                await resolvePresentation(binding.path, binding.id, reportId, exec.signal).catch(
+                  (error: unknown) => reportLookupFailure(error, 'report-read', exec.signal),
+                )
+              ).buildId
             : buildId
         document = await readAnalysisRecord(
           binding.path,
@@ -721,7 +969,7 @@ export function createMarivoUiReadTool(
           reportId,
           selected,
           exec.signal,
-        )
+        ).catch((error: unknown) => reportLookupFailure(error, 'report-read', exec.signal))
         identifiers = { ref: reportRefFromRecordId(document.recordId, binding.id) }
       }
       const sources: ReportSourceSummary[] = []
@@ -740,9 +988,9 @@ export function createMarivoUiReadTool(
           }
         }
       }
-      const current = await source()
+      const current = await reportWorkspace(source, 'report-read')
       if (current.id !== binding.id || current.path !== binding.path)
-        throw new Error('presentation-workspace-changed')
+        throw workspaceChanged('report-read')
       exec.signal.throwIfAborted()
       checkDraft()
       return {
@@ -788,8 +1036,9 @@ export function registerMarivoUiReadTool(
   ctx: Context,
   source: PresentationWorkspaceSource,
   drafts?: AnalysisDrafts,
+  runner?: () => Promise<MarivoCheckedRunner>,
 ) {
-  return registerMarivoTool(ctx, createMarivoUiReadTool(source, drafts))
+  return registerMarivoTool(ctx, createMarivoUiReadTool(source, drafts, runner))
 }
 
 /** Exact fixed-result identities only; codeRef and coincident values are not identity. */

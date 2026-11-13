@@ -181,7 +181,7 @@ export const zh = {
   'marivo.presentation.publish-report-success': '报告已上传到对象存储。',
   'marivo.presentation.publish-report-credentials-missing': '缺少发布凭据。补齐后可重新发布。',
   'marivo.presentation.publish-report-config-changed': '发布配置已变更，请重新打开菜单。',
-  'marivo.presentation.publish-report-unconfirmed': '上传结果未确认，请检查对象存储或重试。',
+  'marivo.presentation.publish-report-unconfirmed': '上传结果未确认，请先在对象存储核对该版本。',
   'marivo.presentation.publish-report-failed': '无法发布报告，请重试。',
   'marivo.presentation.open-published-report': '查看已发布报告',
   'marivo.presentation.open-publishing-credentials': '前往凭证管理',
@@ -233,7 +233,7 @@ export const zh = {
   'marivo.presentation.workspace-or-session-changed-or-is-unavailable-reopen-the':
     'Workspace 或 Session 已变化或不可用，请在原项目中重新打开分析快照。',
   'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it':
-    '分析快照文件已缺失，请重新生成。',
+    '分析快照文件已缺失。请先在分析视图目录和版本历史中查找可用版本。',
   'marivo.presentation.analysis-snapshot-file-changed-and-no-longer-matches-the':
     '分析快照文件已变化，与交付时的摘要不一致，无法读取或下载。',
   'marivo.presentation.analysis-snapshot-size-does-not-match-its-record-or':
@@ -476,7 +476,7 @@ export const en = {
   'marivo.presentation.publish-report-config-changed':
     'Publishing configuration changed. Reopen the menu.',
   'marivo.presentation.publish-report-unconfirmed':
-    'Upload unconfirmed. Check object storage or retry.',
+    'Upload unconfirmed. Check this version in object storage first.',
   'marivo.presentation.publish-report-failed': 'Could not publish the report. Try again.',
   'marivo.presentation.open-published-report': 'Open published report',
   'marivo.presentation.open-publishing-credentials': 'Go to credential management',
@@ -529,7 +529,7 @@ export const en = {
   'marivo.presentation.workspace-or-session-changed-or-is-unavailable-reopen-the':
     'Workspace or Session changed or is unavailable. Reopen the analysis snapshot in its original project.',
   'marivo.presentation.analysis-snapshot-file-is-missing-regenerate-it':
-    'Analysis snapshot file is missing. Regenerate it.',
+    'Analysis snapshot file is missing. Check the analysis view catalog and version history.',
   'marivo.presentation.analysis-snapshot-file-changed-and-no-longer-matches-the':
     'Analysis snapshot file changed and no longer matches the delivery digest. It cannot be opened or downloaded.',
   'marivo.presentation.analysis-snapshot-size-does-not-match-its-record-or':

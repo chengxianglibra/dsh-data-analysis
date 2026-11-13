@@ -17,7 +17,7 @@ Host 拥有交付形式与流程，文件或 Marivo 分析 Skill 拥有分析方
 
 每个数据视图使用独立命名语句。同一固定结果的不同展示可共享 resource 和 codeRef。复用输入与脚本来源规则见[结果导出](references/capture.md)。
 
-按 `results[name].metadata` 和 writer 的 `resultMetadata` 选择准确字段；配置失败用结构化错误修复展示，不重跑业务计算。组件选择见[视图与布局](references/analysis-ui.md)，参数以生成的[组件签名](references/analysis-catalog.md)为准。
+按 `viewCandidates` 选择准确字段。候选缺失时，用 `marivo_report_read({resource: resource.ref, candidateGroup})` 从固定结果按组读取。配置失败按回执修复展示，复用已完成计算。组件和参数见[视图与布局](references/analysis-ui.md)和[组件签名](references/analysis-catalog.md)。Marivo Python API 用 `marivo_help` 查询。
 
 ## 边分析边更新
 
@@ -32,7 +32,7 @@ Host 拥有交付形式与流程，文件或 Marivo 分析 Skill 拥有分析方
 
 用户要求更新数据时按[数据刷新](references/data-update.md)使用 `mode:"refresh-data"`，不要求用户再声明保持布局。保留页面程序、组件、资源名、view/display、正文、标题、语言和标签。显式准备新结果，逐批 preview 同名资源替换，最后保存一次。auto 换图由工具拒绝，内部尺寸仍可随行数变化；不能为通过校验换图、删组件或改口径。
 
-编辑时先确认准确基版本及其资源声明，缺失时用 `marivo_report_read` 补齐。仅调整展示时复用资源。修改口径、参数或方法时，先查可用的固定输入，用准确引用派生受影响结果。输入不足或需要新数据时才重新读取来源。替换共享资源时核对所有引用组件和相关结论。刷新后静态结论有冲突时说明限制。
+编辑前用 `marivo_report_read` 确认基版本和资源。只有标题时先用 `marivo_report_list` 查找。仅调整展示时复用资源。修改口径、参数或方法时，先查可用固定输入；输入不足或需要新数据时才重新读取来源。替换共享资源时核对引用它的组件和结论。
 
 ## 表达与完成
 
@@ -40,6 +40,6 @@ Host 拥有交付形式与流程，文件或 Marivo 分析 Skill 拥有分析方
 
 无结论时展示问题与证据缺口；结论成立后将结论、支持数据和影响解读的范围、分母、缺失项放在一起。比较、归因和覆盖检查见[叙事与证据](references/narrative.md)。
 
-每轮最终保存后，用准确 saved ref 提交新的下一步推荐或 no-suggestions，随后继续其他交付。用户明确不要推荐时提交 `items:[]`、`emptyReason:"declined"`；无合适推荐不等于用户拒绝，上一轮未执行的推荐不等于已经回答。
+每轮最终保存后，用 `marivo_next_steps` 和准确 saved ref 提交新的下一步推荐。没有合适建议用 `no-suggestions`，用户明确拒绝用 `declined`。删除或发布见[恢复与管理](references/recovery.md#删除与发布)。
 
 保存成功后，最终聊天通常用一两句话给出核心结论和实质限制，可提示从右侧打开分析视图。完整证据留在视图中，用户明确要求的聊天内容仍直接回答。只有草稿或保存失败时，说明实际状态并给出已有证据支持的答案。

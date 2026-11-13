@@ -176,12 +176,27 @@ export function registerSemanticReferenceRpc(
       }
       try {
         return { ok: true, value: await service.handle(endpoint, payload, signal) }
-      } catch {
+      } catch (error) {
+        const failure = error instanceof Error ? error.message : ''
+        const message = signal.aborted
+          ? 'cancelled'
+          : [
+                'environment-mismatch',
+                'environment-changed',
+                'environment-unbound',
+                'workspace-mismatch',
+                'workspace-changed',
+                'unknown-session',
+              ].includes(failure)
+            ? 'reference-context-changed'
+            : failure === 'catalog-load-failed'
+              ? failure
+              : 'reference-runtime-unavailable'
         return {
           ok: false,
           error: {
             code: 'internal',
-            message: 'Marivo semantic reference request failed',
+            message,
             details: {},
           },
         }

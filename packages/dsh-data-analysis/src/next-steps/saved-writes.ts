@@ -10,6 +10,9 @@ export class SavedWriteProofs {
   readonly committed: SavedWriteCommitted = (exec, ref) => {
     if (!this.closed) this.refs.set(exec.token, { ref, sequence: ++this.sequence })
   }
+  get(token: ToolExecutionToken): string | undefined {
+    return this.refs.get(token)?.ref
+  }
   take(token: ToolExecutionToken): { ref: string; sequence: number } | undefined {
     const ref = this.refs.get(token)
     this.refs.delete(token)

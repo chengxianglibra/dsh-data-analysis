@@ -18,6 +18,16 @@ export { MarivoHelpError, resolveMarivoHelpBridge } from './bridge.ts'
 
 export const MARIVO_HELP_TOOL_NAME = 'marivo_help'
 
+function targetRecovery(target: string, code: MarivoHelpTargetFailure['code']): string {
+  if (code === 'empty-help')
+    return 'Retry this target alone. If it is still empty, check the bound Runtime.'
+  if (target === 'analysis-frame')
+    return 'For the Python API, query analysis.analysis_frame. For display, load dsh-data-analysis-presentation and see AnalysisFrameView.'
+  if (target === 'report')
+    return 'Load dsh-data-analysis-presentation for analysis views. Use marivo_report_list to find a saved report, then marivo_report_read to confirm it.'
+  return 'Query root, analysis or authoring for registered targets. Keep successful Help from this call.'
+}
+
 export interface MarivoHelpLimits {
   maxTargets: number
   maxTargetChars: number
@@ -203,7 +213,8 @@ export function renderMarivoHelpValue(value: MarivoHelpToolValue): string {
       return `Target: ${item.target}\n${item.body}`
     }),
     ...(value.errors ?? []).map(
-      (item) => `Target: ${item.target}\nHelp unavailable (${item.code}): ${item.message}`,
+      (item) =>
+        `Target: ${item.target}\nHelp unavailable (${item.code}): ${item.message}\nNext: ${item.recovery.message}`,
     ),
   ].join('\n\n')
 }
@@ -253,14 +264,29 @@ export async function readMarivoHelpTargets(
           error.code === 'empty-help' ||
           (error.code === 'target-failed' && typeof error.details.exitCode === 'number')
         )
-      )
+      ) {
+        if (error instanceof MarivoHelpError) {
+          const environmentCode = error.details.environmentFailureCode
+          if (
+            environmentCode === 'subprocess-timeout' ||
+            environmentCode === 'subprocess-output-limit'
+          )
+            throw new MarivoHelpError(
+              error.code,
+              `${error.message}. Query one narrower Help topic at a time.`,
+              error.details,
+              { cause: error },
+            )
+        }
         throw error
+      }
       const message = error.message.slice(0, 4_096)
-      combinedBytes += Buffer.byteLength(message)
+      const recovery = targetRecovery(target, error.code)
+      combinedBytes += Buffer.byteLength(message) + Buffer.byteLength(recovery)
       if (combinedBytes > limits.combinedStdoutMaxBytes)
         throw new MarivoHelpError(
           'combined-output-limit',
-          'marivo_help combined output limit exceeded',
+          'marivo_help combined output limit exceeded. Split targets into smaller calls.',
         )
       errors.push({
         target,
@@ -269,7 +295,7 @@ export async function readMarivoHelpTargets(
         message,
         recovery: {
           action: 'correct-input',
-          message: 'Choose a valid target from current Runtime Help; keep successful targets.',
+          message: recovery,
         },
       })
       continue
@@ -279,7 +305,7 @@ export async function readMarivoHelpTargets(
     if (combinedBytes > limits.combinedStdoutMaxBytes) {
       throw new MarivoHelpError(
         'combined-output-limit',
-        `marivo_help combined stdout exceeds ${limits.combinedStdoutMaxBytes} bytes`,
+        `marivo_help combined stdout exceeds ${limits.combinedStdoutMaxBytes} bytes. Split targets into smaller calls.`,
         { maxBytes: limits.combinedStdoutMaxBytes, observedBytes: combinedBytes, target },
       )
     }
@@ -314,7 +340,7 @@ export function createMarivoHelpTool(
   return defineTool({
     name: MARIVO_HELP_TOOL_NAME,
     description:
-      'Read current Marivo API contracts from the verified shared Runtime. Targets run individually in order; completed target failures are returned in errors while successful Help remains available. Identity, cancellation and resource-limit failures abort the call. Returned Help owns signatures and constraints, while plugin Skills own report workflows. Use this tool for upstream marivo help examples without switching installations.',
+      'Read live Marivo Python API Help from the bound Runtime. Start with root, analysis or authoring. For analysis views and report tools, load dsh-data-analysis-presentation. Check errors for failed targets; successful targets remain available. In PTC, return the Help body or recovery needed for the next model step.',
     parameters: {
       targets: {
         type: 'array',
@@ -403,7 +429,7 @@ export function createMarivoHelpTool(
       const internal = await readMarivoHelpTargets(bridge, args.targets, {
         limits,
         signal: exec.signal,
-        resolveDelivery,
+        resolveDelivery: exec.parent === undefined ? resolveDelivery : undefined,
         allowTargetFailures: true,
       })
       exec.signal.throwIfAborted()

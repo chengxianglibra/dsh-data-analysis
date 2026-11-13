@@ -285,7 +285,7 @@ test('RPC and Agent publish the exact historical Build as signed, self-contained
   const exec = { agent: { session }, signal } as ToolRunContext
   await assert.rejects(
     tool.execute({ ref: savedReportRef({ ...version, workspaceId: 'another' }) }, exec),
-    { message: 'report-workspace-mismatch' },
+    /report-workspace-mismatch/,
   )
   const draft = draftReportRef({
     workspaceId: version.workspaceId,
@@ -294,7 +294,10 @@ test('RPC and Agent publish the exact historical Build as signed, self-contained
     draftId: randomUUID(),
     revision: randomUUID(),
   })
-  await assert.rejects(tool.execute({ ref: draft }, exec), { message: 'report-saved-ref-required' })
+  await assert.rejects(
+    tool.execute({ ref: draft }, exec),
+    /^Error: report-saved-ref-required; error=/,
+  )
   await assert.rejects(tool.execute({ ref }, { ...exec, agent: undefined }), {
     message: 'presentation-session-mismatch',
   })
@@ -313,6 +316,12 @@ test('RPC and Agent publish the exact historical Build as signed, self-contained
   const rejected = await call('publish', request, signal)
   assert.ok(!rejected.ok)
   assert.equal(rejected.error.message, 'report-publishing-upload-unconfirmed')
+  await assert.rejects(tool.execute({ ref }, exec), (error: Error) => {
+    const detail = JSON.parse(error.message.split('error=')[1]!)
+    assert.equal(detail.code, 'report-publishing-upload-unconfirmed')
+    assert.equal(detail.recovery.objectKey, key)
+    return true
+  })
   assert.equal(
     (await readReportHistory(root, version.workspaceId, version.reportId)).currentBuildId,
     'current',

@@ -56,4 +56,4 @@ Web 用户在「数据源与凭证 → 凭证管理 → 报告发布凭证」录
 
 对象路径为 `{pathPrefix}/{workspaceName}/{reportName}/{publicationId}/index.html`。名称经 NFKC 规范化，保留字母、数字、下划线和连字符，其他连续字符替换为连字符。每段最多 48 个 Unicode 字符，空名称回退为 `workspace` 或 `report`。URL 逐段编码。`publicationId` 取 Workspace、Report、Build 和 HTML SHA-256 所组成的 JSON 数组摘要前 32 位。相同名称和内容可重试同一键，重新构建渲染器也可能生成新的 HTML 和对象键。
 
-发布只读取固定 Build 并上传 HTML。上传结果未确认时对象可能已经写入，重试可重新取得回执。成功回执只确认 S3 上传，浏览器访问取决于 Bucket 或 CDN 配置。报告 HTML 包含保存的数据快照，发布前应确认分享范围。
+发布只读取固定 Build 并上传 HTML。上传结果未确认时对象可能已经写入。Agent Tool 给出对象键，先核对该对象再决定是否重试。成功回执只确认 S3 上传，浏览器访问取决于 Bucket 或 CDN 配置。报告 HTML 包含保存的数据快照，发布前应确认分享范围。

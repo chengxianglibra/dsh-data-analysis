@@ -7,7 +7,7 @@ import { parseReportRef } from '../presentation/contracts/report-ref.ts'
 import { registerPluginRpc } from '../rpc.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { publishingFieldSchema, REPORT_PUBLISHING_CHANNEL } from './credential-contract.ts'
-import type { ReportPublishingService } from './service.ts'
+import { type ReportPublishingService, ReportUploadUnconfirmed } from './service.ts'
 
 const workspace = z.object({ workspaceId: z.string().min(1).max(512) })
 const describe = workspace.strict()
@@ -120,7 +120,29 @@ export function registerReportPublishTool(
             exec.signal,
           )
         } catch (error) {
-          throw new Error(publishingError(error, exec.signal))
+          const code = publishingError(error, exec.signal)
+          if (code === 'report-ref-invalid' && error instanceof Error) throw error
+          const nextAction =
+            code === 'report-publishing-upload-unconfirmed'
+              ? 'Check the configured object storage for this exact saved Build before retrying. The upload may have completed.'
+              : code === 'report-publishing-credentials-missing'
+                ? 'Complete the object storage credentials in Credential management, then publish the same saved ref.'
+                : code === 'report-publishing-build-unavailable' ||
+                    code === 'report-saved-ref-required'
+                  ? 'Find and read the intended saved Build before publishing.'
+                  : code === 'report-document-incompatible' || code === 'report-version-unsupported'
+                    ? 'Open the exact Build with a compatible plugin before publishing.'
+                    : 'Check the current Workspace and object storage configuration before retrying.'
+          throw new Error(
+            `${code}; error=${JSON.stringify({
+              code,
+              phase: 'report-publish',
+              recovery: {
+                nextAction,
+                ...(error instanceof ReportUploadUnconfirmed ? { objectKey: error.key } : {}),
+              },
+            })}`,
+          )
         }
       },
     }),

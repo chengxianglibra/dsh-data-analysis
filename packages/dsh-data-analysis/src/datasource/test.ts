@@ -1,8 +1,11 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { MarivoEnvironmentError } from '../environment/errors.ts'
+import { PythonOperationError } from '../python-exception.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import type { MarivoCredentialService } from './service.ts'
+import { CredentialServiceError, credentialRecovery } from './service.ts'
 
 export const MARIVO_DATASOURCE_TEST_TOOL_NAME = 'marivo_datasource_test'
 export function createMarivoDatasourceTestTool(
@@ -22,11 +25,29 @@ export function createMarivoDatasourceTestTool(
     },
     async execute(args, exec) {
       if (!args.name.trim() || args.name.length > 256) throw new Error('Invalid datasource name')
-      return datasourceToolValue(
-        await service.track(
-          service.prepare('test', exec, () => resolveMarivoDatasourceBridge(source), args.name),
-        ),
-      )
+      try {
+        return datasourceToolValue(
+          await service.track(
+            service.prepare('test', exec, () => resolveMarivoDatasourceBridge(source), args.name),
+          ),
+        )
+      } catch (error) {
+        exec.signal.throwIfAborted()
+        const code =
+          error instanceof CredentialServiceError || error instanceof MarivoEnvironmentError
+            ? error.code
+            : 'datasource-test-failed'
+        const exception = error instanceof PythonOperationError ? error.diagnostic : undefined
+        const nextAction =
+          exception?.repair?.action ??
+          credentialRecovery(code) ??
+          (code === 'subprocess-timeout'
+            ? 'Check the datasource or Runtime response before retrying the connection test.'
+            : 'Confirm the datasource in the current Workspace and check its Runtime and credential references.')
+        throw new Error(
+          `${code}; error=${JSON.stringify({ code, phase: 'datasource-test', ...(exception ? { exception } : {}), recovery: { nextAction } })}`,
+        )
+      }
     },
   })
 }

@@ -109,6 +109,7 @@ export async function listReports(
   root: string,
   workspaceId: string,
   signal?: AbortSignal,
+  publication?: { sessionId: string; callId: string },
 ): Promise<ReportCatalog> {
   const directory = path.dirname(presentationReportPath(root, 'catalog'))
   const parents = [root, path.dirname(directory), directory]
@@ -135,7 +136,13 @@ export async function listReports(
     try {
       if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('asset-not-file')
       const history = await readReportHistory(root, workspaceId, entry.name, signal)
-      reports.push(history.versions[0]!)
+      const version = publication
+        ? history.versions.find(
+            ({ source }) =>
+              source.sessionId === publication.sessionId && source.callId === publication.callId,
+          )
+        : history.versions[0]
+      if (version) reports.push(version)
     } catch (error) {
       signal?.throwIfAborted()
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') unavailable++

@@ -65,7 +65,7 @@ business 固定 unknown。
 codeRef 记录整次 Python 执行。同一执行中的多个导出结果可以共享 codeRef，组件各自读取绑定资源的记录。
 该关联证明该次执行返回过引用，不推断原始计算或完整依赖；只有读取已有结果的代码不能被称为最初的生成脚本。
 工具外层执行预算为 180 秒，定义见[报告执行预算](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)。
-取消或快照读取失败不发布 current，不自动重跑分析。
+提交前取消或快照读取失败保留 current。提交后的回执恢复见[展示交付](presentation-delivery.md#分析视图草稿与正式保存)。
 
 ## 首次结果元数据
 
@@ -86,6 +86,8 @@ codeRef 记录整次 Python 执行。同一执行中的多个导出结果可以�
 `marivo_report_write` 成功时返回本次新增或替换的资源摘要，未更改资源时返回空集合。配置失败回执的 `resultMetadata` 使用相同结构，只包含出错组件所引用的已准入快照，包括内联组件及复用资源。两条路径均从已有快照组装，不额外读取。失败诊断另提供具体参数的候选，见[展示交付](presentation-delivery.md#分析视图写入与增量契约)。
 
 首次结果摘要上限为每结果 5 KiB、每类 64 个名称，Python 控制帧上限 32 KiB。写入回执的资源摘要上限为 32 KiB，超预算明确返回 `unavailable/budget`。元数据不可用不使有效引用失效。`coverage.business` 始终为 `unknown`。
+
+候选缺失时，`marivo_report_read` 从准确固定引用读取指定候选组，每页最多 12 个名称和 16 KiB。读取沿用首次结果的 schema 投影，可继续分页到 64 个名称以外，无需构建展示快照。
 
 ## Frame 快照
 

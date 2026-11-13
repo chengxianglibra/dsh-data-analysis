@@ -102,12 +102,12 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 5. 当前进程工作目录
 
 默认行为让不同 Session、fork 或进程内 subagent 使用自己的 Workspace。显式全局 project root
-会使所有 Agent 指向同一 Workspace，因此只适合管理员有意固定项目的场景。
+会使所有 Agent 指向同一 Marivo 项目，因此适用于管理员有意固定项目的场景。导出可用于视图的固定资源时，该项目必须是当前 Harness Workspace；工具在执行 Python 前报告路径不匹配。
 
 首次 resolve 时，manager 只接受已存在目录并执行 `realpath`，以 canonical path 作为 cache key。模块不创建
 `marivo.toml`、`models/`、`.marivo/`、Workspace `.venv`，也不向任何 Agent Skill 目录写链接。首次绑定用
 已准入的共享 Runtime 同进程复核 import identity 并执行 `load_project_config()`。缺少 manifest 时使用 Marivo
-默认值，配置无效时拒绝绑定。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
+默认值，配置无效时拒绝绑定；首次绑定失败后，同一 Agent 可在修复后重新绑定。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
 “插件 install 零写入”解释为“分析永不写入”。
 
 `marivo_python` 接受 `project: "none" | "required"`。省略时，非空 `datasources` 或合法 `resultVariables` 推导为 `required`，其余调用采用 `none`。显式 `none` 与上述声明冲突。普通文件分析无需准备项目。只在 Python 代码中访问或写入 Marivo 项目时，调用者显式传 `required`。

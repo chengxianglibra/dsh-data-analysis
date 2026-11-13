@@ -30,7 +30,7 @@ marivo-semantic  -> authoring
 marivo-service   -> analysis
 ```
 
-这只是集成触发点，不是 target inventory。完整 inventory 始终通过实时 `marivo.help()` 获取。
+实时 `marivo.help()` 提供导航根。Agent 可用 `marivo_help({targets:["root"]})` 查入口，按 `analysis` 或 `authoring` 的链接找到注册目标。
 `marivo-service` 仅在绑定 Runtime 提供该 Skill 时可用。若它与 `marivo-analysis` 同时激活，
 两者分别保留可核验的 Skill 身份，共用一个当前可见的 `analysis` 根 Help 正文。
 
@@ -44,10 +44,11 @@ marivo-service   -> analysis
 5. 检查单 target timeout、stdout/stderr 上限、空 stdout 和批次总输出上限。
 6. 计算正文 SHA-256 digest，并结合当前 prompt 可见性标记 `delivered`、`already-visible` 或
    `replacement`。
-7. 向模型正文返回 Runtime 版本、成功 target 与原样 Help body，以及失败 target 的有界 errors。插件附加的完整 fingerprint
-   只用于 Host presentation metadata；Marivo 自身 Help 正文可能包含 Python/Package 绝对路径，透传层不删除或改写这些正文事实。
+7. Native 正文包含 Runtime 版本、成功 Help 和逐项恢复指引。完整 fingerprint 进入 Host metadata 及 PTC canonical 值。PTC 子调用返回完整 Help，外层代码选择向模型输出的内容。
 
 已完成的单 target 非零退出或空正文分别作为 `target-failed`、`empty-help` 写入 `errors`，继续执行后续 target；其他成功正文保留在 `targets`。即使全部 target 失败，也返回明确的逐项 errors，不能将错误正文当作 Help。模块不猜测错误是否为 unknown-target，也不替换为相近名称；错误保留真实 Marivo 修复信息，无需导入其私有错误类型。
+
+`analysis-frame` 的失败指引分别指向 `analysis.analysis_frame` 与展示 Skill；`report` 指向展示 Skill 与报告查找入口。
 
 请求非法、Runtime/解释器身份或环境失败、取消、超时、输出预算失败仍整体终止，不交付部分 Help。仅成功 target 计算 digest、参与可见性去重并写入 presentation metadata；失败项不标记为已披露。Skill 激活的根 Help 仍采用严格读取，失败不能激活成已披露状态。
 
@@ -74,8 +75,7 @@ Skill。该检查不验证 Skill 附带的其他资源。
 恢复历史后无法证明 provider 时明确标为 unavailable，不从同名 Skill 猜测来源；诊断不包含正文、provider 原文、Host 绝对路径、URL 或 opaque 资源值。
 
 激活后，controller 在 `agent/pre-step` 中等待 Harness 先生成原 decision，再为进入模型的消息追加
-根 Help。多个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付；任一读取失败则不注入任何
-根 Help，并记录 failure telemetry。
+根 Help。多个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付。读取失败时保留原子性和 failure telemetry；已核验 Skill 身份、且 Runtime 未发生绑定错误时，注入一条有界恢复提示，模型可查询 focused Help 或继续独立工作。Skill/Runtime 身份失败仍中止该步。
 
 公开的 `installMarivoDisclosure` 仅安装 Help。完整插件另行注册常驻任务路由，该 section 在首次请求、显式 Skill invocation 和会话恢复时均可见。
 
@@ -117,6 +117,7 @@ Agent 自有的同名 Tool，也可能出现一次不必要的重载提示。
 历史结果无法可靠归因；不能将此校验宣称为对任意历史结果的完整验证。
 Code Mode 中嵌套 Skill 使用 log-only 的 `tool/ptc-dispatch`，外层 `run_code` 可以重新投影结果；
 现有事件不足以恢复哪些正文进入外层消息，也不能完整验证单次 PTC 内多次载入的所有正文。
+嵌套 Help dispatch 同样只有外层代码输出后才进入模型，因此子调用不计入可见正文去重。
 
 ## 工具可见性边界
 
@@ -145,7 +146,7 @@ controller dispose 时 abort 未完成读取，注销 Tool 与 hooks，并清空
 - 空 stdout：`empty-help`；批次总输出越界：`combined-output-limit`；
 - Environment identity mismatch：保持原 `MarivoEnvironmentError`，并使 binding fail closed；
 - Skill 正文不匹配或无法确认来源：根 Help 不注入，提示处理冲突或重新加载；
-- 根 Help 批次失败：`MarivoDisclosureError`，不产生部分 prompt 注入。
+- 根 Help 批次失败保留已核验边界，不产生部分 Help。可恢复读取失败带一次可见提示，身份失败和取消仍结束当前步骤。
 
 ## 公共接口与验证
 

@@ -74,9 +74,11 @@ export function viewCandidateUsage(
   }
 }
 
+export const numericViewTypes: readonly string[] = ['float64', 'int64', 'decimal']
+export const timeAxisRoles: readonly string[] = ['calendar', 'interval']
 export const numericViewType = (type: string | undefined) =>
-  type === 'float64' || type === 'int64' || type === 'decimal'
-export const timeAxisRole = (role: string) => role === 'calendar' || role === 'interval'
+  type !== undefined && numericViewTypes.includes(type)
+export const timeAxisRole = (role: string) => timeAxisRoles.includes(role)
 
 /** The schema-level choices shared by the Python handoff and report receipts. */
 export function viewCandidates(

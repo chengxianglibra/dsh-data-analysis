@@ -66,8 +66,7 @@ adapter 使用 `ms.load(workspace_dir=...)`、空查询 `catalog.search(limit=10
 输入候选每次 onPick 记录一次；详情仅在 Host 确认插入成功后记录一次，点击失败不计数。序列化、发送和重试不计数。按 Workspace 排队首次 put 和后续原子 update，更新时清理窗口外
 日桶并对 safe integer 饱和。只有已持久化热度影响下一次候选。
 
-storage 故障只降级为零热度和有界 diagnostic。Catalog/Environment/RPC 错误不会退化为普通文字；候选失败沿用
-DSH 移除对应 source group 的行为，提交失败沿用 composer error 并保留草稿。插件关闭时先停止新请求并取消加载，
+storage 故障只降级为零热度和有界 diagnostic。Catalog/Environment/RPC 错误不会退化为普通文字；候选失败时，插件通过 Harness composer 通知区分重选引用、检查目录和修复 Runtime；Harness 仍移除失败的 source group。提交失败保留草稿并提示恢复动作。插件关闭时先停止新请求并取消加载，
 再 drain 已入队更新、关闭 domain；Browser source 生命周期结束会取消 outstanding RPC。
 
 ## 验证

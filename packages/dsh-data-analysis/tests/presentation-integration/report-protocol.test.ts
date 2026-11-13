@@ -6,10 +6,14 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import { Context } from '@deepseek-ai/cordis'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { Session } from '@deepseek-ai/dsh-session'
-import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime, { type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { z } from 'zod'
 import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
+import { SavedWriteProofs } from '../../src/next-steps/saved-writes.ts'
 import { AnalysisViewError } from '../../src/presentation/contracts/analysis-document.ts'
 import { parseReportRef, savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
@@ -63,7 +67,18 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     },
     async runChecked(request) {
       reads++
-      const ref = z.object({ result_id: z.string() }).parse(JSON.parse(request.stdin!))
+      const input = JSON.parse(request.stdin!)
+      if (request.program.includes('write_candidate_page'))
+        return {
+          exitCode: 0,
+          signal: null,
+          durationMs: 1,
+          stdout: Buffer.from(
+            JSON.stringify({ kind: 'dataset', candidates: ['value'], nextOffset: null }),
+          ),
+          stderr: Buffer.alloc(0),
+        }
+      const ref = z.object({ result_id: z.string() }).parse(input)
       if (ref.result_id.endsWith('f')) throw new Error('fixture-result-failed')
       const rows = ref.result_id.includes('2')
         ? [['A', '2']]
@@ -121,6 +136,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     root,
     source,
     drafts,
+    runner,
     tool,
     exec,
     resource,
@@ -132,6 +148,97 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     },
   }
 }
+
+test('a cancelled save after publication exposes its exact ref and can be found by call ID', async (t) => {
+  const f = await fixture(t)
+  const ctx = new Context()
+  t.after(() => ctx.fiber.dispose())
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
+  const controller = new AbortController()
+  const proofs = new SavedWriteProofs()
+  const agent = f.exec.agent!
+  const tool = createMarivoPresentTool(
+    f.source,
+    agent.session,
+    undefined,
+    f.drafts,
+    undefined,
+    (exec, ref) => {
+      proofs.committed(exec, ref)
+      controller.abort()
+    },
+    (token) => proofs.get(token),
+  )
+  ctx.tools.register({ ...tool, execute: (args, exec) => tool.execute(args, { ...exec, agent }) })
+  const result = await ctx.tools.execute({
+    name: tool.name,
+    callId: ToolCallId('call'),
+    arguments: { stage: 'save', title: 'Published view', program: 'root = TextContent("Scope");' },
+    signal: controller.signal,
+  })
+  assert.equal(result.isError, true)
+  const listing = reportListOutput.parse(
+    await createMarivoReportListTool(f.source).execute({ callId: 'call' }, f.exec),
+  )
+  assert.equal(listing.reports.length, 1)
+  const saved = listing.reports[0]!
+  assert.ok(JSON.stringify(result.content).includes(saved.ref))
+  assert.equal((await f.read(saved.ref)).ref, saved.ref)
+  const next = createMarivoPresentTool(f.source, agent.session, undefined, f.drafts)
+  await next.execute(
+    { stage: 'save', ref: saved.ref, program: 'root = TextContent("Updated");' },
+    {
+      ...f.exec,
+      callId: ToolCallId('next'),
+      rootCallId: ToolCallId('call'),
+    },
+  )
+  const recovered = reportListOutput.parse(
+    await createMarivoReportListTool(f.source).execute({ callId: 'call' }, f.exec),
+  )
+  assert.equal(recovered.reports[0]?.ref, saved.ref)
+})
+
+test('a stale draft read and a preview without its ref recover the current draft', async (t) => {
+  const f = await fixture(t)
+  const initial = await f.write({ stage: 'preview', program: 'root = TextContent("Initial");' })
+  const latest = await f.write({
+    stage: 'preview',
+    ref: initial.ref,
+    program: 'root = TextContent("Updated");',
+  })
+  const conflict = (error: unknown) =>
+    error instanceof Error &&
+    Reflect.get(error, 'code') === 'analysis-draft-conflict' &&
+    Reflect.get(error, 'recovery').currentRef === latest.ref
+  await assert.rejects(f.read(initial.ref), conflict)
+  await assert.rejects(
+    f.write({ stage: 'preview', program: 'root = TextContent("New");' }),
+    conflict,
+  )
+  assert.equal((await f.read(latest.ref)).ref, latest.ref)
+})
+
+test('chart field recovery reads a fixed result without an analysis view or source replay', async (t) => {
+  const f = await fixture(t)
+  const reader = createMarivoUiReadTool(f.source, f.drafts, async () => f.runner)
+  const value = await reader.execute(
+    { resource: f.resource().ref, candidateGroup: 'numericValues' },
+    f.exec,
+  )
+  assert.deepEqual(value, {
+    candidates: ['value'],
+    nameKind: 'column-id',
+    parameters: [
+      'line.encoding.values',
+      'area.encoding.values',
+      'bar.encoding.values',
+      'heatmap.encoding.value',
+    ],
+    nextOffset: null,
+  })
+})
 
 test('ReportRef is bounded, versioned, canonical, and Workspace scoped', () => {
   const ref = savedReportRef({ workspaceId: 'workspace', reportId: 'report', buildId: 'build' })
@@ -445,7 +552,7 @@ test('refresh-data atomically rejects a mixed batch and preserves revision, curr
       ref: preview.ref,
       resourcePatch: { put: { a: f.resource('2'), b: f.resource('f') } },
     }),
-    /fixture-result-failed/,
+    /analysis-resource-read-failed/,
   )
   assert.equal(f.drafts.get('session'), prior)
   assert.deepEqual(await readReportHistory(f.root, 'workspace', baseDoc.reportId), history)
@@ -455,7 +562,7 @@ test('refresh-data atomically rejects a mixed batch and preserves revision, curr
       ref: preview.ref,
       resourcePatch: { put: { a: f.resource('2'), b: f.resource('f') } },
     }),
-    /fixture-result-failed/,
+    /analysis-resource-read-failed/,
   )
   assert.equal(f.drafts.get('session'), prior)
   assert.deepEqual(await readReportHistory(f.root, 'workspace', baseDoc.reportId), history)
@@ -680,7 +787,7 @@ test('stale refs expose the exact currentRef and refresh rebase remains explicit
 
 test('public output schemas retain concrete definition and source fields without claiming typed Host maps', () => {
   const reader = createMarivoUiReadTool(() => ({ id: 'workspace', path: '/workspace' }))
-  const definition = reader.output.schema.properties?.definition
+  const definition = reader.output.schema.oneOf?.[0]?.properties?.definition
   assert(definition)
   assert.equal(definition.type, 'object')
   assert.equal(definition?.additionalProperties, false)

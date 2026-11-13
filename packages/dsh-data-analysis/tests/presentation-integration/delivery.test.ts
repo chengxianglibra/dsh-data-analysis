@@ -2,8 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import type { Session } from '@deepseek-ai/dsh-session'
 import type { PtcDispatchLog, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
-import { installMarivoPresentationCodeDelivery } from '../../src/presentation/delivery.ts'
+import { savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
+import {
+  installMarivoPresentationCodeDelivery,
+  restorePtcSaves,
+} from '../../src/presentation/delivery.ts'
 import {
   MARIVO_PRESENT_TOOL_NAME,
   MARIVO_PRESENTATION_DELIVERY_KIND,
@@ -127,4 +132,45 @@ test('invalid delivery metadata and failed or top-level tool results never enter
     assert.deepEqual(await f.log(f.dispatch, async () => []), [])
   }
   f.dispose()
+})
+
+test('an unreported PTC save remains discoverable on the next model step', () => {
+  const events = [
+    { seq: 1, type: 'turn/start', data: { turn: 2 } },
+    { seq: 2, type: 'tool/call', data: { callId: 'root', turn: 2 } },
+    {
+      seq: 3,
+      type: 'tool/ptc-dispatch',
+      data: {
+        name: MARIVO_PRESENT_TOOL_NAME,
+        rootCallId: 'root',
+        subCallId: 'child',
+        arguments: { stage: 'save' },
+        isError: false,
+        content: [],
+        meta: delivery(),
+      },
+    },
+  ]
+  const session = {
+    id: 'session',
+    surface: { nodes: [1, 2] },
+    snapshotEvents: () => events,
+  } as unknown as Session
+  assert.equal(
+    restorePtcSaves(session, [], () => 'other-workspace'),
+    undefined,
+  )
+  const message = restorePtcSaves(session, [], () => 'workspace')
+  assert.ok(message)
+  assert.deepEqual(message.source, { kind: 'marivo-save-recovery', calls: ['child'] })
+  assert.ok(
+    JSON.stringify(message.content).includes(
+      savedReportRef({ workspaceId: 'workspace', reportId: 'report', buildId: 'build' }),
+    ),
+  )
+  assert.equal(
+    restorePtcSaves(session, [message], () => 'workspace'),
+    undefined,
+  )
 })

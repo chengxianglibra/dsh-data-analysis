@@ -208,7 +208,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   const viewForAddress = (address) => {
     const identity = reportViewFromAddress(address)
     const view = identity && reportViews.get(identity.viewId)
-    return view?.workspaceId === identity?.workspaceId && !isDeletedView(view) ? view : undefined
+    return view && view.workspaceId === identity?.workspaceId && !isDeletedView(view)
+      ? view
+      : undefined
   }
   const moveReport = (view, automatic = false) => {
     check(view.sessionId, view.workspaceId, true)

@@ -108,7 +108,7 @@ Agent 接入和 Tool 注册前校验；参数在凭据准备前校验。Harness 
 datasource 准入的 checked Python 与用户 Python 执行使用同一个通用异常投影，捕获普通 `Exception`，
 读取已有 `type`、`message`、可用的 `code`、`kind`、`expected`、`received`、`location` 和 `repair`。
 `repair` 复用异常公开字典或 `model_dump(mode="json")` 的结果；插件不按领域或异常子类生成恢复动作。
-预检失败在错误通道的 `error.exception` 中携带投影，`recovery` 取原有 `repair.action`，缺失时为 null。
+预检失败在错误通道的 `error.exception` 中携带投影，优先使用原有 `repair.action`，其余按准备阶段、凭据和绑定状态给出恢复动作。
 已完成的非零退出在工具结果的 `exception` 中携带同一投影；用户 stdout/stderr、退出码和已固定输出独立保留。
 执行异常通过 launcher 拥有的首个结果控制帧传递，控制帧也用于没有 resultVariables 的调用，
 解析后从 stderr 移除；用户打印的后续控制帧不会被当成异常回执。投影沿用 32 KiB 控制帧限额，

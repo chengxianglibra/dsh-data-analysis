@@ -22,7 +22,15 @@ const execution = await tools.marivo_python({
   code: reviewedCompleteScript, resultVariables: { result: "result" },
 });
 if (execution.execution.reason !== "succeeded" || !execution.results?.result) {
-  throw new Error("Inspect execution/export state; do not replay successful code.");
+  return {
+    draftRef: draft.ref,
+    execution: execution.execution,
+    ...("handoff" in execution ? { handoff: execution.handoff } : {
+      exception: execution.exception ?? null,
+      resultCaptureError: execution.resultCaptureError ?? null,
+      results: execution.results ?? {},
+    }),
+  };
 }
 draft = await tools.marivo_report_write({
   stage: "preview", ref: draft.ref,

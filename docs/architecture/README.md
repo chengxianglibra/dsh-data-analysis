@@ -73,7 +73,7 @@ Help 使用启动时验证的 shared Runtime，不为读取 API Help 初始化 W
 
 每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，报告或看板在准备组件数据之前加载 `dsh-data-analysis-presentation`；已有普通单结果可直接展示。需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。可选 Runtime Skill 以实际安装为准，当前 Marivo 0.6.7 包未提供 `marivo-service`。
 
-默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_report_write`、`marivo_report_read`、`marivo_next_steps`。Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API。插件通过相同的公开契约固定显式声明的执行输出。
+默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_report_write`、`marivo_report_list`、`marivo_report_read`、`marivo_report_delete` 和 `marivo_next_steps`。启用对象存储发布时提供 `marivo_publish_report`。Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API。
 
 ### 配置与执行
 

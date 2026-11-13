@@ -6,9 +6,39 @@ import { modelMarker } from '../../src/semantic-reference/contracts.ts'
 import { semanticKindLabels } from '../../src/semantic-reference/labels.ts'
 import { search } from '../../src/semantic-reference/search.ts'
 import { createHostChatFixture } from '../presentation-integration/host-client-fixture.ts'
-import { candidate } from './fixtures.ts'
+import { candidate, envelope } from './fixtures.ts'
 
 const tick = () => new Promise((resolve) => setImmediate(resolve))
+
+test('candidate and submit failures keep distinct, actionable recovery', async () => {
+  const notices = []
+  const source = createSemanticReferenceSource(
+    {
+      async call(_channel, endpoint) {
+        return {
+          ok: false,
+          error: {
+            message: endpoint.endsWith('/candidates')
+              ? 'catalog-load-failed'
+              : 'reference-context-changed',
+          },
+        }
+      },
+    },
+    (key) => key,
+    undefined,
+    (_session, message) => notices.push(message),
+  )
+  const signal = new AbortController().signal
+  const session = { sessionId: 'a' }
+  await assert.rejects(source.candidates(session, { query: '', signal }), /catalog-load-failed/)
+  await assert.rejects(source.candidates(session, { query: 'a', signal }), /catalog-load-failed/)
+  assert.deepEqual(notices, ['catalog-load-failed'])
+  await assert.rejects(
+    source.codec.serialize(JSON.stringify(envelope()), signal),
+    /reference-context-changed/,
+  )
+})
 
 test('installed DSH trigger controller keeps file and semantic sources and serializes the owner reference', async (t) => {
   const host = await createHostChatFixture()

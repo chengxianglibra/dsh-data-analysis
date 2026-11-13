@@ -126,6 +126,8 @@ assert.match(emptyText, /at least one target/i)
 const invalid = await executeFocused([
   'analysis.session.observe',
   'definitely.not.a.target',
+  'analysis-frame',
+  'report',
   'analysis.analysis_frame.compare',
 ])
 assert.equal(invalid.isError, false)
@@ -139,6 +141,13 @@ assert.equal(mixed.errors?.[0]?.target, 'definitely.not.a.target')
 assert.equal(mixed.errors?.[0]?.code, 'target-failed')
 const invalidText = invalid.content[0]?.type === 'text' ? invalid.content[0].text : ''
 assert.match(invalidText, /definitely\.not\.a\.target/)
+assert.deepEqual(
+  mixed.errors?.map(({ target }) => target),
+  ['definitely.not.a.target', 'analysis-frame', 'report'],
+)
+assert.match(mixed.errors?.[1]?.recovery.message ?? '', /analysis\.analysis_frame/)
+assert.match(mixed.errors?.[2]?.recovery.message ?? '', /dsh-data-analysis-presentation/)
+assert.ok(mixed.errors?.every(({ recovery }) => invalidText.includes(recovery.message)))
 assert.ok(invalidText.includes(directBodies.get('analysis.session.observe')!))
 assert.ok(invalidText.includes(directBodies.get('analysis.analysis_frame.compare')!))
 

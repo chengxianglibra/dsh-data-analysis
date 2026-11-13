@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises'
 import { performance } from 'node:perf_hooks'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +21,7 @@ import {
 } from '../python-result-references.ts'
 import { pythonResultsMeta } from '../python-results-context.ts'
 import { registerMarivoTool } from '../tool-lifecycle.ts'
+import { PresentationWorkspaceUnavailable } from '../workspace-identity.ts'
 import { type MarivoDatasourceBridgeSource, resolveMarivoDatasourceBridge } from './bridge.ts'
 import {
   type MarivoPythonOptionsSource,
@@ -30,6 +32,7 @@ import { PYTHON_LAUNCHER, PYTHON_WORKER } from './resolver-program.ts'
 import {
   assertExecutionDatasources,
   CredentialServiceError,
+  credentialRecovery,
   type MarivoCredentialService,
   type PreparedCredentialExecution,
 } from './service.ts'
@@ -74,15 +77,6 @@ export class MarivoPythonExecutionError extends Error {
 
 const CHECK_EFFECTS =
   'Inspect existing effects and the intended Session through current Runtime Help before retrying; do not automatically replay. Saved results and remote query cancellation are not confirmed.'
-const PREPARATION_CODES = new Set([
-  'agent-required',
-  'invalid-datasources',
-  'call-ended',
-  'context-changed',
-  'credentials-changed',
-  'execution-ended',
-  'disposed',
-])
 
 const nullableNumber = { oneOf: [{ type: 'number' }, { type: 'null' }] } as const
 const nullableInteger = { oneOf: [{ type: 'integer' }, { type: 'null' }] } as const
@@ -177,7 +171,7 @@ const pythonOutputSchema = {
           type: 'object',
           additionalProperties: true,
           description:
-            'Named fixed outputs. Each entry provides resource, metadata and sourceStatus. Pass resource unchanged to the report writer. Captured metadata.viewCandidates gives exact names; metadata.viewCandidateUsage maps each candidate group to nameKind and chart.parameter paths. Frame table/metric use column IDs, Frame chart axes use public axis names, and Dataset uses column IDs. Outputs can be available even when execution or other exports failed.',
+            'Named fixed outputs with resource, metadata and sourceStatus. Reuse successful outputs, including partial results. Use metadata.viewCandidates for exact field names. When missing, use marivo_report_read with resource.ref and a candidateGroup.',
         },
         resultCaptureError: {
           type: 'string',
@@ -227,6 +221,7 @@ export function registerMarivoPythonTool(
   source: MarivoDatasourceBridgeSource,
   service: MarivoCredentialService,
   options: MarivoPythonOptionsSource = {},
+  outputWorkspace?: () => { path: string },
 ): () => Promise<void> {
   const readOptions = typeof options === 'function' ? options : () => options
   resolvePythonOptions(readOptions())
@@ -235,7 +230,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Run user code once in the bound Runtime and Workspace. Declare reusable outputs with resultVariables and pass results[name].resource unchanged to the report writer. Derived computations explicitly read fixed inputs. Nonempty datasources or resultVariables imply project=required when project is omitted; explicitly use project=required for other project analysis. Execution, result export and source recording have independent outcomes. Memory ends with the call; use returned resources to continue. Follow credential handoffs and keep secrets out of code and output.',
+        'Run Python once in the bound Runtime. Use resultVariables to preserve outputs and pass results[name].resource unchanged to the report writer. Explicitly read fixed inputs in later calls. Check execution, export and credential outcomes separately.',
       parameters: {
         code: {
           type: 'string',
@@ -379,6 +374,15 @@ export function registerMarivoPythonTool(
             const signal = service.executionSignal(exec.signal, agent)
             preparationSignal = signal
             const bridge = await service.track(resolveBinding())
+            if (
+              resultVariables &&
+              outputWorkspace &&
+              bridge.binding.projectRoot !== (await realpath(outputWorkspace().path))
+            )
+              rejectInput(
+                'The configured Marivo project differs from the Session Workspace.',
+                'Open the Marivo project as a Harness Workspace before exporting view resources, or have the operator align projectRoot with this Workspace.',
+              )
             const fingerprint = bridge.binding.fingerprint
             const unchanged = () =>
               exec.agent?.session === session &&
@@ -599,18 +603,20 @@ export function registerMarivoPythonTool(
               ? 'not-started'
               : 'unknown'
           const code =
-            error instanceof MarivoEnvironmentError
-              ? error.code
-              : error instanceof CredentialServiceError && PREPARATION_CODES.has(error.code)
+            error instanceof PresentationWorkspaceUnavailable
+              ? 'presentation-workspace-unavailable'
+              : error instanceof MarivoEnvironmentError
                 ? error.code
-                : shellStartedAt === null
-                  ? 'python-preparation-failed'
-                  : 'python-outcome-unknown'
+                : error instanceof CredentialServiceError
+                  ? error.code
+                  : shellStartedAt === null
+                    ? 'python-preparation-failed'
+                    : 'python-outcome-unknown'
           const projectRecovery =
             error instanceof MarivoEnvironmentError &&
             ['project-manifest-invalid', 'project-preparation-uncertain'].includes(error.code)
               ? error.code === 'project-preparation-uncertain'
-                ? 'Project initialization outcome is uncertain. Inspect the Workspace and public Runtime doctor before retrying; do not automatically repeat init or delete files.'
+                ? 'Project initialization outcome is uncertain. Inspect the Workspace manifest (marivo.toml) and the Host Runtime diagnostic before retrying.'
                 : 'Repair the exact Workspace root marivo.toml using the bound Runtime public contract; existing files were not overwritten.'
               : undefined
           const exception =
@@ -644,11 +650,18 @@ export function registerMarivoPythonTool(
                 ? 'Inspect the timed-out preparation step and wait for the underlying condition to clear before retrying. timeoutMs does not change the internal preparation subprocess timeout.'
                 : undefined) ??
                 projectRecovery ??
-                (exception
-                  ? (exception.repair?.action ?? null)
-                  : shellStartedAt === null
-                    ? 'Check credentials, Workspace binding and Host execution policy before retrying.'
-                    : CHECK_EFFECTS),
+                exception?.repair?.action ??
+                (shellStartedAt === null
+                  ? (credentialRecovery(code) ??
+                    (code === 'presentation-workspace-unavailable' ||
+                    code.startsWith('binding-') ||
+                    code.startsWith('project-root-')
+                      ? 'Open the correct Workspace and repair its bound Runtime or project configuration before retrying.'
+                      : null))
+                  : null) ??
+                (shellStartedAt === null
+                  ? 'Check credentials, Workspace binding and Host execution policy before retrying.'
+                  : CHECK_EFFECTS),
             ),
             code,
             exception,
