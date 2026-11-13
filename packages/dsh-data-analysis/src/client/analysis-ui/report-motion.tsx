@@ -1,57 +1,57 @@
+import { useEffect, useState } from 'react'
 import { useCopy } from '../i18n/context.tsx'
 
-export type ReportProgress = 'generating' | 'draft' | 'loading'
+export type ReportProgress = 'generating' | 'draft' | 'loading' | 'saved'
 
 const styles = `
-.au-report-motion{display:inline-flex;align-items:center;flex:none;width:3rem;height:1.5rem;color:var(--primary);overflow:hidden}
-.au-report-motion svg{display:block;width:100%;height:100%;overflow:visible}
-.au-report-motion-track{opacity:.16}
-.au-report-motion-line{stroke-dasharray:30 70;animation:au-report-trace 2.4s linear infinite}
-.au-report-motion-dot{transform-box:fill-box;transform-origin:center;animation:au-report-breathe 1.8s ease-in-out infinite}
-.au-report-motion[data-progress=draft] .au-report-motion-line{animation:none;stroke-dasharray:none;opacity:.55}
-.au-report-motion[data-progress=draft] .au-report-motion-dot{animation-duration:3s}
-@keyframes au-report-trace{from{stroke-dashoffset:100}to{stroke-dashoffset:-100}}
-@keyframes au-report-breathe{0%,100%{opacity:.45;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
-@media(prefers-reduced-motion:reduce){.au-report-motion-line,.au-report-motion-dot{animation:none!important;stroke-dasharray:none;transform:none}}
+.au-report-motion{display:inline-flex;align-items:center;justify-content:center;flex:none;width:1.5rem;height:1.5rem;color:var(--primary)}
+.au-report-motion svg{display:block;width:1.125rem;height:1.125rem}
+.au-report-spinner{display:inline-flex;animation:au-report-spin 1s linear infinite}
+.au-report-motion[data-progress=saved]{color:#16a34a;animation:au-report-complete 1.2s ease-out forwards}
+@keyframes au-report-spin{to{transform:rotate(360deg)}}
+@keyframes au-report-complete{0%,65%{opacity:1}100%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.au-report-spinner,.au-report-motion[data-progress=saved]{animation:none!important}}
 `
 
-/** Decorative chart motion conveys activity without suggesting measured values. */
+/** Completion fades independently of the report body and its reading position. */
 export function ReportMotion({ phase }: { phase: ReportProgress }) {
   const t = useCopy()
+  const [finished, setFinished] = useState(false)
+  useEffect(() => {
+    setFinished(false)
+    if (phase !== 'saved') return
+    const timer = setTimeout(() => setFinished(true), 1200)
+    return () => clearTimeout(timer)
+  }, [phase])
+  if (phase === 'saved' && finished) return null
   return (
     <span
       className="au-report-motion"
       data-progress={phase}
       role="status"
       aria-label={t(
-        phase === 'generating'
-          ? 'marivo.presentation.ui-generating'
-          : phase === 'draft'
-            ? 'marivo.presentation.ui-draft'
-            : 'marivo.presentation.ui-loading',
+        phase === 'saved'
+          ? 'marivo.presentation.ui-saved'
+          : phase === 'generating'
+            ? 'marivo.presentation.ui-generating'
+            : phase === 'draft'
+              ? 'marivo.presentation.ui-draft'
+              : 'marivo.presentation.ui-loading',
       )}
     >
       <style>{styles}</style>
-      <svg viewBox="0 0 48 24" fill="none" aria-hidden="true">
-        <path
-          className="au-report-motion-track"
-          d="M3 18 11 13 19 16 28 7 36 10 44 4"
+      <span className={phase === 'saved' ? undefined : 'au-report-spinner'}>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          className="au-report-motion-line"
-          d="M3 18 11 13 19 16 28 7 36 10 44 4"
-          pathLength="100"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <circle className="au-report-motion-dot" cx="44" cy="4" r="2.5" fill="currentColor" />
-      </svg>
+          aria-hidden="true"
+        >
+          {phase === 'saved' ? <path d="m5 12 4 4L19 6" /> : <path d="M21 12a9 9 0 1 1-9-9" />}
+        </svg>
+      </span>
     </span>
   )
 }

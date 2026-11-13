@@ -199,7 +199,7 @@ export const zh = {
   'marivo.presentation.ui-saving': '正在读取资源并保存…',
   'marivo.presentation.ui-resource-pending': '数据准备中，完成后将自动显示。',
   'marivo.presentation.ui-failed': '此次分析视图更新失败。',
-  'marivo.presentation.ui-update-failed': '此次分析视图更新未完成，已保留此前内容。',
+  'marivo.presentation.ui-saved': '分析视图已保存',
   'marivo.presentation.ui-read-failed': '无法读取此版本的已保存快照。',
   'marivo.presentation.incompatible-report': '此分析视图的内容无效或与当前阅读器不兼容，无法打开。',
   'marivo.presentation.agent-update': 'Agent 更新 · ',
@@ -494,8 +494,7 @@ export const en = {
   'marivo.presentation.ui-saving': 'Reading resources and saving…',
   'marivo.presentation.ui-resource-pending': 'Preparing data. It will appear when ready.',
   'marivo.presentation.ui-failed': 'This analysis view update failed.',
-  'marivo.presentation.ui-update-failed':
-    'This analysis view update failed. Previous content is still available.',
+  'marivo.presentation.ui-saved': 'Analysis view saved',
   'marivo.presentation.ui-read-failed': 'Cannot read this saved snapshot version.',
   'marivo.presentation.incompatible-report':
     'This analysis view is invalid or incompatible with the current reader and cannot be opened.',

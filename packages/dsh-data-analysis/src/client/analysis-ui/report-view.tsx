@@ -237,9 +237,30 @@ export function ReportView({
       (!candidate || (terminal && !draft)),
   )
   const failed = candidate?.phase === 'failed' || stream?.status === 'failed'
+  // A saved document may also be a cold-opened Build or the previous Build
+  // restored after a failed revision. Only a newly received Build completes
+  // an update in this mounted reader.
+  const savedBuild = saved?.receipt.buildId
+  const savedTracker = useRef({ reading: view.reading, build: savedBuild })
+  const [completedBuild, setCompletedBuild] = useState<string>()
+  useLayoutEffect(() => {
+    const previous = savedTracker.current
+    if (previous.reading !== view.reading) {
+      savedTracker.current = { reading: view.reading, build: savedBuild }
+      setCompletedBuild(undefined)
+    } else if (previous.build !== savedBuild) {
+      savedTracker.current = { reading: view.reading, build: savedBuild }
+      setCompletedBuild(savedBuild)
+    } else if (candidate) {
+      setCompletedBuild(undefined)
+    }
+  }, [view.reading, savedBuild, candidate])
   const readFailed = Boolean(target && readFailure?.key === target)
-  const progress =
-    published || failed || readFailed || settled
+  const progress = published
+    ? completedBuild === savedBuild && !candidate
+      ? 'saved'
+      : undefined
+    : readFailed || (settled && !saved)
       ? undefined
       : saved && !editing
         ? 'loading'
@@ -252,15 +273,13 @@ export function ReportView({
       data-analysis-report={id}
       data-analysis-phase={published ? 'saved' : failed ? 'failed' : draft ? 'draft' : 'candidate'}
     >
-      {(failed || readFailed) && (
+      {readFailed && (
         <Alert role="alert" variant="destructive">
           <AlertDescription>
             {t(
-              readFailed
-                ? readFailure?.incompatible
-                  ? 'marivo.presentation.incompatible-report'
-                  : 'marivo.presentation.ui-read-failed'
-                : 'marivo.presentation.ui-update-failed',
+              readFailure?.incompatible
+                ? 'marivo.presentation.incompatible-report'
+                : 'marivo.presentation.ui-read-failed',
             )}
           </AlertDescription>
         </Alert>

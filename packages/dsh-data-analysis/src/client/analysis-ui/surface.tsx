@@ -19,8 +19,8 @@ import { pendingAnalysisStatement, readableAnalysisPrefix } from './streaming-pr
 
 const styles = `
 .pr-reader.au-surface{container:mv-surface/inline-size;min-width:0;max-width:100%;padding:0}
-.au-surface-content{min-width:0;display:flex;flex-direction:column;gap:1.5rem;padding:1rem}
-.au-surface-header{display:flex;align-items:center;justify-content:flex-end;min-width:0}
+.au-surface-content{position:relative;min-width:0;display:flex;flex-direction:column;gap:1.5rem;padding:1rem}
+.au-surface-header{position:absolute;top:1rem;right:1rem;display:flex;align-items:center;justify-content:flex-end;min-width:0}
 .au-surface-body{min-width:0}
 .au-surface p{overflow-wrap:anywhere}
 .au-data{width:100%;min-width:0}

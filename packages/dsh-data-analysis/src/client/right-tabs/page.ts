@@ -7,7 +7,10 @@ import { PresentationDeliveryModel, type PresentationRpc } from '../presentation
 import { SemanticBrowserModel } from '../semantic-browser/model.ts'
 import type { Directory, Resource } from './navigation.ts'
 
-export type PageTarget = Resource | { kind: Directory; workspaceId: string }
+export type PageTarget =
+  | Resource
+  | { kind: Directory; workspaceId: string }
+  | { kind: 'live-report'; workspaceId: string; viewId: string }
 export interface PageState {
   error?: string
   notice?: string
@@ -17,6 +20,7 @@ export interface PageState {
 /** Lifetime belongs to a Host tab occurrence, never to a React body mount. */
 export class TabPage {
   readonly sessionId: string
+  workspacePath?: string
   readonly target: PageTarget
   readonly reader: PresentationDeliveryModel
   readonly catalog: ReportCatalogModel
@@ -84,6 +88,7 @@ export class TabPage {
     this.#updateRevision++
     this.patch({ error: undefined, newer: undefined, notice: undefined })
     const target = this.target
+    if (target.kind === 'live-report') return
     if (target.kind === 'report') {
       if (target.buildId)
         await this.reader.showBuild(target.workspaceId, target.reportId, target.buildId)
@@ -172,6 +177,21 @@ export class TabPage {
   }
 }
 
+/** Keep deletion and cleanup controls while the live view state is revoked. */
+export function isDeletedViewPage(
+  page: TabPage,
+  identity: { workspaceId: string; viewId: string },
+): boolean {
+  const error = page.getSnapshot().error
+  return (
+    page.target.kind === 'report' &&
+    page.target.workspaceId === identity.workspaceId &&
+    page.target.reportViewId === identity.viewId &&
+    (error === 'marivo.presentation.report-deleted' ||
+      error === 'marivo.presentation.report-deleted-cleanup-pending')
+  )
+}
+
 /** Revoke every open occurrence and refresh the catalog after a confirmed delete. */
 export function invalidateDeletedReport(
   pages: Iterable<TabPage>,
@@ -179,9 +199,14 @@ export function invalidateDeletedReport(
   reportId: string,
   expectedBuildId: string,
   cleanupPending: boolean,
+  workspacePath?: string,
 ) {
   for (const page of pages) {
-    if (page.target.workspaceId !== workspaceId) continue
+    if (
+      page.target.workspaceId !== workspaceId ||
+      (workspacePath && page.workspacePath !== workspacePath)
+    )
+      continue
     if (page.target.kind === 'report' && page.target.reportId === reportId) {
       page.patch({ deleteCleanup: cleanupPending ? { reportId, expectedBuildId } : undefined })
       page.unavailable(

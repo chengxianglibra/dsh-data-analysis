@@ -4,6 +4,7 @@ import test from 'node:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { TabPage } from '../../src/client/right-tabs/page.ts'
+import { readViewTarget } from '../../src/client/right-tabs/saved-view-target.ts'
 import { createHostChatFixture } from '../presentation-integration/host-client-fixture.ts'
 
 // This registry replay fixture never mounts the global Session overlay.
@@ -68,6 +69,7 @@ test('default client is a valid Cordis effect and registers native resources wit
       id: 'locale-test',
       children: {
         'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
+        'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' },
         'tool.call.toolview': { kind: 'keyed', scope: 'session' },
         'plugins.bundle.config': { kind: 'keyed', scope: 'root' },
       },
@@ -109,9 +111,14 @@ test('default client is a valid Cordis effect and registers native resources wit
     assert.equal(captured, zh, 'The original tab title remains unchanged in Harness state')
   }
   assert.equal(definitions.length, 6)
-  assert.ok(definitions.some((d) => d.kind === 'marivo-analysis-live'))
+  const legacy = definitions.find((d) => d.kind === 'marivo-analysis-live')
+  assert.ok(legacy)
+  assert.ok(
+    host.slots.entries('sidebar.right.pane.tab').some((entry) => entry.options.key === legacy.id),
+  )
   assert.ok(definitions.some((d) => d.kind === 'marivo-reports'))
   const reports = definitions.find((d) => d.kind === 'marivo-report-resource')
+  assert.equal(reports.canOpen('dsh-resource://marivo-analysis-live/workspace/view'), true)
   assert.equal(reports.canOpen('dsh-resource://file/workspace/file.txt'), false)
   assert.equal(reports.canOpen('dsh-resource://marivo-report/workspace/report/current'), true)
   assert.equal(reports.title('dsh-resource://marivo-report/workspace/report/current'), 'report · …')
@@ -126,8 +133,9 @@ test('default client is a valid Cordis effect and registers native resources wit
   assert.equal(host.slots.entries('tool.call.toolview').length, 0)
 })
 
-async function installed(t) {
+async function installed(t, browserStorage) {
   const host = await createHostChatFixture(['native'])
+  if (browserStorage) host.window.localStorage = browserStorage
   t.after(() => host.dispose())
   const workspace = { workspaceId: 'w', path: '/w', sessionIds: ['a', 'b', 'cold'] }
   const workspaces = store({ phase: 'ready', state: 'idle', items: [workspace] })
@@ -364,6 +372,52 @@ function deliveryEntries(id, buildId = 'build') {
     },
   ].map((event) => ({ type: 'event', event }))
 }
+
+test('background saved Build hints advance and old receipt replay cannot restore an older Build', async (t) => {
+  const values = new Map()
+  const browserStorage = {
+    get length() {
+      return values.size
+    },
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+    key: (index) => [...values.keys()][index] ?? null,
+  }
+  const f = await installed(t, browserStorage)
+  // Subscribe the background Session without opening a new Host tab.
+  f.controller.pages.set('catalog', {
+    target: { kind: 'reports', workspaceId: 'w' },
+    sessionId: 'a',
+    workspacePath: '/w',
+    getSnapshot: () => ({}),
+    publicationChanged: () => {},
+    unavailable() {},
+    dispose() {},
+  })
+  f.workspaces.set(f.workspaces.getSnapshot())
+  const source = f.bindings.b.eventSource
+  const emit = (build) => {
+    const entries = deliveryEntries('b', build)
+    source.set({
+      revision: source.getSnapshot().revision + 1,
+      entries,
+      change: { kind: 'append', entries },
+    })
+  }
+  const owner = {
+    sessionId: 'b',
+    workspaceId: 'w',
+    viewId: JSON.stringify(['b', 1, 'call']),
+    workspacePath: '/w',
+  }
+  emit('b1')
+  assert.equal(readViewTarget(browserStorage, owner)?.buildId, 'b1')
+  emit('b2')
+  assert.equal(readViewTarget(browserStorage, owner)?.buildId, 'b2')
+  emit('b1')
+  assert.equal(readViewTarget(browserStorage, owner)?.buildId, 'b2')
+})
 
 test('background publication invalidates Workspace pages without opening and drains its subscriptions', async (t) => {
   const f = await installed(t),

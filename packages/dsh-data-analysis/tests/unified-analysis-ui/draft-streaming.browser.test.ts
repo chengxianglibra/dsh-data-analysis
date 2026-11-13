@@ -27,6 +27,9 @@ declare global {
       lateResources(): void
       lateResourceView(): void
       openFailedReport(code: string): void
+      openSavedReport(): void
+      revision(): void
+      cancel(): void
     }
   }
 }
@@ -106,6 +109,9 @@ const rpc={call:async(_channel,endpoint)=>{await readGate; if(endpoint==='files/
 function App(){useSyncExternalStore(views.subscribe,views.getSnapshot);const view=views.forTurn('session',1).at(-1);return view ? h('div',{key:hostKey,'data-surface':surface},h(ReportView,{view,views,rpc})):null;}
 function observe(){views.observe(analysisCandidate({phase:'preparing',args,callId,name:'marivo_report_write',turn:1,step:1,time:1,subCalls:[]},'session','workspace',generation),'/workspace');}
 window.draftTest={
+openSavedReport(){views.revoke('session');readError=undefined;hostKey++;views.accept({kind:'marivo.presentation.delivery',schemaVersion:2,dshSessionId:'session',turn:1,surface:'tool',receipt},'cold-open',generation,'/workspace');root.render(h(App));},
+revision(){callId='revision';args=PartialArguments.fromObject({surface,stage:'preview',ref:savedReportRef({workspaceId:documentValue.workspaceId,reportId:documentValue.reportId,buildId:documentValue.buildId}),resourcePatch:{},program:'intro = TextContent("Revision in progress");'});observe();},
+cancel(){const view=views.forTurn('session',1).at(-1);views.observe({...view.candidate,phase:'cancelled'},'/workspace');},
 openFailedReport(code){views.revoke('session');readError=code;hostKey++;views.accept({kind:'marivo.presentation.delivery',schemaVersion:2,dshSessionId:'session',turn:1,surface:'tool',receipt},'failed-open',generation,'/workspace');root.render(h(App));},
 holdReads(){readGate=new Promise(resolve=>{release=resolve});},
 releaseReads(){release?.();readGate=undefined;},
@@ -171,16 +177,24 @@ root.render(h(App));`,
       assert.equal(await motion.innerText(), '')
       assert.notEqual(
         await motion
-          .locator('path')
-          .last()
+          .locator('.au-report-spinner')
           .evaluate((node) => getComputedStyle(node).animationName),
         'none',
       )
+      const spinner = motion.locator('.au-report-spinner')
+      const rotation = await spinner.evaluate((node) => getComputedStyle(node).transform)
+      await page.waitForFunction(
+        ({ previous }) => {
+          const element = window.document.querySelector('.au-report-spinner')
+          return element && getComputedStyle(element).transform !== previous
+        },
+        { previous: rotation },
+      )
+      assert.notEqual(await spinner.evaluate((node) => getComputedStyle(node).transform), 'none')
       await page.emulateMedia({ reducedMotion: 'reduce' })
       assert.equal(
         await motion
-          .locator('path')
-          .last()
+          .locator('.au-report-spinner')
           .evaluate((node) => getComputedStyle(node).animationName),
         'none',
       )
@@ -221,6 +235,7 @@ root.render(h(App));`,
       assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
       await page.evaluate(() => window.draftTest.fail())
       await page.getByText('Confirmed', { exact: true }).waitFor()
+      assert.equal(await page.locator('[role=alert]').count(), 0)
       assert.equal(await page.locator('.au-image').getAttribute('alt'), 'Admitted image')
       assert.equal(await page.getByText('Live replacement', { exact: true }).count(), 0)
       // Inserting and reordering named siblings preserves their actual DOM and reading state.
@@ -258,7 +273,10 @@ root.render(h(App));`,
       assert.equal(await page.locator('.au-image').count(), 1)
       await page.evaluate(() => window.draftTest.releaseReads())
       await page.locator('[data-analysis-record]').waitFor()
-      assert.equal(await motion.count(), 0)
+      assert.equal(await motion.getAttribute('data-progress'), 'saved')
+      assert.equal(await stable!.evaluate((node) => node.isConnected), true)
+      await motion.waitFor({ state: 'hidden' })
+      assert.equal(await stable!.evaluate((node) => node.isConnected), true)
       assert.equal(
         await page.getByRole('tab', { name: 'Details', exact: true }).getAttribute('aria-selected'),
         'true',
@@ -290,6 +308,19 @@ root.render(h(App));`,
     assert.equal(await settled!.evaluate((node) => node.isConnected), true)
     assert.equal(await page.getByRole('alert').count(), 0)
     assert.equal(await page.locator('.au-report-motion').count(), 0)
+    await page.evaluate(() => window.draftTest.openSavedReport())
+    await page.getByText('Confirmed', { exact: true }).waitFor()
+    assert.equal(await page.locator('[data-progress=saved]').count(), 0)
+    for (const terminal of ['fail', 'cancel'] as const) {
+      await page.evaluate(() => window.draftTest.revision())
+      await page.getByText('Revision in progress', { exact: true }).waitFor()
+      await page.evaluate((action) => window.draftTest[action](), terminal)
+      await page.getByText('Confirmed', { exact: true }).waitFor()
+      assert.equal(await page.locator('[data-progress=saved]').count(), 0)
+      assert.equal(await page.locator('[role=alert]').count(), 0)
+    }
+    await page.evaluate(() => window.draftTest.settle())
+    assert.equal(await page.locator('[data-progress=saved]').count(), 0)
     await page.evaluate(() => window.draftTest.openFailedReport('report-document-incompatible'))
     await page
       .getByRole('alert')

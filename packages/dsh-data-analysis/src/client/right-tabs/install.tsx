@@ -15,7 +15,7 @@ import { AnalysisCandidates } from '../analysis-ui/candidate.ts'
 import { savedCodeReader } from '../analysis-ui/candidate-view.tsx'
 import { installAnalysisTool } from '../analysis-ui/install.tsx'
 import { SavedAnalysisSurface } from '../analysis-ui/lazy-surface.tsx'
-import { type ReportReadingState, ReportViews } from '../analysis-ui/report-views.ts'
+import { type ReportReadingState, ReportViews, viewReportIds } from '../analysis-ui/report-views.ts'
 import {
   appendComponentReference,
   installComponentReferenceSource,
@@ -52,10 +52,16 @@ import {
   reportViewFromAddress,
   resourceAddress,
 } from './navigation.ts'
-import { invalidateDeletedReport, TabPage } from './page.ts'
+import { invalidateDeletedReport, isDeletedViewPage, TabPage } from './page.ts'
 import { ReportActions } from './report-actions.tsx'
 import { deleteReport } from './report-delete.ts'
 import { createReportRefresh } from './report-refresh.ts'
+import {
+  assertLiveViewOwner,
+  readViewTarget,
+  removeViewTargets,
+  saveViewTarget,
+} from './saved-view-target.ts'
 import { rightTabStyles } from './styles.ts'
 
 export const inject = [
@@ -143,8 +149,45 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
   const changed = (workspaceId, reportId) => {
     for (const page of pages.values()) void page.publicationChanged(workspaceId, reportId)
   }
+  // Tombstones are scoped to the connection and exact Workspace binding.
+  const deletedReports = new Map()
+  const deletedKey = (workspaceId, workspacePath, reportId) =>
+    JSON.stringify([workspaceId, workspacePath, reportId])
+  const isDeletedView = (view) =>
+    [...viewReportIds(view)].some((reportId) =>
+      deletedReports
+        .get(view.generation)
+        ?.has(deletedKey(view.workspaceId, view.workspacePath, reportId)),
+    )
   const deleted = (workspaceId, reportId, expectedBuildId, cleanupPending) => {
-    invalidateDeletedReport(pages.values(), workspaceId, reportId, expectedBuildId, cleanupPending)
+    const generation = ctx.connection.generation.getSnapshot()
+    const workspacePath = ctx.workspaces.list
+      .getSnapshot()
+      .items.find((item) => item.workspaceId === workspaceId)?.path
+    if (generation && workspacePath) {
+      let deletedForGeneration = deletedReports.get(generation)
+      if (!deletedForGeneration) {
+        deletedForGeneration = new Set()
+        deletedReports.set(generation, deletedForGeneration)
+      }
+      deletedForGeneration.add(deletedKey(workspaceId, workspacePath, reportId))
+    }
+    if (generation && workspacePath)
+      reportViews.revokeReport(workspaceId, reportId, workspacePath, generation)
+    try {
+      if (workspacePath)
+        removeViewTargets(window.localStorage, workspaceId, reportId, workspacePath)
+    } catch {
+      /* Storage is optional. */
+    }
+    invalidateDeletedReport(
+      pages.values(),
+      workspaceId,
+      reportId,
+      expectedBuildId,
+      cleanupPending,
+      workspacePath,
+    )
   }
   const openDirectory = (sessionId, workspaceId, page) => {
     check(sessionId, workspaceId, true)
@@ -162,14 +205,14 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     actions.openResource(address, { params })
     if (diagnostics) audit.opens.push({ sessionId, address, automatic })
   }
-  const reportKind = 'marivo-analysis-live'
   const viewForAddress = (address) => {
     const identity = reportViewFromAddress(address)
     const view = identity && reportViews.get(identity.viewId)
-    return view?.workspaceId === identity?.workspaceId ? view : undefined
+    return view?.workspaceId === identity?.workspaceId && !isDeletedView(view) ? view : undefined
   }
   const moveReport = (view, automatic = false) => {
     check(view.sessionId, view.workspaceId, true)
+    if (isDeletedView(view)) throw new Error('marivo.presentation.report-deleted')
     if (
       ctx.connection.generation.getSnapshot() !== view.generation ||
       ctx.workspaces.list.getSnapshot().items.find((w) => w.workspaceId === view.workspaceId)
@@ -191,25 +234,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       return
     }
     const params = { reportViewId: view.id, workspaceId: view.workspaceId, turn: view.turn }
-    if (view.saved)
-      navigate(
-        view.sessionId,
-        {
-          kind: 'report',
-          workspaceId: view.workspaceId,
-          reportId: view.saved.receipt.reportId,
-          buildId: view.saved.receipt.buildId,
-          reportViewId: view.id,
-        },
-        ctx.sidebarRight,
-        automatic,
-        params,
-      )
-    else {
-      const address = liveReportAddress(view.workspaceId, view.id)
-      ctx.sidebarRight.openResource(address, { params })
-      if (diagnostics) audit.opens.push({ sessionId: view.sessionId, address, automatic })
-    }
+    const address = liveReportAddress(view.workspaceId, view.id)
+    ctx.sidebarRight.openResource(address, { params })
+    if (diagnostics) audit.opens.push({ sessionId: view.sessionId, address, automatic })
     const active = ctx.sidebarRight.active()
     if (!active) throw new Error('report-tab-unavailable')
     reportViews.openingFailed(view.id, false)
@@ -273,72 +300,6 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         { sessionId, workspaceId, recordId, ...selection },
         signal,
       ),
-  )
-  function LiveReportPage({ view, sessionId, tabId, panelId }) {
-    const t = useCopy()
-    const scroll = useReportScroll(view?.reading, panelId, !view?.saved)
-    return (
-      <section className="mv-ui rt-page bg-background" data-rt-tab={tabId} {...scroll}>
-        <style>{rightTabStyles}</style>
-        {view ? (
-          <ReportBody viewId={view.id} sessionId={sessionId} />
-        ) : (
-          <p role="status">{t('marivo.presentation.ui-draft-unavailable')}</p>
-        )}
-      </section>
-    )
-  }
-  const reportTabId = definitionId(reportKind)
-  ctx.effect(() =>
-    ctx.sidebarRightTabs.register({
-      id: reportTabId,
-      kind: reportKind,
-      patterns: ['dsh-resource://marivo-analysis-live/**'],
-      canOpen: (address) =>
-        address.startsWith('dsh-resource://marivo-analysis-live/') &&
-        Boolean(reportViewFromAddress(address)),
-      title: () => hostCopy(ctx)('marivo.presentation.ui-draft-tab'),
-    }),
-  )
-  ctx.slots.inject('sidebar.right.pane.tab', () =>
-    ctx.slots.register(
-      { name: 'sidebar.right.pane.tab', key: reportTabId, locale: 'marivo.presentation' },
-      localized(ctx, function LiveReportTab({ sessionId, useTabInfo }) {
-        const { tab, panel } = useTabInfo()
-        useSyncExternalStore(reportViews.subscribe, reportViews.getSnapshot)
-        const view = viewForAddress(tab.navigation.address)
-        useEffect(() => {
-          if (!view || view.sessionId !== sessionId || tab.signal.aborted) return
-          // A background or hidden occurrence must not select itself when a
-          // save arrives. Convert it when the user next reveals this tab.
-          if (
-            view.saved &&
-            tab.visible &&
-            ctx.sidebarRight.active()?.id === tab.id &&
-            ctx.sessions.list.getSnapshot().byId[sessionId]?.retainedBy.mainView
-          ) {
-            const { workspaceId, reportId, buildId } = view.saved.receipt
-            tab.actions.openResource(
-              resourceAddress({
-                kind: 'report',
-                workspaceId,
-                reportId,
-                buildId,
-                reportViewId: view.id,
-              }),
-              {
-                replaceTab: true,
-                revealIfOpened: false,
-                params: { reportViewId: view.id, workspaceId, turn: view.turn },
-              },
-            )
-          }
-        }, [view, sessionId, tab])
-        return (
-          <LiveReportPage view={view} sessionId={sessionId} tabId={tab.id} panelId={panel.id} />
-        )
-      }),
-    ),
   )
   installSemanticReferenceSource(ctx, rpc)
   installSelectionText(ctx)
@@ -420,15 +381,22 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       owners[0].workspaceId === page.target.workspaceId
     const state = useSyncExternalStore(page.subscribe, page.getSnapshot)
     const report = useSyncExternalStore(page.reader.subscribe, page.reader.getSnapshot)
-    const activeReportView = viewForAddress(tab.navigation.address)
+    const currentReportView = viewForAddress(tab.navigation.address)
+    const activeReportView =
+      page.target.kind === 'report' &&
+      !tab.navigation.address.startsWith('dsh-resource://marivo-analysis-live/') &&
+      page.target.buildId &&
+      currentReportView?.saved?.receipt.buildId !== page.target.buildId
+        ? undefined
+        : currentReportView
+    useLayoutEffect(() => {
+      if (report.error === 'marivo.presentation.report-deleted' && page.target.kind === 'report')
+        deleted(page.target.workspaceId, page.target.reportId, page.target.buildId ?? '', false)
+    }, [page, report.error])
     const scroll = useReportScroll(
       activeReportView?.reading,
       panelId,
-      Boolean(
-        report.analysisDocument &&
-          (!activeReportView?.saved ||
-            activeReportView.document?.buildId === activeReportView.saved.receipt.buildId),
-      ),
+      Boolean(activeReportView || report.analysisDocument),
     )
     const revisionInProgress = Boolean(
       (activeReportView?.candidate &&
@@ -587,9 +555,14 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                 onRefresh={() => void page.refresh()}
               />
             )}
-            {page.target.kind === 'report' && (
+            {(page.target.kind === 'report' || page.target.kind === 'live-report') && (
               <>
-                {report.loading && <p role="status">{t('marivo.navigation.loading-report')}</p>}
+                {page.target.kind === 'live-report' && !activeReportView && (
+                  <p role="status">{t('marivo.presentation.ui-draft-unavailable')}</p>
+                )}
+                {report.loading && !activeReportView && (
+                  <p role="status">{t('marivo.navigation.loading-report')}</p>
+                )}
                 {report.error && (
                   <div role="alert">
                     <p>{t(report.error)}</p>
@@ -607,136 +580,138 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
                     onClose={() => void page.reader.toggleHistory()}
                   />
                 )}
-                {report.analysisDocument && (
-                  <div className="rt-report-surface">
-                    {!revisionInProgress && (
-                      <div className="rt-toolbar">
-                        <ReportActions
+                {report.error !== 'marivo.presentation.report-deleted' &&
+                  (report.analysisDocument || activeReportView) && (
+                    <div className="rt-report-surface">
+                      {report.analysisDocument && !revisionInProgress && (
+                        <div className="rt-toolbar">
+                          <ReportActions
+                            key={report.analysisDocument.recordId}
+                            document={report.analysisDocument}
+                            rpc={rpc}
+                            signal={tab.signal}
+                            onOpenPublishingCredentials={() =>
+                              act(page, () => {
+                                const { workspaceId } = page.target
+                                check(page.sessionId, workspaceId)
+                                tab.actions.openTab(directoryKind('datasources'), {
+                                  params: { workspaceId, credentialSection: 'credentials' },
+                                })
+                              })
+                            }
+                            onHistory={() => void page.reader.toggleHistory()}
+                            onDelete={(isCurrent) =>
+                              deleteReport(
+                                ctx,
+                                rpc,
+                                page,
+                                tab,
+                                report.analysisDocument,
+                                isCurrent,
+                                deleted,
+                              )
+                            }
+                            refreshLocked={refreshLocks.has(page.sessionId)}
+                            onRefreshData={(isCurrent) =>
+                              refreshReport(page, tab, report.analysisDocument, isCurrent)
+                            }
+                            isCurrent={() =>
+                              !tab.signal.aborted &&
+                              !page.getSnapshot().error &&
+                              page.reader.getSnapshot().analysisDocument ===
+                                report.analysisDocument &&
+                              (!activeReportView ||
+                                (() => {
+                                  const current = reportViews.get(activeReportView.id)
+                                  return (
+                                    current?.saved?.receipt.buildId ===
+                                      report.analysisDocument.buildId &&
+                                    (!current.candidate ||
+                                      (['failed', 'cancelled'].includes(current.candidate.phase) &&
+                                        !current.draft))
+                                  )
+                                })())
+                            }
+                          />
+                        </div>
+                      )}
+                      {activeReportView?.sessionId === page.sessionId &&
+                      (page.target.kind === 'live-report' ||
+                        activeReportView?.saved?.receipt.reportId === page.target.reportId) ? (
+                        <ReportBody
+                          viewId={reportViewFromAddress(tab.navigation.address).viewId}
+                          sessionId={page.sessionId}
+                        />
+                      ) : report.analysisDocument ? (
+                        <SavedAnalysisSurface
                           key={report.analysisDocument.recordId}
                           document={report.analysisDocument}
-                          rpc={rpc}
-                          signal={tab.signal}
-                          onOpenPublishingCredentials={() =>
-                            act(page, () => {
-                              const { workspaceId } = page.target
-                              check(page.sessionId, workspaceId)
-                              tab.actions.openTab(directoryKind('datasources'), {
-                                params: { workspaceId, credentialSection: 'credentials' },
-                              })
-                            })
+                          openSemanticRef={source}
+                          readCode={readCode}
+                          askResource={
+                            canAsk
+                              ? (selection, requestSignal) =>
+                                  pointLifetime.current
+                                    ? appendComponentReference(
+                                        ctx,
+                                        rpc,
+                                        {
+                                          sessionId: page.sessionId,
+                                          workspaceId: page.target.workspaceId,
+                                          recordId: report.analysisDocument.recordId,
+                                          ...selection,
+                                        },
+                                        AbortSignal.any([
+                                          tab.signal,
+                                          pointLifetime.current.signal,
+                                          requestSignal,
+                                        ]),
+                                      )
+                                    : Promise.reject(new Error('input-unavailable'))
+                              : undefined
                           }
-                          onHistory={() => void page.reader.toggleHistory()}
-                          onDelete={(isCurrent) =>
-                            deleteReport(
-                              ctx,
-                              rpc,
-                              page,
-                              tab,
-                              report.analysisDocument,
-                              isCurrent,
-                              deleted,
-                            )
+                          askDataset={
+                            canAsk
+                              ? (selection) =>
+                                  pointLifetime.current
+                                    ? appendDatasetReference(
+                                        ctx,
+                                        rpc,
+                                        {
+                                          sessionId: page.sessionId,
+                                          workspaceId: page.target.workspaceId,
+                                          recordId: report.analysisDocument.recordId,
+                                          ...selection,
+                                        },
+                                        AbortSignal.any([tab.signal, pointLifetime.current.signal]),
+                                      )
+                                    : Promise.reject(new Error('input-unavailable'))
+                              : undefined
                           }
-                          refreshLocked={refreshLocks.has(page.sessionId)}
-                          onRefreshData={(isCurrent) =>
-                            refreshReport(page, tab, report.analysisDocument, isCurrent)
-                          }
-                          isCurrent={() =>
-                            !tab.signal.aborted &&
-                            !page.getSnapshot().error &&
-                            page.reader.getSnapshot().analysisDocument ===
-                              report.analysisDocument &&
-                            (!activeReportView ||
-                              (() => {
-                                const current = reportViews.get(activeReportView.id)
-                                return (
-                                  current?.saved?.receipt.buildId ===
-                                    report.analysisDocument.buildId &&
-                                  (!current.candidate ||
-                                    (['failed', 'cancelled'].includes(current.candidate.phase) &&
-                                      !current.draft))
-                                )
-                              })())
+                          askPoint={
+                            canAsk
+                              ? (selection) =>
+                                  pointLifetime.current
+                                    ? appendPointReference(
+                                        ctx,
+                                        rpc,
+                                        {
+                                          sessionId: page.sessionId,
+                                          workspaceId: page.target.workspaceId,
+                                          recordId: report.analysisDocument.recordId,
+                                          resourceName: selection.resourceName,
+                                          row: selection.row,
+                                          field: selection.field,
+                                        },
+                                        AbortSignal.any([tab.signal, pointLifetime.current.signal]),
+                                      )
+                                    : Promise.reject(new Error('input-unavailable'))
+                              : undefined
                           }
                         />
-                      </div>
-                    )}
-                    {activeReportView?.sessionId === page.sessionId &&
-                    activeReportView?.saved?.receipt.reportId === page.target.reportId ? (
-                      <ReportBody
-                        viewId={reportViewFromAddress(tab.navigation.address).viewId}
-                        sessionId={page.sessionId}
-                      />
-                    ) : (
-                      <SavedAnalysisSurface
-                        key={report.analysisDocument.recordId}
-                        document={report.analysisDocument}
-                        openSemanticRef={source}
-                        readCode={readCode}
-                        askResource={
-                          canAsk
-                            ? (selection, requestSignal) =>
-                                pointLifetime.current
-                                  ? appendComponentReference(
-                                      ctx,
-                                      rpc,
-                                      {
-                                        sessionId: page.sessionId,
-                                        workspaceId: page.target.workspaceId,
-                                        recordId: report.analysisDocument.recordId,
-                                        ...selection,
-                                      },
-                                      AbortSignal.any([
-                                        tab.signal,
-                                        pointLifetime.current.signal,
-                                        requestSignal,
-                                      ]),
-                                    )
-                                  : Promise.reject(new Error('input-unavailable'))
-                            : undefined
-                        }
-                        askDataset={
-                          canAsk
-                            ? (selection) =>
-                                pointLifetime.current
-                                  ? appendDatasetReference(
-                                      ctx,
-                                      rpc,
-                                      {
-                                        sessionId: page.sessionId,
-                                        workspaceId: page.target.workspaceId,
-                                        recordId: report.analysisDocument.recordId,
-                                        ...selection,
-                                      },
-                                      AbortSignal.any([tab.signal, pointLifetime.current.signal]),
-                                    )
-                                  : Promise.reject(new Error('input-unavailable'))
-                            : undefined
-                        }
-                        askPoint={
-                          canAsk
-                            ? (selection) =>
-                                pointLifetime.current
-                                  ? appendPointReference(
-                                      ctx,
-                                      rpc,
-                                      {
-                                        sessionId: page.sessionId,
-                                        workspaceId: page.target.workspaceId,
-                                        recordId: report.analysisDocument.recordId,
-                                        resourceName: selection.resourceName,
-                                        row: selection.row,
-                                        field: selection.field,
-                                      },
-                                      AbortSignal.any([tab.signal, pointLifetime.current.signal]),
-                                    )
-                                  : Promise.reject(new Error('input-unavailable'))
-                            : undefined
-                        }
-                      />
-                    )}
-                  </div>
-                )}
+                      ) : null}
+                    </div>
+                  )}
               </>
             )}
           </>
@@ -750,39 +725,10 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     const { tab, panel } = useTabInfo()
     useSyncExternalStore(reportViews.subscribe, reportViews.getSnapshot)
     const liveReport = viewForAddress(tab.navigation.address)
-    useEffect(() => {
-      if (
-        !liveReport?.saved ||
-        liveReport.sessionId !== sessionId ||
-        tab.signal.aborted ||
-        !tab.visible ||
-        ctx.sidebarRight.active()?.id !== tab.id ||
-        !ctx.sessions.list.getSnapshot().byId[sessionId]?.retainedBy.mainView
-      )
-        return
-      const target = parseResource(tab.navigation.address)
-      if (
-        target.kind !== 'report' ||
-        target.reportId !== liveReport.saved.receipt.reportId ||
-        target.buildId === liveReport.saved.receipt.buildId
-      )
-        return
-      const { workspaceId, reportId, buildId } = liveReport.saved.receipt
-      tab.actions.openResource(
-        resourceAddress({
-          kind: 'report',
-          workspaceId,
-          reportId,
-          buildId,
-          reportViewId: liveReport.id,
-        }),
-        {
-          replaceTab: true,
-          revealIfOpened: false,
-          params: { reportViewId: liveReport.id, workspaceId, turn: liveReport.turn },
-        },
-      )
-    }, [liveReport, sessionId, tab])
+    const liveReceipt = liveReport?.saved?.receipt
+    const liveGeneration = liveReport?.generation
+    const liveSessionId = liveReport?.sessionId
+    const liveWorkspacePath = liveReport?.workspacePath
     const workspaces = useWorkspaces((s) => s.items),
       sessions = useSessions((s) => s.byId),
       currentSession = useSessions((s) => s.ids.find((id) => s.byId[id]?.retainedBy.mainView)),
@@ -793,9 +739,59 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       if (tab.signal.aborted) return
       try {
         const directory = Object.keys(labels).find((key) => directoryKind(key) === tab.kind)
-        const target = directory
+        let target = directory
           ? { kind: directory, workspaceId: tab.navigation.params?.workspaceId }
-          : parseResource(tab.navigation.address)
+          : tab.navigation.address.startsWith('dsh-resource://marivo-analysis-live/')
+            ? { kind: 'live-report', ...reportViewFromAddress(tab.navigation.address) }
+            : parseResource(tab.navigation.address)
+        const identity = reportViewFromAddress(tab.navigation.address)
+        if (identity) {
+          check(sessionId, identity.workspaceId)
+          const owners = ctx.workspaces.list
+            .getSnapshot()
+            .items.filter((item) => item.sessionIds.includes(sessionId))
+          const workspace =
+            owners.length === 1 && owners[0].workspaceId === identity.workspaceId
+              ? owners[0]
+              : undefined
+          if (!workspace)
+            throw new Error('marivo.navigation.workspace-changed-or-is-unavailable-reopen-the-page')
+          const owner = { sessionId, ...identity, workspacePath: workspace.path }
+          const receipt = liveReceipt
+          if (liveGeneration)
+            assertLiveViewOwner(
+              owner,
+              {
+                sessionId: liveSessionId,
+                workspacePath: liveWorkspacePath,
+                generation: liveGeneration,
+              },
+              ctx.connection.generation.getSnapshot(),
+            )
+          if (receipt && target.kind === 'live-report') {
+            target = {
+              kind: 'report',
+              workspaceId: identity.workspaceId,
+              reportId: receipt.reportId,
+              buildId: receipt.buildId,
+              reportViewId: identity.viewId,
+            }
+          } else if (target.kind === 'live-report') {
+            const existing = pages.get(JSON.stringify([sessionId, tab.id]))
+            if (existing?.signal === tab.signal && isDeletedViewPage(existing, identity)) {
+              setPage(existing)
+              setError('')
+              return
+            }
+            try {
+              target = readViewTarget(window.localStorage, owner) ?? target
+            } catch (error) {
+              if (error instanceof DOMException) {
+                /* Browser storage may be unavailable. */
+              } else throw error
+            }
+          }
+        }
         const owned = acquire(sessionId, tab, target)
         setPage(owned)
         setError('')
@@ -814,11 +810,7 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
         setPage(undefined)
         setError(error.message)
       }
-    }, [sessionId, tab])
-    if (!page && liveReport?.sessionId === sessionId)
-      return (
-        <LiveReportPage view={liveReport} sessionId={sessionId} tabId={tab.id} panelId={panel.id} />
-      )
+    }, [sessionId, tab, liveReceipt, liveGeneration, liveSessionId, liveWorkspacePath])
     return error ? (
       <p role="alert">{t(error)}</p>
     ) : page && page.sessionId === sessionId && page.signal === tab.signal ? (
@@ -931,6 +923,16 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       page?.reader.subscribe ?? (() => () => {}),
       page?.reader.getSnapshot ?? (() => undefined),
     )
+    useSyncExternalStore(reportViews.subscribe, reportViews.getSnapshot)
+    const view = viewForAddress(tab.navigation.address)
+    if (tab.navigation.address.startsWith('dsh-resource://marivo-analysis-live/'))
+      return (
+        <span>
+          {view?.document?.title ??
+            report?.analysisDocument?.title ??
+            hostCopy(ctx)('marivo.presentation.ui-draft-tab')}
+        </span>
+      )
     const target = parseResource(tab.navigation.address)
     return target.kind === 'report' ? (
       <span>
@@ -947,9 +949,18 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       ctx.sidebarRightTabs.register({
         id,
         kind: `marivo-${kind}-resource`,
-        patterns: [`dsh-resource://marivo-${kind}/**`],
-        canOpen: (address) => canOpenResource(address, kind),
+        patterns: [
+          `dsh-resource://marivo-${kind}/**`,
+          ...(kind === 'report' ? ['dsh-resource://marivo-analysis-live/**'] : []),
+        ],
+        canOpen: (address) =>
+          canOpenResource(address, kind) ||
+          (kind === 'report' &&
+            address.startsWith('dsh-resource://marivo-analysis-live/') &&
+            Boolean(reportViewFromAddress(address))),
         title: (address) => {
+          if (address.startsWith('dsh-resource://marivo-analysis-live/'))
+            return hostCopy(ctx)('marivo.presentation.ui-draft-tab')
           const target = parseResource(address)
           return target.kind === 'report'
             ? `${target.reportId.slice(0, 12)} · ${target.buildId?.slice(0, 8) ?? '…'}`
@@ -970,6 +981,27 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       ),
     )
   }
+  // Restore records persisted by older versions without claiming new live addresses.
+  const legacyReportId = definitionId('marivo-analysis-live')
+  ctx.effect(() =>
+    ctx.sidebarRightTabs.register({
+      id: legacyReportId,
+      kind: 'marivo-analysis-live',
+      title: () => hostCopy(ctx)('marivo.presentation.ui-draft-tab'),
+    }),
+  )
+  ctx.slots.inject('sidebar.right.pane.tab', () =>
+    ctx.slots.register(
+      { locale: 'marivo.navigation', name: 'sidebar.right.pane.tab', key: legacyReportId },
+      localized(ctx, Body),
+    ),
+  )
+  ctx.slots.inject('sidebar.right.pane.tab.title', () =>
+    ctx.slots.register(
+      { locale: 'marivo.navigation', name: 'sidebar.right.pane.tab.title', key: legacyReportId },
+      localized(ctx, Title),
+    ),
+  )
   ctx.slots.inject('conversation.chat.node', () => {
     const stop = ctx.slots.register(
       {
@@ -1012,7 +1044,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
     const watchedWorkspaces = new Set(
       [...pages.values()]
         .filter(
-          (page) => ['report', 'reports'].includes(page.target.kind) && !page.getSnapshot().error,
+          (page) =>
+            ['report', 'reports', 'live-report'].includes(page.target.kind) &&
+            !page.getSnapshot().error,
         )
         .map((page) => page.target.workspaceId),
     )
@@ -1076,6 +1110,34 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
             .items.find((w) => w.workspaceId === workspaceId)
           if (generation && workspace) {
             const view = reportViews.accept(delivery, callId, generation, workspace.path)
+            const owners = ctx.workspaces.list
+              .getSnapshot()
+              .items.filter((item) => item.sessionIds.includes(id))
+            if (
+              owners.length === 1 &&
+              owners[0].workspaceId === workspaceId &&
+              owners[0].path === view.workspacePath &&
+              ctx.connection.generation.getSnapshot() === view.generation &&
+              !isDeletedView(view) &&
+              view.saved?.receipt.buildId === delivery.receipt.buildId &&
+              view.saved?.receipt.reportId === reportId
+            ) {
+              try {
+                saveViewTarget(
+                  window.localStorage,
+                  { sessionId: id, workspaceId, viewId: view.id, workspacePath: workspace.path },
+                  {
+                    kind: 'report',
+                    workspaceId,
+                    reportId,
+                    buildId: delivery.receipt.buildId,
+                    reportViewId: view.id,
+                  },
+                )
+              } catch {
+                /* The Session/Chat entry can still reopen the report if browser storage is unavailable. */
+              }
+            }
             maybeOpenReport(view, {
               replay: suppressedCalls.has(JSON.stringify([delivery.turn, callId])),
             })

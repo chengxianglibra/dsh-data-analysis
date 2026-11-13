@@ -418,3 +418,41 @@ test('resource deltas reject stale call, Workspace, generation and revision and 
   assert.equal(views.get(view.id)?.resourceStream?.status, 'failed')
   assert.deepEqual(views.get(view.id)?.resourceStream?.resources, {})
 })
+
+test('deleting a report revokes its readers across Sessions without touching other views', () => {
+  const views = new ReportViews()
+  const first = saved()
+  const second = { ...saved(), dshSessionId: 'other-session' }
+  const other = saved()
+  other.receipt.reportId = 'another-report'
+  const firstView = views.accept(first, 'first', generation, '/workspace')
+  const secondView = views.accept(second, 'second', generation, '/workspace')
+  const otherView = views.accept(other, 'third', generation, '/workspace')
+  const unrelatedDraft = views.accept(draft(), 'fourth', generation, '/workspace')
+  views.revokeReport('workspace', 'report')
+  assert.equal(views.get(firstView.id), undefined)
+  assert.equal(views.get(secondView.id), undefined)
+  assert.ok(views.get(otherView.id))
+  assert.ok(views.get(unrelatedDraft.id))
+})
+
+test('deleting a saved base revokes its draft readers only in the bound Workspace and generation', () => {
+  const views = new ReportViews()
+  const ref = savedReportRef({ workspaceId: 'workspace', reportId: 'report', buildId: 'base' })
+  const own = views.observe(
+    candidate('own', { stage: 'preview', ref, program: 'root=TextContent("draft");' }),
+    '/workspace',
+  )
+  const otherPath = views.observe(
+    candidate('other-path', { stage: 'preview', ref, program: 'root=TextContent("other");' }),
+    '/elsewhere',
+  )
+  const otherDraft = views.observe(
+    candidate('independent', { stage: 'preview', program: 'root=TextContent("independent");' }),
+    '/workspace',
+  )
+  views.revokeReport('workspace', 'report', '/workspace', generation)
+  assert.equal(views.get(own.id), undefined)
+  assert.ok(views.get(otherPath.id))
+  assert.ok(views.get(otherDraft.id))
+})

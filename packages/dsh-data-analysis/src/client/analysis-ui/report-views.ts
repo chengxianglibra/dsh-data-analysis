@@ -2,6 +2,7 @@ import type { ConnectionGeneration } from '@deepseek-ai/dsh-client-connection/cl
 import {
   type AnalysisDocument,
   analysisRecordId,
+  parseAnalysisRecordId,
 } from '../../presentation/contracts/analysis-document.ts'
 import type { ResourceStreamResponse } from '../../presentation/contracts/resource-stream.ts'
 import type { DraftDelivery, PresentationDelivery } from '../../presentation/receipt.ts'
@@ -40,6 +41,22 @@ export interface ReportViewState {
   reading: ReportReadingState
   openError?: boolean
   settled?: boolean
+}
+
+/** Saved, admitted and explicitly referenced base reports belonging to a view. */
+export function viewReportIds(view: ReportViewState): Set<string> {
+  const ids = new Set<string>()
+  if (view.saved) ids.add(view.saved.receipt.reportId)
+  if (view.document) ids.add(view.document.reportId)
+  for (const ref of [view.candidate?.basedOnRecordId, view.candidate?.rebaseOnRecordId]) {
+    if (!ref) continue
+    try {
+      ids.add(parseAnalysisRecordId(ref).reportId)
+    } catch {
+      /* An incomplete candidate is not a report identity. */
+    }
+  }
+  return ids
 }
 
 export const reportContentKey = (view: ReportViewState) => {
@@ -338,6 +355,30 @@ export class ReportViews {
           ...(view.saved ? { candidate: undefined, draft: undefined } : {}),
         })
     }
+  }
+  /** Forget only readers bound to a deleted report, across all Sessions. */
+  revokeReport(
+    workspaceId: string,
+    reportId: string,
+    workspacePath?: string,
+    generation?: ConnectionGeneration,
+  ) {
+    let changed = false
+    for (const [id, view] of this.#items) {
+      if (
+        view.workspaceId === workspaceId &&
+        (!workspacePath || view.workspacePath === workspacePath) &&
+        (!generation || view.generation === generation) &&
+        viewReportIds(view).has(reportId)
+      ) {
+        this.#items.delete(id)
+        changed = true
+      }
+    }
+    if (!changed) return
+    for (const [call, id] of this.#calls) if (!this.#items.has(id)) this.#calls.delete(call)
+    this.#revision++
+    for (const listener of this.#listeners) listener()
   }
   revoke(sessionId?: string) {
     for (const [id, view] of this.#items)
