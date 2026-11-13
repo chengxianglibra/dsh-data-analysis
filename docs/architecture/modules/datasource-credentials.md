@@ -35,8 +35,8 @@ Agent 依据绑定 Runtime 的 live Help 通过 `marivo_python` 修改非秘密�
 
 - `marivo_datasource_test({ name })`：通过 Host 凭证执行真实 `md.load().test()`，将连接结果返回对话。
 - `marivo_python({ code, datasources, project?, resultVariables?, timeoutMs? })`：project 省略为 none；required 明确准备当前 Workspace 项目。非空 datasources 或声明 resultVariables 必须使用 required，否则在用户代码执行和凭据准入前拒绝。顺序固定为绑定、必要项目准备、凭据准入、fresh identity、一次用户 Python。
-  声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源；纯 Catalog 定义读取不连接数据源时可传空列表，
-  仍安装拒绝未声明凭证请求的 resolver。
+  声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源。使用配置中的名称，例如 Catalog ID
+  `datasource:warehouse` 对应 `datasources: ["warehouse"]`。纯 Catalog 定义读取不连接数据源时可传空列表，仍安装拒绝未声明凭证请求的 resolver。
 
 首次模型请求即可看到绑定执行和凭据表单的入口。各 Tool 说明负责数据源声明、配置与测试条件；`marivo_python` 每次启动独立进程，跨调用复用结果时按当前 Runtime Help 的 Session 生命周期和 Frame 持久化契约操作。失败后的动作依据实际回执，结果未确认时先核对已有影响。
 

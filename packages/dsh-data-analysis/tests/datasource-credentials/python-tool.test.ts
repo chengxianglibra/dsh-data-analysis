@@ -107,13 +107,14 @@ function pythonTool(
   }
 }
 
-test('Python tool describes the current Session contract', async (t) => {
+test('Python tool describes Session and datasource inputs', async (t) => {
   const f = fixture()
   t.after(() => f.service.close())
   const { definition } = pythonTool(f)
   const properties = definition.parameters.properties as Record<string, { description: string }>
   assert.match(properties.code!.description, /current Runtime Help/)
   assert.match(properties.code!.description, /persistence/)
+  assert.match(properties.datasources!.description, /datasource:warehouse.*\["warehouse"\]/)
   assert.match(
     properties.datasources!.description,
     /Catalog-only definition reads need no datasource connection/,

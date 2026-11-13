@@ -247,7 +247,7 @@ export function registerMarivoPythonTool(
           required: true,
           items: { type: 'string' },
           description:
-            'All exact Marivo datasource names this execution may access through data or metadata connections, including inspection and datasources without passwords. Pass [] for local pandas or native DuckDB file analysis without Marivo datasource access. Catalog-only definition reads need no datasource connection.',
+            'Declare every exact Marivo datasource name this execution may access through data or metadata connections, including inspection and datasources without passwords. Use the configured name without the datasource: prefix used in Catalog IDs. For a Catalog ID of datasource:warehouse, pass ["warehouse"]. Pass [] for local pandas or native DuckDB file analysis without Marivo datasource access. Catalog-only definition reads need no datasource connection.',
         },
         project: {
           type: 'string',
