@@ -42,7 +42,7 @@ function assertCatalogCacheOnly(before: Record<string, string>, after: Record<st
     )
   }
 }
-test('real Marivo 0.6.6: empty, large and failed Catalog reads only add public search caches', async (t) => {
+test(`real Marivo ${MARIVO_VERSION}: empty, large and failed Catalog reads only add public search caches`, async (t) => {
   try {
     await access(python)
   } catch {

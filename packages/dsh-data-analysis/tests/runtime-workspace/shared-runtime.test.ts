@@ -63,7 +63,7 @@ if (script.includes('sys.version_info')) {
   }
   process.stdout.write(JSON.stringify({
     marivo_index_install: process.env.DIRECT_INSTALL !== '1',
-    marivo_distribution_version: process.env.MARIVO_VERSION ?? "0.6.6",
+    marivo_distribution_version: process.env.MARIVO_VERSION ?? ${JSON.stringify(FIXTURE_MARIVO_VERSION)},
     marivo_import_identity: true,
     python_executable: process.env.REPORTED_PYTHON ?? path.resolve(process.argv[1]),
     marivo_version: process.env.MARIVO_VERSION ?? ${JSON.stringify(FIXTURE_MARIVO_VERSION)},
@@ -183,10 +183,10 @@ test('concurrent first starts install one pinned shared Runtime and later reuse 
     .split('\n')
     .map((line) => JSON.parse(line) as string[])
   assert.equal(calls.filter((args) => args[0] === 'pip' && args[1] === 'install').length, 1)
-  assert.equal(SHARED_MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.6.6')
+  assert.equal(SHARED_MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.6.7')
   assert.deepEqual(
     calls.find((args) => args[0] === 'pip'),
-    ['pip', 'install', '--force-reinstall', 'marivo[duckdb,trino,clickhouse]==0.6.6'],
+    ['pip', 'install', '--force-reinstall', 'marivo[duckdb,trino,clickhouse]==0.6.7'],
   )
   const marker = JSON.parse(
     await readFile(path.join(item.runtimeRoot, 'installation.json'), 'utf8'),
@@ -285,7 +285,7 @@ test('a managed Runtime on another Marivo version is rebuilt to the pinned versi
   await writeFile(initial.installationPath, `${JSON.stringify(marker)}\n`)
 
   const current = await ensureSharedMarivoRuntime(config, runtimeOptions(item))
-  assert.equal(current.marivoVersion, '0.6.6')
+  assert.equal(current.marivoVersion, '0.6.7')
   const calls = (await readFile(item.recordPath, 'utf8'))
     .trim()
     .split('\n')

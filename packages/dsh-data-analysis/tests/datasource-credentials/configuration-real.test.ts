@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import { MARIVO_VERSION } from '../../src/compatibility.ts'
 
 const python = process.env.DSH_DATA_ANALYSIS_TEST_PYTHON
 test('real datasource editing preserves source timezone and rejects an externally changed timezone', {
@@ -22,6 +23,6 @@ test('real datasource editing preserves source timezone and rejects an externall
   )
   const result = JSON.parse(stdout)
   assert.equal(result.passed, true)
-  assert.equal(result.runtime, '0.6.6')
+  assert.equal(result.runtime, MARIVO_VERSION)
   assert(result.checks.includes('timezone-roundtrip-external-change-conflict-and-clear'))
 })

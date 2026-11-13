@@ -28,7 +28,7 @@
 - 已启动并配置的 DeepSeek Harness `>=0.2.1-rc.2`，以及命令行可用的 `pnpm`。
 - Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），并支持 `venv` 和 `ensurepip`；部分 Linux 发行版需要安装 `python3-venv`。
 
-无需预装 Marivo。首次启动会联网安装 Marivo `0.6.6` 并准备分析环境，请等待完成。
+无需预装 Marivo。首次启动会联网安装 Marivo `0.6.7` 并准备分析环境，请等待完成。
 
 ### 安装并启动
 

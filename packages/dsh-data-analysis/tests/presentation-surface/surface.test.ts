@@ -33,8 +33,8 @@ test('package distribution excludes non-deliverables and pins the Runtime depend
   assert.deepEqual(
     { version, packageSpec },
     {
-      version: '0.6.6',
-      packageSpec: 'marivo[duckdb,trino,clickhouse]==0.6.6',
+      version: '0.6.7',
+      packageSpec: 'marivo[duckdb,trino,clickhouse]==0.6.7',
     },
   )
   assert.deepEqual(manifest.dshDataAnalysisCompatibility.contracts, {

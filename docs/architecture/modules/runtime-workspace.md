@@ -2,7 +2,7 @@
 
 ## 作用
 
-本模块解决两个不同层级的问题：在一个 DSH Web profile 内提供一套可复用的 Marivo 安装，并为
+本模块解决两个不同层级的问题：在同一 `DSH_HOME` 下提供一套可复用的默认 Marivo 安装，并为
 每个 Agent 所在 Workspace 建立独立的 zero-init binding 与 Environment。它只准备运行条件，不拥有
 Marivo 项目语义和分析状态。
 
@@ -16,7 +16,7 @@ Marivo 项目语义和分析状态。
 
 | 组件 | 职责 |
 | --- | --- |
-| `ensureSharedMarivoRuntime()` | 验证、复用或安装一套 profile 级 Runtime |
+| `ensureSharedMarivoRuntime()` | 验证、复用或安装 `DSH_HOME` 默认路径或显式 `runtimeRoot` 下的 Runtime |
 | `SharedMarivoRuntime` | 暴露已验证的 Runtime root、Python、Marivo、package 与 Skill 身份 |
 | `MarivoWorkspaceEnvironmentManager` | 按 canonical project root 缓存 binding Promise，不创建 Workspace 文件 |
 
@@ -46,7 +46,7 @@ Python 路径解析父目录软链，保留 venv 内的可执行入口；package
 1. Python 文件存在且可执行；
 2. Python 实际导入的 Marivo 版本与 marker 一致；
 3. `marivo.__file__` 与记录的 package path 一致；
-4. Marivo 版本严格等于 `0.6.6`；
+4. Marivo 版本严格等于 `0.6.7`；
 5. Marivo distribution 版本、实际导入位置以及公开 `persist_dataframe` / `read_dataframe` / Frame ref 能力一致，且 distribution 没有 pip direct URL 安装记录；
 6. `marivo-analysis` 和 `marivo-semantic` 的 `SKILL.md` 均存在；若绑定包提供
    `marivo-service`，也同步并验证它。每个 Skill 的 frontmatter `name` 与目录名精确一致。
@@ -64,7 +64,7 @@ compatibility manifest 固定版本和 pip 安装规格；Runtime 验证版本�
 | 插件管理 | 未配置 `pythonExecutable` | 使用本机 Python 3.10+ 的 `-m venv` 创建 `.venv`，通过 venv Python 的 `-m pip` 从配置的包索引安装固定版本及 duckdb/trino/clickhouse extras |
 | 管理员提供 | 绝对 `pythonExecutable` | 不创建 venv；验证精确版本、导入身份、没有 direct URL 安装记录及 pandas，随后同步 Skill 和发布 marker |
 
-两种模式都要求通过 pip 安装精确的 Marivo 0.6.6；marker 记录版本与 package identity。其他版本或 schema
+两种模式都要求通过 pip 安装精确的 Marivo 0.6.7；marker 记录版本与 package identity。其他版本或 schema
 不匹配的 Runtime 都视为无效安装，不读取或迁移其 marker；插件管理模式会先保留 `.invalid-*` 诊断备份再重新安装，
 管理员解释器则明确失败。普通 Workspace 或 Session 启动不会仅为追逐新版本联网升级。
 
@@ -77,7 +77,7 @@ Python 必须支持 `venv`/`ensurepip`；缺失或版本不符时明确失败。
 
 ### DuckDB 文件依赖
 
-安装规格 `marivo[duckdb,trino,clickhouse]==0.6.6` 显式包含 DuckDB extra，由 Marivo 的
+安装规格 `marivo[duckdb,trino,clickhouse]==0.6.7` 显式包含 DuckDB extra，由 Marivo 的
 `ibis-framework[duckdb]` 依赖提供后端。Runtime probe 同时导入 `ibis.backends.duckdb`，
 防止缺少该后端的环境通过复用校验；管理员环境缺失时给出包含 extra 的修复命令，不自动安装。
 
@@ -120,7 +120,7 @@ required 在凭据准入前调用内部项目准备适配：固定 canonical Wor
 
 | 范围 | 共享内容 | 隔离内容 |
 | --- | --- | --- |
-| Web profile | Python、Marivo package、内置 Skill 副本 | — |
+| Runtime root（默认由 `DSH_HOME` 确定） | Python、Marivo package、内置 Skill 副本 | — |
 | Workspace | 共享 Runtime 引用 | project root、manifest、models、state、配置校验、binding fingerprint |
 | Agent | 解析同 Workspace 时可复用 binding Promise | Help 可见性、Skill 激活、Tool 生命周期 |
 
@@ -149,7 +149,7 @@ packages/dsh-data-analysis/tests/runtime-workspace/workspace.test.ts
 
 ## 当前安装来源
 
-managed Runtime 通过所选 Python 执行 `-m pip install --force-reinstall 'marivo[duckdb,trino,clickhouse]==0.6.6'`。
+managed Runtime 通过所选 Python 执行 `-m pip install --force-reinstall 'marivo[duckdb,trino,clickhouse]==0.6.7'`。
 pip 默认使用 PyPI，也遵循本机配置的包索引；构建和安装均不读取邻近 checkout。probe 核验
 distribution/module 版本、实际 import path、公开能力和 pip `direct_url.json` 不存在，以拒绝带 direct URL
 记录的 URL、本地 wheel 或 editable 安装。该检查不证明具体包索引或下载文件摘要。版本或能力不符明确失败；

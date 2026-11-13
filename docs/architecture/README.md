@@ -16,7 +16,7 @@
 
 | 领域 | 项目级设计 | 主要边界 |
 | --- | --- | --- |
-| 运行基础 | [Runtime 与 Workspace](modules/runtime-workspace.md) | profile 共享安装、Workspace 隔离与绑定身份 |
+| 运行基础 | [Runtime 与 Workspace](modules/runtime-workspace.md) | `DSH_HOME` 默认共享安装、Workspace 隔离与绑定身份 |
 | 运行基础 | [Environment 执行](modules/environment-execution.md) | checked runner、子进程、预算、取消与脱敏 |
 | Agent 接入 | [实时 Help 披露](modules/help-disclosure.md) | live Help transport、Skill 激活与上下文恢复 |
 | Agent 接入 | [数据源与凭证](modules/datasource-credentials.md) | 凭据管理、连接测试与一次 Python 执行准入 |
@@ -67,11 +67,11 @@ flowchart TD
 
 ### Runtime、Workspace 与 Agent
 
-profile 共享精确安装的 Marivo Runtime 和 Runtime Skill。Workspace 惰性解析 project root 与 binding，绑定过程不创建项目文件；使用领域能力时由 Marivo 执行相应准入。Runtime 复用核验版本、import identity、能力和 direct URL 状态，不证明包索引或下载文件摘要；每次 checked execution 在实际子进程中复核解释器、包位置和版本，身份不匹配明确失败。
+同一 `DSH_HOME` 下的 profile 默认共享精确安装的 Marivo Runtime 和 Runtime Skill，插件可显式配置 `runtimeRoot`。Workspace 惰性解析 project root 与 binding，绑定过程不创建项目文件；使用领域能力时由 Marivo 执行相应准入。Runtime 复用核验版本、import identity、能力和 direct URL 状态，不证明包索引或下载文件摘要；每次 checked execution 在实际子进程中复核解释器、包位置和版本，身份不匹配明确失败。
 
 Help 使用启动时验证的 shared Runtime，不为读取 API Help 初始化 Workspace。涉及数据源、分析和展示来源的操作使用所属 Workspace 的同一 bound Runtime。Workspace ID 与 Runtime fingerprint 共同约束浏览和引用身份；同路径重新注册的 Workspace 不能接收旧引用。
 
-每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，报告或看板在准备组件数据之前加载 `dsh-data-analysis-presentation`；已有普通单结果可直接展示。需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。可选 Runtime Skill 以实际安装为准，当前 Marivo 0.6.6 包未提供 `marivo-service`。
+每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，报告或看板在准备组件数据之前加载 `dsh-data-analysis-presentation`；已有普通单结果可直接展示。需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。可选 Runtime Skill 以实际安装为准，当前 Marivo 0.6.7 包未提供 `marivo-service`。
 
 默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_report_write`、`marivo_report_read`、`marivo_next_steps`。Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API。插件通过相同的公开契约固定显式声明的执行输出。
 
@@ -132,7 +132,7 @@ Harness 拥有设置持久化、配置分层和 revision 冲突检测。插件�
 
 ## Marivo 0.6 接缝
 
-当前安装使用 pip 固定 Marivo `0.6.6` 正式版；pip 默认从 PyPI 获取，也遵循本机配置的包索引。安装与升级见 [Runtime 安装](modules/runtime-workspace.md#正式版安装与升级)。
+当前安装使用 pip 固定 Marivo `0.6.7` 正式版；pip 默认从 PyPI 获取，也遵循本机配置的包索引。安装与升级见 [Runtime 安装](modules/runtime-workspace.md#正式版安装与升级)。
 数据源读取统一使用绑定 Workspace 的 `md.load()`；凭据请求只有身份与字段，取消由 Harness 执行边界负责。
 Catalog 改用公共分页搜索和 captured definition，允许 Marivo 写入搜索分页缓存；已有文件保持不变。
 Frame/DataFrame 展示使用准确持久引用和 Python 公开读取 API。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。

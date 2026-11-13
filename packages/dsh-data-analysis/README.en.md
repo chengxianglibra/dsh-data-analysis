@@ -28,7 +28,7 @@ A community data analysis plugin for [DeepSeek Harness](https://github.com/deeps
 - DeepSeek Harness `>=0.2.1-rc.2`, started and configured, with `pnpm` available on the command line.
 - Python 3.10+, available as `python3` (`python` on Windows), with `venv` and `ensurepip`. Some Linux distributions require `python3-venv`.
 
-Marivo does not need to be installed in advance. On first launch, the plugin downloads Marivo `0.6.6` and prepares the analysis environment; wait for setup to finish.
+Marivo does not need to be installed in advance. On first launch, the plugin downloads Marivo `0.6.7` and prepares the analysis environment; wait for setup to finish.
 
 ### Install and start
 
