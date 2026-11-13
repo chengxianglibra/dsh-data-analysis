@@ -65,6 +65,20 @@ try {
       arguments: args,
     })
   }
+  const invalidRead = await call('invalid-report-read', reader.name, {})
+  assert.equal(invalidRead.isError, true)
+  const errorText = invalidRead.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('\n')
+  const marker = errorText.indexOf('error=')
+  assert(marker >= 0)
+  const failure = JSON.parse(errorText.slice(marker + 6))
+  assert.equal(failure.code, 'report-read-invalid-input')
+  assert.equal(failure.tool, reader.name)
+  assert.equal(failure.phase, 'input')
+  assert.equal(failure.issues[0].reason, 'selector-required')
+  assert.equal(typeof failure.recovery.nextAction, 'string')
   if (!savedRef || !draftRef) {
     const saved = await call('cold-create-saved', writer.name, {
       stage: 'save',

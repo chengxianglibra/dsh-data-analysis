@@ -170,7 +170,7 @@ test('a damaged copied ref recovers through title search after saving clears the
   await assert.rejects(f.read(damaged), /report-ref-invalid/)
   const reader = createMarivoUiReadTool(f.source, f.drafts)
   await assert.rejects(reader.execute({ draft: true }, f.exec), /analysis-draft-unavailable/)
-  await assert.rejects(reader.execute({ version: 'current' }, f.exec), /report-read-input-invalid/)
+  await assert.rejects(reader.execute({ version: 'current' }, f.exec), /report-read-invalid-input/)
   const found = reportListOutput.parse(
     await createMarivoReportListTool(f.source).execute({ query: 'Recoverable report' }, f.exec),
   )
@@ -178,6 +178,60 @@ test('a damaged copied ref recovers through title search after saving clears the
   assert.equal(found.reports[0]!.ref, saved.ref)
   assert.equal((await f.read(found.reports[0]!.ref)).ref, saved.ref)
   assert.equal((await f.document(saved.ref)).title, 'Recoverable report')
+})
+
+test('report reader explains invalid selectors and fields before resolving the workspace', async (t) => {
+  const f = await fixture(t)
+  let workspaceReads = 0
+  const reader = createMarivoUiReadTool(() => {
+    workspaceReads++
+    return f.source()
+  }, f.drafts)
+  const cases: [Record<string, unknown>, string, string][] = [
+    [{}, '', 'selector-required'],
+    [{ ref: 'x', draft: true }, 'draft', 'mutually-exclusive'],
+    [{ draft: false }, 'draft', 'invalid-value'],
+    [{ draft: true, version: 'current' }, 'version', 'forbidden-with-draft'],
+    [{ ref: '' }, 'ref', 'invalid-value'],
+  ]
+  for (const [input, path, reason] of cases) {
+    await assert.rejects(reader.execute(input, f.exec), (error: unknown) => {
+      assert(error instanceof Error)
+      const marker = error.message.indexOf('error=')
+      assert(marker >= 0, JSON.stringify({ input, message: error.message }))
+      const result = z
+        .object({
+          code: z.string(),
+          tool: z.string(),
+          phase: z.string(),
+          issues: z.array(z.object({ path: z.string(), reason: z.string() })),
+          recovery: z.object({ nextAction: z.string().min(1) }),
+        })
+        .parse(JSON.parse(error.message.slice(marker + 6)))
+      assert.equal(result.code, 'report-read-invalid-input')
+      assert.equal(result.tool, 'marivo_report_read')
+      assert.equal(result.phase, 'input')
+      assert(result.issues.some((issue) => issue.path === path && issue.reason === reason))
+      return true
+    })
+  }
+  await assert.rejects(
+    reader.execute({ ref: 'x', includeCode: 'yes' }, f.exec),
+    /invalid arguments.*includeCode/,
+  )
+  await assert.rejects(
+    reader.execute({ ref: 'x', version: 'latest' }, f.exec),
+    /invalid arguments.*version/,
+  )
+  assert.equal(workspaceReads, 0)
+  await assert.rejects(reader.execute({ draft: true }, f.exec), (error: unknown) => {
+    assert(error instanceof Error)
+    const result = JSON.parse(error.message.slice(error.message.indexOf('error=') + 6))
+    assert.equal(result.code, 'analysis-draft-unavailable')
+    assert.equal(result.phase, 'report-read')
+    return true
+  })
+  await assert.rejects(reader.execute({ ref: 'bad' }, f.exec), /report-ref-invalid/)
 })
 
 test('Agent deletion rejects stale or draft refs and removes all published versions', async (t) => {
@@ -457,6 +511,53 @@ test('a failed draft revision returns the current ref and the valid column IDs',
     },
   )
   assert.equal(f.drafts.get('session'), prior)
+})
+
+test('rejected preview and save deletions retain the draft and saved history for repair', async (t) => {
+  const f = await fixture(t)
+  const saved = await f.write({
+    stage: 'save',
+    program: 'root = Stack([heading]); heading = TextContent("Original");',
+  })
+  const document = await f.document(saved.ref)
+  const history = await readReportHistory(f.root, 'workspace', document.reportId)
+  const preview = await f.write({ stage: 'preview', ref: saved.ref, title: 'Draft edit' })
+  const reader = createMarivoUiReadTool(f.source, f.drafts)
+  const before = await reader.execute({ ref: preview.ref }, f.exec)
+  for (const stage of ['preview', 'save']) {
+    for (const [program, code] of [
+      ['heading = null;', 'analysis-program-deleted-reference'],
+      ['root = null;', 'analysis-program-root-deleted'],
+    ] as const) {
+      await assert.rejects(f.write({ stage, ref: preview.ref, program }), (error: unknown) => {
+        assert(error instanceof Error)
+        const marker = error.message.indexOf('error=')
+        assert(marker >= 0)
+        const failure = JSON.parse(error.message.slice(marker + 6))
+        assert.equal(failure.code, code)
+        assert.equal(failure.recovery.applied, false)
+        assert.equal(failure.recovery.currentRef, preview.ref)
+        return true
+      })
+      assert.deepEqual(await reader.execute({ ref: preview.ref }, f.exec), before)
+      assert.deepEqual(await readReportHistory(f.root, 'workspace', document.reportId), history)
+      assert.equal(
+        z
+          .object({ definition: z.object({ ref: z.string() }) })
+          .parse(await reader.execute({ ref: saved.ref, version: 'current' }, f.exec)).definition
+          .ref,
+        saved.ref,
+      )
+    }
+  }
+  const repaired = await f.write({
+    stage: 'save',
+    ref: preview.ref,
+    program: 'root = TextContent("Repaired"); heading = null;',
+  })
+  assert.equal(repaired.stage, 'save')
+  assert.equal((await f.document(repaired.ref)).title, 'Draft edit')
+  assert.equal((await readReportHistory(f.root, 'workspace', document.reportId)).versions.length, 2)
 })
 
 test('auto shape changes are rejected while explicit table row changes remain valid', async (t) => {

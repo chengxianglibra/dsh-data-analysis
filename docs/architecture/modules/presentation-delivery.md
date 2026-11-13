@@ -65,7 +65,7 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
 （[analysis-program.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-program.ts)）。
 
 - 同一 patch 的语句名不可重复；新增或替换的语句合并后必须仍可从 root 到达，否则明确拒绝，避免被上游垃圾回收静默丢弃。
-  `name = null` 删除语句，需先改写父引用。
+  `name = null` 删除命名语句；在同一原子 patch 中也可改写父语句，移除对它的引用，例如 `root = Stack([heading]); chart = null;`。删除后仍需合法 root。删除资源声明另用 `resourcePatch.remove` 并移除程序引用；删除整个报告及其历史则用 `marivo_report_delete`。
 - 省略 program 保留基版本布局，省略 title/locale 继承；resourcePatch 只改变显式列出的资源。
   同名同声明复制基版本已保存字节，只有新资源执行读取。
 - 纯展示更新只核验 Workspace，不获取 Runtime、不启动 Python；原数据源或捕获文件不存在仍可更新。
@@ -74,6 +74,8 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
 `marivo_report_list({query?,limit?,cursor?})` 复用 Workspace 的已发布目录，返回当前版本的 `{title,publishedAt,sourceSessionId,ref}`，不返回业务行、文件路径或完整文档。无需旧 Session、草稿或 Runtime；当前 Session 的 Workspace 仍是访问边界，请求结束前复核绑定。`query` 最多 200 字符，按 NFKC 和小写归一化后以空白分词，各词均须匹配标题；同名报告保持独立。按发布时间倒序、report ID 排序，limit 默认 20、范围 1–50。`nextCursor:null` 表示结束；后续页原样传回 cursor 并保持 query，Workspace、查询或目录变化导致 `report-list-cursor-stale`，须重新检索。`unavailable` 是整个 Workspace 中不可读发布指针数，不是标题搜索结果数；列出的指针对应文档仍须经 read 校验。检索不恢复未发布的构建或未保存草稿，不隐式选定报告。
 
 `marivo_report_read({ref,version?:"exact"|"current",includeCode?})` 读取准确版本（默认 exact），current 只用于 saved ref；`{draft:true,includeCode?}` 恢复当前 Session/Turn 草稿，两类输入互斥。读取结果为结构化 definition，包含实际读取到的 ref、reuseGroups、title、locale、Catalog、program、完整资源声明及有界 schema/coverage；不返回业务行。草稿还返回 mode 及可用的 basedOn saved ref。
+
+Harness 先校验参数类型与枚举，失败由 Harness 返回参数错误；通过该层后不符合读取选择器契约时，以工具失败返回 `report-read-invalid-input`，`error=` JSON 包含 tool、input phase、issues 和恢复建议。引用无效、Workspace 不匹配与草稿不可用保留各自状态。读取草稿不可用时的 phase 为 `report-read`，不将其当作写入或参数错误。
 
 definition 和 sources 使用具体本地 schema 逐项校验；当前 Harness 只支持 boolean additionalProperties，无法在 PTC 中为动态 resources/resultMetadata 名称映射推导 entry 类型。Tool schema 明确披露顶层字段及来源结构，并用准确 description 标明 map entry 的列、coverage 和 Frame 元数据约束，不宣称 Host 已提供 typed map。
 

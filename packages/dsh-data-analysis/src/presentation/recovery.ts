@@ -9,6 +9,8 @@ export type PresentationRecoveryCode =
   | 'analysis-program-incomplete'
   | 'analysis-program-invalid-statement'
   | 'analysis-program-invalid'
+  | 'analysis-program-deleted-reference'
+  | 'analysis-program-root-deleted'
   | 'analysis-resource-missing'
   | 'report-save-conflict'
   | 'report-history-full'
@@ -22,20 +24,28 @@ type RecoveryDetails = AnalysisProgramError['details'] & {
 /** Repair facts survive Harness normalization to plain Tool error text. */
 export class PresentationRecoveryError extends Error {
   readonly code: PresentationRecoveryCode
-  readonly phase = 'report-write'
+  readonly phase: 'report-write' | 'report-read'
   readonly recovery: RecoveryDetails & { nextAction: string }
-  constructor(code: PresentationRecoveryCode, nextAction: string, details: RecoveryDetails = {}) {
+  constructor(
+    code: PresentationRecoveryCode,
+    nextAction: string,
+    details: RecoveryDetails = {},
+    phase: 'report-write' | 'report-read' = 'report-write',
+  ) {
     const recovery = { ...details, nextAction }
-    super(`${code}; error=${JSON.stringify({ code, phase: 'report-write', recovery })}`)
+    super(`${code}; error=${JSON.stringify({ code, phase, recovery })}`)
     this.name = 'PresentationRecoveryError'
     this.code = code
+    this.phase = phase
     this.recovery = recovery
   }
 }
 
-export function unavailableDraft() {
+export function unavailableDraft(phase: 'report-write' | 'report-read' = 'report-write') {
   return new PresentationRecoveryError(
     'analysis-draft-unavailable',
     'Drafts exist only in their original Session Turn and Host process and are cleared after saving. Use marivo_report_list to find saved reports, then marivo_report_read with a returned ref to confirm the target and recover its definition. Rebuild a preview from retained definitions and fixed resources. If these are missing, disclose the gap; do not replay analysis just to recover a draft.',
+    {},
+    phase,
   )
 }

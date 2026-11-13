@@ -459,7 +459,11 @@ export function createMarivoPresentTool(
           if (error instanceof AnalysisProgramError)
             throw new PresentationRecoveryError(
               error.code,
-              'Correct the OpenUI program and resubmit the same program and resource changes.',
+              error.code === 'analysis-program-deleted-reference'
+                ? 'Remove references to the deleted statement in the same program patch, then retry with the latest ref and intended changes.'
+                : error.code === 'analysis-program-root-deleted'
+                  ? 'Keep a valid root statement in the resulting program, then retry with the latest ref and intended changes.'
+                  : 'Correct the OpenUI program and resubmit the same program and resource changes.',
               { currentRef: request.ref, applied: false, ...error.details },
             )
           if (error instanceof AnalysisViewError)
@@ -511,6 +515,52 @@ const uiReadInput = z.union([
   }),
   z.strictObject({ draft: z.literal(true), includeCode: z.boolean().optional() }),
 ])
+
+function parseUiReadInput(args: unknown): z.infer<typeof uiReadInput> {
+  const parsed = uiReadInput.safeParse(args)
+  if (parsed.success) return parsed.data
+  const issues: { path: string; reason: string; expected?: string; conflictsWith?: string }[] = []
+  const object = z.record(z.string(), z.unknown()).safeParse(args)
+  if (!object.success) issues.push({ path: '', reason: 'invalid-type', expected: 'object' })
+  else {
+    const input = object.data
+    const hasRef = Object.hasOwn(input, 'ref')
+    const hasDraft = Object.hasOwn(input, 'draft')
+    if (!hasRef && !hasDraft)
+      issues.push({ path: '', reason: 'selector-required', expected: 'ref or draft:true' })
+    if (hasRef && hasDraft)
+      issues.push({ path: 'draft', reason: 'mutually-exclusive', conflictsWith: 'ref' })
+    if (
+      hasRef &&
+      (typeof input.ref !== 'string' || input.ref.length < 1 || input.ref.length > 4096)
+    )
+      issues.push({
+        path: 'ref',
+        reason: 'invalid-value',
+        expected: 'non-empty string of at most 4096 characters',
+      })
+    if (hasDraft && input.draft !== true)
+      issues.push({ path: 'draft', reason: 'invalid-value', expected: 'true' })
+    if (Object.hasOwn(input, 'version')) {
+      if (hasDraft) issues.push({ path: 'version', reason: 'forbidden-with-draft' })
+      else if (input.version !== 'exact' && input.version !== 'current')
+        issues.push({ path: 'version', reason: 'invalid-value', expected: 'exact or current' })
+    }
+    if (Object.hasOwn(input, 'includeCode') && typeof input.includeCode !== 'boolean')
+      issues.push({ path: 'includeCode', reason: 'invalid-type', expected: 'boolean' })
+    for (const key of Object.keys(input))
+      if (!['ref', 'draft', 'version', 'includeCode'].includes(key))
+        issues.push({ path: key, reason: 'unknown-field' })
+  }
+  const code = 'report-read-invalid-input'
+  const recovery = {
+    nextAction:
+      'Choose either {ref, version?, includeCode?} or {draft:true, includeCode?}; omit version for drafts. Use an opaque ref from a successful write, read, or report list.',
+  }
+  throw new Error(
+    `${code}; error=${JSON.stringify({ code, tool: 'marivo_report_read', phase: 'input', issues, recovery })}`,
+  )
+}
 
 /** Permanently delete the saved view and all its history in the current Workspace. */
 export function createMarivoReportDeleteTool(source: PresentationWorkspaceSource): ToolDefinition {
@@ -606,12 +656,7 @@ export function createMarivoUiReadTool(
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value.definition) }],
     },
     async execute(args, exec) {
-      const parsed = uiReadInput.safeParse(args)
-      if (!parsed.success)
-        throw new Error(
-          'report-read-input-invalid: provide {ref,version?:"exact"|"current",includeCode?} or {draft:true,includeCode?}. version=current still requires a saved ref. Use marivo_report_list to find saved reports; saving clears the draft.',
-        )
-      const input = parsed.data
+      const input = parseUiReadInput(args)
       const binding = await source()
       let document: AnalysisDocument
       let identifiers: { ref: string; mode?: 'edit' | 'refresh-data'; basedOn?: string }
@@ -623,7 +668,7 @@ export function createMarivoUiReadTool(
       let checkDraft = () => {}
       if ('draft' in input || selectedRef?.kind === 'draft') {
         const session = exec.agent?.session
-        if (!session) throw unavailableDraft()
+        if (!session) throw unavailableDraft('report-read')
         const turn = presentationTurn(session, exec)
         const draft = drafts?.get(String(session.id))
         if (
@@ -637,7 +682,7 @@ export function createMarivoUiReadTool(
               selectedRef.draftId !== draft.delivery.draftId ||
               selectedRef.revision !== draft.delivery.draftRevision))
         )
-          throw unavailableDraft()
+          throw unavailableDraft('report-read')
         document = draft.document
         identifiers = {
           ref: draftReportRef({
@@ -661,7 +706,7 @@ export function createMarivoUiReadTool(
 
         checkDraft = () => {
           if (exec.agent?.session !== session || drafts?.get(String(session.id)) !== draft)
-            throw unavailableDraft()
+            throw unavailableDraft('report-read')
         }
       } else {
         if (selectedRef?.kind !== 'saved') throw new Error('report-saved-ref-required')

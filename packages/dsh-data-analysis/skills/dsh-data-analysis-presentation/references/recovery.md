@@ -10,6 +10,8 @@
 - 视图当前版本：`marivo_report_read({ref,version:"current"})`，仅限 saved ref。
 - 当前 Turn 草稿：`marivo_report_read({draft:true})`。
 
+两类输入互斥，`includeCode` 可用于任一形式；不要为 draft 传 `ref` 或 `version`。`report-read-invalid-input` 的 `error=` JSON 给出输入问题与修复建议；草稿过期、引用无效或 Workspace 不匹配属于不同状态，应按各自错误恢复，不要只改参数盲试。
+
 结构化 `definition` 包含实际读取的 ref、程序、资源声明、配置元信息和准确引用复用组。需要脚本时传 `includeCode:true`；sources 按执行记录去重，unavailable 不阻塞内嵌快照读取，也不触发代码执行。组件签名按需读[组件签名](analysis-catalog.md)。
 
 草稿不跨 Turn/重启，写入串行使用最新成功 ref。流式画面是候选，不产生可用 ref；失败或取消保留最后成功版本。`deliveryJson` 是 Host-owned 投递兼容字段，不用于模型拼装版本。

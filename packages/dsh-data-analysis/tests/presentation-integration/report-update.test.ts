@@ -402,8 +402,33 @@ test('real Harness PTC repairs a rejected column and saves using the same draft'
       arguments: {
         description: 'Compose and recover the report draft',
         code: `
+          let readFailure;
+          try {
+            await tools.marivo_report_read({});
+          } catch (error) {
+            const message = String(error.message);
+            const marker = message.indexOf('error=');
+            if (marker < 0) throw error;
+            readFailure = JSON.parse(message.slice(marker + 6));
+          }
+          if (readFailure?.code !== 'report-read-invalid-input' || readFailure?.phase !== 'input') {
+            throw new Error('PTC read input repair details missing');
+          }
           const first = await tools.marivo_report_write({stage:'preview', resourcePatch:{put:${JSON.stringify({ data: f.resources.data })}}});
           if (first.stage !== 'preview' || !first.ref) throw new Error('preview-identity');
+          let deleteFailure;
+          try {
+            await tools.marivo_report_write({stage:'preview', ref:first.ref, program:'root = null;'});
+          } catch (error) {
+            const message = String(error.message);
+            const marker = message.indexOf('error=');
+            if (marker < 0) throw error;
+            deleteFailure = JSON.parse(message.slice(marker + 6));
+          }
+          if (deleteFailure?.code !== 'analysis-program-root-deleted' ||
+              deleteFailure.recovery?.currentRef !== first.ref || deleteFailure.recovery?.applied !== false) {
+            throw new Error('PTC deletion repair details missing');
+          }
           let layoutFailure;
           try {
             await tools.marivo_report_write({stage:'preview', ref:first.ref,
@@ -867,8 +892,37 @@ test('statement updates reuse embedded snapshots without resolving Runtime and s
     update({ basedOnRecordId: base.recordId, program: 'heading = TextContent("Stale");' }),
     /report-save-conflict/,
   )
+  for (const [program, code, statement] of [
+    ['heading = null;', 'analysis-program-deleted-reference', 'heading'],
+    ['root = null;', 'analysis-program-root-deleted', 'root'],
+  ] as const) {
+    await assert.rejects(update({ basedOnRecordId: next.recordId, program }), (error: unknown) => {
+      assert(error instanceof Error)
+      const marker = error.message.indexOf('error=')
+      assert(marker >= 0)
+      const detail = JSON.parse(error.message.slice(marker + 6))
+      assert.equal(detail.code, code)
+      assert.equal(detail.recovery.statement, statement)
+      assert.equal(detail.recovery.applied, false)
+      if (statement === 'heading') {
+        assert.deepEqual(detail.recovery.unresolved, ['heading'])
+        assert.deepEqual(detail.recovery.referencedBy, ['root'])
+      }
+      return true
+    })
+  }
+  assert.equal(
+    (await resolvePresentation(f.root, 'workspace', base.reportId)).buildId,
+    next.buildId,
+  )
+  await assert.rejects(
+    update({
+      basedOnRecordId: next.recordId,
+      program: 'root = Stack([missing]); heading = null;',
+    }),
+    /analysis-program-invalid/,
+  )
   for (const program of [
-    'heading = null;',
     'bad = TotallyMissing("bad")',
     'bad = TextContent(42)',
     'bad = TextContent("unreachable")',

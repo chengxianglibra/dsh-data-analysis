@@ -7,6 +7,7 @@ import {
   parseExpression,
   split,
   tokenize,
+  walkAST,
 } from '@openuidev/lang-core'
 import { z } from 'zod/v4'
 import { analysisCatalogSchema, analysisRootComponents } from './analysis-catalog.ts'
@@ -15,6 +16,8 @@ type AnalysisProgramCode =
   | 'analysis-program-incomplete'
   | 'analysis-program-invalid-statement'
   | 'analysis-program-invalid'
+  | 'analysis-program-deleted-reference'
+  | 'analysis-program-root-deleted'
 
 export class AnalysisProgramError extends Error {
   readonly code: AnalysisProgramCode
@@ -22,6 +25,7 @@ export class AnalysisProgramError extends Error {
     line?: number
     column?: number
     unresolved?: string[]
+    referencedBy?: string[]
     detail?: string
     statement?: string
     component?: string
@@ -151,6 +155,32 @@ export function mergeAnalysisProgram(base: string, patch: string): string {
       detail: 'analysis-patch-duplicate-statement',
     })
   const merged = mergeStatements(analysisStatements(base), admitted)
+  const deleted = changes
+    .filter((statement) => parseExpression(statement.tokens).k === 'Null')
+    .map((statement) => statement.id)
+  if (deleted.includes('root'))
+    throw new AnalysisProgramError('analysis-program-root-deleted', { statement: 'root' })
+  if (deleted.length) {
+    const unresolved = parser.parse(merged).meta.unresolved.filter((name) => deleted.includes(name))
+    if (unresolved.length) {
+      const statement = unresolved[0]!
+      const referencedBy = split(tokenize(merged))
+        .flatMap((part) => {
+          let referencesDeleted = false
+          walkAST(parseExpression(part.tokens), (node) => {
+            if ((node.k === 'Ref' || node.k === 'RuntimeRef') && node.n === statement)
+              referencesDeleted = true
+          })
+          return referencesDeleted ? [part.id] : []
+        })
+        .slice(0, 16)
+      throw new AnalysisProgramError('analysis-program-deleted-reference', {
+        statement,
+        unresolved: unresolved.slice(0, 16),
+        referencedBy,
+      })
+    }
+  }
   const retained = new Set(split(tokenize(merged)).map((statement) => statement.id))
   // The official merger garbage-collects unreachable statements before Catalog
   // validation. Reject discarded edits instead of acknowledging a silent no-op.
