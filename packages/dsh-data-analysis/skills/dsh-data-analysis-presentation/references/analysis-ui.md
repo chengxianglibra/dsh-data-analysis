@@ -2,7 +2,7 @@
 
 ## 选择数据来源与刷新契约
 
-准备数据时，governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，使用 AnalysisFrameView；不为画图或表格将 Frame 转成 DataFrame。纯文件、合法外部计算或合适的表格明细使用 DatasetView，不为更换视图强行建模。每个数据视图使用独立命名语句；多个视图可以共享同一准确固定资源或引用并保留原生产 codeRef，不为不同展示重复计算。派生结果显式读取准确固定输入、保存新输出，代码记录不冒充完整依赖图。
+准备数据时，governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，使用 AnalysisFrameView；不为画图或表格将 Frame 转成 DataFrame。纯文件、合法外部计算或合适的表格明细使用 DatasetView，不为更换视图强行建模。同一结果的趋势图和明细表可以共享资源，各自声明字段和样式。计算分批与草稿时机见[边分析边更新](../SKILL.md#边分析边更新)，结果复用与来源见[结果导出](capture.md)。
 
 新建可刷新的分析视图时，按已核验的字段尽量显式选择 chart 和 encoding；table 可明确 columns，避免列随数据变化。auto 适合探索草稿或只能由 Frame 结构判定的视图，不承诺刷新后的呈现形态固定。部分 comparison/decomposition 视图也会按结构调整内部布局。保持分析粒度、角色和字段契约，并核对形态；不能通过新增空值、伪造行或改变业务口径维持外观。
 

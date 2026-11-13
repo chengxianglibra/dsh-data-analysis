@@ -14,7 +14,7 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 
 `marivo_report_write` 的工具输入见 [tool.ts](../../../packages/dsh-data-analysis/src/presentation/tool.ts)。每次必须显式提供 `stage:"preview" | "save"`；省略时在访问 Workspace 前拒绝。新建分析视图省略 `ref`，编辑已有视图传准确 saved ref，续接草稿传最新 draft ref。`mode` 首次缺省为 edit；refresh-data 必须从 saved ref 开始。草稿继承首次模式，不允许后续切换。`onto` 只允许与 preview、draft ref 以及审阅后的当前 saved ref 一起使用。模型不再传内部 recordId、draftId 或 revision。
 
-分析视图工作流要求显式选择 stage：数据准备前尽早 preview，固定结果就绪后及时更新同一草稿，不等全部计算完成，最终 save 一次；相同固定结果可以供多个视图复用。计算按 Harness 能力、依赖和资源预算安排，同一草稿的 preview/save 串行执行。初始程序可只有标题、范围和问题文字，省略 resourcePatch。该工作流由 Prompt/Skill/工具说明引导，工具仍支持普通单结果直接保存，不把文案规则声明为服务端强约束。
+新建分析视图可先用标题、范围和问题文字 preview，省略 resourcePatch。随后按[展示 Skill](presentation-skill.md#工作流与工具责任)分批交付，首批有效结果核对后先更新草稿，再开始独立的后续计算，最终 save 一次。同一草稿的 preview/save 串行执行。分批和交付时机由 Prompt、Skill 与工具说明引导，工具仍支持普通单结果直接保存。
 
 `resourcePatch.put` 按资源名新增或替换声明，`resourcePatch.remove` 显式删除；未提及的资源继承基版本。省略 patch 或提供空 patch 不删除资源；同名 put/remove、重复删除、删除不存在的资源均拒绝。程序和资源变更按最终文档一起校验，失败保留最后成功草稿。旧调用参数 `resources` 不再接受；已保存 Build 内的 resources 保留原义。
 
