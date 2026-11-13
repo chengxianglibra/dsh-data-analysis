@@ -260,3 +260,95 @@ test('offline filters begin at saved defaults and operate on the complete embedd
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('offline datetime lines honor presentation options while retaining exact saved values', async () => {
+  const times = ['2026-11-07T00:00:00+08:00', '2026-11-07T01:00:00+08:00']
+  const snapshot = datasetSnapshot(
+    [
+      [times[0]!, 10, 20],
+      [times[1]!, 12, 24],
+    ],
+    [
+      { id: 'when', label: 'When', type: 'datetime', nullable: false },
+      { id: 'p50', label: 'P50', type: 'float64', nullable: false },
+      { id: 'p90', label: 'P90', type: 'float64', nullable: false },
+    ],
+  )
+  const document = parseAnalysisDocument({
+    schemaVersion: ANALYSIS_UI_FORMAT,
+    workspaceId: 'workspace',
+    reportId: 'report',
+    buildId: 'build',
+    recordId: analysisRecordId('report', 'build'),
+    title: 'Offline latency',
+    locale: 'en-US',
+    generatedAt: '2026-11-07T00:00:00Z',
+    catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+    program:
+      'root = DatasetView("result", {chart:"line",encoding:{axis:"when",values:["p50","p90"]}}, {time:{tickFormat:"date-time",showTimezone:false},seriesLayout:"overlay"});',
+    resources: {
+      result: {
+        kind: 'snapshot',
+        declaration: { kind: 'dataset-snapshot', snapshotRef: 'ref' },
+        snapshot,
+        binding: {
+          workspaceId: 'workspace',
+          sessionId: 'session',
+          callId: 'call',
+          codeRef: {
+            executionId: '12345678-1234-4123-8123-123456789abc',
+            sha256: 'a'.repeat(64),
+          },
+        },
+      },
+    },
+  })
+  const directory = await mkdtemp(path.join(tmpdir(), 'dsh-offline-time-lines-'))
+  const browser = await chromium.launch()
+  try {
+    const reportPath = path.join(directory, 'report.html')
+    await writeFile(reportPath, exportAnalysisHtml(document))
+    const context = await browser.newContext({
+      offline: true,
+      viewport: { width: 1024, height: 900 },
+    })
+    const page = await context.newPage()
+    const remoteRequests: string[] = []
+    const errors: string[] = []
+    page.on('request', (request) => {
+      if (/^https?:/i.test(request.url())) remoteRequests.push(request.url())
+    })
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.goto(pathToFileURL(reportPath).href)
+    const chart = page.locator('[data-resource="result"]')
+    await chart.locator('.recharts-line-curve').first().waitFor()
+    assert.equal(await chart.locator('svg.recharts-surface').count(), 1)
+    assert.equal(await chart.locator('.recharts-line-curve').count(), 2)
+    const strokes = await chart
+      .locator('.recharts-line-curve')
+      .evaluateAll((paths) => paths.map((path) => path.getAttribute('stroke')))
+    assert.equal(new Set(strokes).size, 2)
+    const legend = chart.getByRole('list', { name: 'Data series' })
+    assert.equal(await legend.isVisible(), true)
+    assert.deepEqual(
+      (await legend.locator('li').allTextContents()).map((item) => item.replace('━', '').trim()),
+      ['P50', 'P90'],
+    )
+    const ticks = await chart
+      .locator('.recharts-xAxis-tick-labels [data-tick] > text')
+      .allTextContents()
+    assert.ok(ticks.includes('2026-11-07 00:00'))
+    assert.ok(ticks.includes('2026-11-07 01:00'))
+    assert.ok(ticks.every((tick) => !tick.includes('+08:00')))
+    await chart.locator('[data-icon="data"] button').click()
+    const data = page.getByRole('dialog')
+    for (const time of times)
+      assert.equal(await data.getByText(time, { exact: true }).isVisible(), true)
+    assert.deepEqual(remoteRequests, [])
+    assert.deepEqual(errors, [])
+    await context.close()
+  } finally {
+    await browser.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})

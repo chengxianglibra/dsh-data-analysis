@@ -1,3 +1,4 @@
+import { seriesLayoutIssue } from './display-fields.ts'
 import {
   classifyFrame,
   comparisonLabelAlias,
@@ -29,6 +30,8 @@ export function frameDisplayIssue(
   display?: FrameDisplay,
 ): DisplayIssue | undefined {
   if (!display) return undefined
+  const layoutIssue = seriesLayoutIssue(snapshot.data.columns, view, display)
+  if (layoutIssue) return { path: layoutIssue }
   const numericValue = (name: string) =>
     snapshot.frame.fields.some((field) => field.id === name && field.role === 'value') &&
     snapshot.data.columns.some((column) => column.id === name && numericViewType(column.type))

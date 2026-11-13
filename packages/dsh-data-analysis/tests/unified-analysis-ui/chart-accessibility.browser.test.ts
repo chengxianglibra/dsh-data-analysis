@@ -31,10 +31,13 @@ const heatmap = frame({axes:[{name:'hour',type:'datetime',keys,variant:{kind:'ca
   values:[value('m0',2,observed())]});
 const dataset = datasetSnapshot([[keys[0],'1'],['2026-11-10T05:00:00.012300+08:00','2']],[
   {id:'timestamp',label:'Timestamp',type:'datetime',nullable:false},{id:'value',label:'Value',type:'decimal',nullable:false}]);
+const datasetHeatmap = datasetSnapshot([[keys[0],'A','1'],[keys[1],'B','2']],[
+  {id:'timestamp',label:'Timestamp',type:'datetime',nullable:false},{id:'group',label:'Group',type:'string',nullable:false},
+  {id:'value',label:'Value',type:'decimal',nullable:false}]);
 const resources = {line: resource(observeTime(3)), area: resource(observeTime(3)),
-  bar: resource(hourly), heatmap: resource(heatmap), dense: resource(observeTime(2001)), dataset: resource(dataset),
+  bar: resource(hourly), heatmap: resource(heatmap), formattedHeatmap: resource(heatmap), datasetHeatmap: resource(datasetHeatmap), dense: resource(observeTime(2001)), dataset: resource(dataset),
   domain: resource(compareCalendar(6))};
-const program = 'root = Stack([line, area, bar, heatmap, dense, dataset, domain]);\\nline = AnalysisFrameView("line", {chart: "line"});\\narea = AnalysisFrameView("area", {chart: "area"});\\nbar = AnalysisFrameView("bar", {chart: "bar"});\\nheatmap = AnalysisFrameView("heatmap", {chart: "heatmap",encoding:{x:"hour",y:"region",value:"m0"}});\\ndense = AnalysisFrameView("dense", {chart: "line"});\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "timestamp", values: ["value"]}});\\ndomain = AnalysisFrameView("domain", {chart: "comparison"});';
+const program = 'root = Stack([line, area, bar, heatmap, formattedHeatmap, datasetHeatmap, dense, dataset, domain]);\\nline = AnalysisFrameView("line", {chart: "line"});\\narea = AnalysisFrameView("area", {chart: "area"});\\nbar = AnalysisFrameView("bar", {chart: "bar"});\\nheatmap = AnalysisFrameView("heatmap", {chart: "heatmap",encoding:{x:"hour",y:"region",value:"m0"}});\\nformattedHeatmap = AnalysisFrameView("formattedHeatmap", {chart:"heatmap",encoding:{x:"hour",y:"region",value:"m0"}}, {time:{tickFormat:"date-time",showTimezone:false}});\\ndatasetHeatmap = DatasetView("datasetHeatmap", {chart:"heatmap",encoding:{x:"timestamp",y:"group",value:"value"}}, {time:{tickFormat:"date-time",showTimezone:false}});\\ndense = AnalysisFrameView("dense", {chart: "line"});\\ndataset = DatasetView("dataset", {chart: "line", encoding: {axis: "timestamp", values: ["value"]}});\\ndomain = AnalysisFrameView("domain", {chart: "comparison"});';
 window.selections = [];
 createRoot(document.getElementById('root')).render(createElement(AnalysisRenderer, {
   program, title: 'Chart tooltip', locale: 'en-US', resources,
@@ -135,6 +138,23 @@ test('heatmap hover uses the declared hour and one tooltip', async () => {
   const tooltip = card.locator('.recharts-tooltip-wrapper')
   await tooltip.getByText('2026-11-10 05:00 +08:00 · r0', { exact: true }).waitFor()
   assert.equal(await cell.locator('title').count(), 0)
+})
+
+test('explicit time formatting also applies to heatmaps without captured periods', async () => {
+  for (const [name, group] of [
+    ['formattedHeatmap', 'r0'],
+    ['datasetHeatmap', 'A'],
+  ]) {
+    const card = await checkSurface(name!)
+    const label = card.locator('[data-heatmap-column="2026-11-10 05:00"]')
+    assert.equal(await label.count(), 1)
+    assert.equal(await card.locator('[data-mark="cell"]').count(), 2)
+    await card.locator('[data-mark="cell"]').first().hover()
+    await card
+      .locator('.recharts-tooltip-wrapper')
+      .getByText(new RegExp(`2026-11-10T05:00:00\\.000000\\+08:00 · ${group}`))
+      .waitFor()
+  }
 })
 
 test('Dataset and domain charts expose accessible roots', async () => {

@@ -57,6 +57,7 @@ export function TimeChart(props: MainViewProps<'line' | 'area' | 'bar' | 'interv
       )}
       view={props.view}
       height={props.height}
+      seriesLayout={props.snapshot.frameDisplay?.seriesLayout}
     />
   )
 }

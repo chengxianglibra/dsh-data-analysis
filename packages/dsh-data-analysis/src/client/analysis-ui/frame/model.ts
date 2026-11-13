@@ -287,6 +287,46 @@ function dateParts(iso: string, timezone: string) {
     return undefined
   }
 }
+
+/** Format a civil datetime for a tick without changing its saved coordinate. */
+export function formattedTimeTick(
+  raw: string,
+  options: FrameDisplay['time'],
+  timezone?: string,
+): string | undefined {
+  if (
+    !options ||
+    ((options.tickFormat === undefined || options.tickFormat === 'auto') &&
+      options.showTimezone === undefined)
+  )
+    return undefined
+  const match =
+    /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2})(?::(\d{2})(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.exec(
+      raw,
+    )
+  if (!match) return undefined
+  const parts = timezone && match[5] ? dateParts(raw, timezone) : undefined
+  const date = parts ? `${parts.y}-${parts.m}-${parts.d}` : match[1]!
+  const time = parts ? `${parts.h}:${parts.mi}` : match[2]
+  const offset = parts ? parts.offset : match[5]
+  let result: string
+  switch (options.tickFormat) {
+    case 'date':
+      result = date
+      break
+    case 'date-time':
+      result = time ? `${date} ${time}` : date
+      break
+    case 'time':
+      result = time ?? date
+      break
+    default:
+      result = parts
+        ? `${date} ${time}:${parts.sec}${parts.fraction ? `.${parts.fraction}` : ''}`
+        : raw.replace(/(?:Z|[+-]\d{2}:?\d{2})$/, '')
+  }
+  return options.showTimezone !== false && offset ? `${result} ${offset}` : result
+}
 type Unit = Extract<FrameGrain, { kind: 'builtin' }>['unit']
 const civilDateTime =
   /^(\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))(?:[T ](\d\d:\d\d)(?::(\d\d)(?:\.\d+)?)?(Z|[+-]\d\d(?::?\d\d)?)?)?$/
@@ -374,6 +414,7 @@ export interface Tick {
   label: string
   title: string
   incomplete: boolean
+  formatted?: boolean
 }
 /** Describe only saved calendar selection facts; its bounds are not available. */
 export function periodDetail(t: Translator, item: Period | null): string {
@@ -440,6 +481,20 @@ function periodTick(t: Translator, item: Period, variant?: FrameAxisVariant): Ti
  * including those without a data row, so missing periods leave a gap.
  */
 export function timeTicks(t: Translator, s: Snapshot, axis: FrameAxis) {
+  const time = s.frameDisplay?.time
+  // The existing Frame auto ticks already omit zone text. Preserve their grain-aware
+  // abbreviation when only the header's timezone is hidden.
+  const tickOptions =
+    (time?.tickFormat && time.tickFormat !== 'auto') || time?.showTimezone === true
+      ? time
+      : undefined
+  const withZone = (label: string | undefined, raw: string, timezone: string | undefined) =>
+    label !== undefined &&
+    tickOptions?.showTimezone === true &&
+    timezone &&
+    !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw)
+      ? `${label} ${timezone}`
+      : label
   const pages = periodsOf(s)?.pages.filter(
     (p) => p.target.kind === 'axis' && p.target.axisToken === axis.token,
   )
@@ -453,7 +508,27 @@ export function timeTicks(t: Translator, s: Snapshot, axis: FrameAxis) {
   }
   const ticks: Tick[] = []
   for (const item of items)
-    if (counts.get(JSON.stringify(item.key)) === 1) ticks.push(periodTick(t, item, axis.variant))
+    if (counts.get(JSON.stringify(item.key)) === 1) {
+      const tick = periodTick(t, item, axis.variant)
+      const raw =
+        item.kind === 'calendar' && item.label !== null
+          ? String(item.label)
+          : 'start' in item
+            ? item.start
+            : ''
+      const formatted = withZone(
+        formattedTimeTick(raw, tickOptions, item.kind === 'interval' ? item.timezone : undefined),
+        raw,
+        item.timezone,
+      )
+      const exact = item.key.map((part) => String(part)).join(' · ')
+      const bounds = item.kind === 'interval' ? ` · ${item.start} – ${item.end}` : ''
+      ticks.push({
+        ...tick,
+        ...(formatted === undefined ? {} : { label: formatted, formatted: true }),
+        title: time ? `${tick.title} · ${exact}${bounds}` : tick.title,
+      })
+    }
   const index = new Map(ticks.map((tick, i) => [tick.key, i]))
   const variant = axis.variant
   const timezone = variant && 'timezone' in variant ? variant.timezone : 'UTC'
@@ -465,7 +540,9 @@ export function timeTicks(t: Translator, s: Snapshot, axis: FrameAxis) {
     const first = s.frame.coordinates[axis.keys[0]!.slotId]?.values[row]
     const member = memberLabel(s, axis, row)
     const tick = calendarChartTick(member, variant?.kind === 'calendar' ? variant.grain : undefined)
+    const formatted = withZone(formattedTimeTick(member, tickOptions, timezone), member, timezone)
     const label =
+      formatted ??
       tick?.label ??
       (variant?.kind === 'calendar' && variant.grain.kind === 'named'
         ? member
@@ -473,7 +550,14 @@ export function timeTicks(t: Translator, s: Snapshot, axis: FrameAxis) {
           ? instantText(first, timezone, unit)
           : member)
     index.set(key, ticks.length)
-    ticks.push({ key, label, title: tick?.title ?? member, incomplete: false })
+    const title = tick?.title ?? member
+    ticks.push({
+      key,
+      label,
+      title: time ? `${title} · ${member}` : title,
+      incomplete: false,
+      ...(formatted === undefined ? {} : { formatted: true }),
+    })
   }
   return { ticks, tickOf: (row: number) => index.get(axisKey(s, axis, row)) ?? -1 }
 }
@@ -526,10 +610,13 @@ export function aggregationSymbol(context: FrameValueContext | null | undefined)
   }
 }
 
-function fixedTimeLabel(time: { start: string; end: string; timezone: string }): string {
+function fixedTimeLabel(
+  time: { start: string; end: string; timezone: string },
+  showTimezone = true,
+): string {
   const format = (instant: string) => {
     const parts = dateParts(instant, time.timezone)
-    return parts ? preciseInstant(parts) : instant
+    return parts ? preciseInstant(parts, showTimezone) : instant
   }
   return `${format(time.start)} – ${format(time.end)}`
 }
@@ -541,15 +628,27 @@ export function headerContext(
   values: string[],
   comparison?: number,
 ): string | undefined {
+  const hidden = s.frameDisplay?.timeContext === 'hidden'
   if (comparison !== undefined) {
+    const facts = interpretationOf(s)?.comparisons
+    const selected = facts?.[comparison]
+    const explicit =
+      selected &&
+      s.frameDisplay?.comparisonLabels?.filter(
+        (item) => comparisonLabelAlias(item) === selected.alias,
+      )
+    const hasExplicit =
+      explicit?.length === 1 && facts?.filter((item) => item.alias === selected?.alias).length === 1
+    if (hidden && !hasExplicit && selected?.binding.kind !== 'ordinary') return undefined
     const ends = endpointLabels(t, s, comparison)
     if (ends.specific) return `${ends.current} ⇄ ${ends.baseline}`
   }
+  if (hidden) return undefined
   const interpretation = interpretationOf(s)
   for (const name of values) {
     const context = interpretation?.valueContexts[name]
     if (context?.kind === 'observation' && context.time?.kind === 'fixed') {
-      return fixedTimeLabel(context.time)
+      return fixedTimeLabel(context.time, s.frameDisplay?.time?.showTimezone !== false)
     }
   }
   const axis = s.frame.axes.find((item) => item.variant?.kind === 'calendar')
@@ -595,10 +694,13 @@ function dayText(day: number): string {
     date.getUTCDate(),
   ).padStart(2, '0')}`
 }
-function preciseInstant(part: NonNullable<ReturnType<typeof dateParts>>): string {
+function preciseInstant(
+  part: NonNullable<ReturnType<typeof dateParts>>,
+  showTimezone = true,
+): string {
   const fraction = /[1-9]/.test(part.fraction) ? `.${part.fraction}` : ''
   const seconds = part.sec !== '00' || fraction ? `:${part.sec}${fraction}` : ''
-  return `${part.y}-${part.m}-${part.d} ${part.h}:${part.mi}${seconds} ${part.offset}`
+  return `${part.y}-${part.m}-${part.d} ${part.h}:${part.mi}${seconds}${showTimezone ? ` ${part.offset}` : ''}`
 }
 function intervalText(p: Extract<Period, { kind: 'interval' }>): string {
   const start = dateParts(p.start, p.timezone)

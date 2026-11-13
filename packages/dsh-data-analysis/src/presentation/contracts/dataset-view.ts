@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { commonDisplayFields } from './display-fields.ts'
-import type { FrameView, FrameViewFailure } from './frame-view.ts'
+import { commonDisplayFields, seriesLayoutIssue } from './display-fields.ts'
+import type { FrameView, FrameViewFailure, ResolvedFrameView } from './frame-view.ts'
 import type { DatasetSnapshot } from './snapshot.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
 import { availableNames, numericViewType } from './view-fields.ts'
@@ -29,7 +29,15 @@ export const datasetDisplaySchema = z.strictObject({
 export type DatasetDisplay = z.infer<typeof datasetDisplaySchema>
 
 /** Validate author format references against saved numeric column IDs. */
-export function datasetDisplayIssue(snapshot: DatasetSnapshot, display?: DatasetDisplay) {
+export function datasetDisplayIssue(
+  snapshot: DatasetSnapshot,
+  display?: DatasetDisplay,
+  view?: ResolvedDatasetView | ResolvedFrameView,
+) {
+  if (view) {
+    const issue = seriesLayoutIssue(snapshot.data.columns, view, display)
+    if (issue) return { path: issue }
+  }
   const names = (display?.formats ?? []).map(({ value }) => value)
   const numeric = snapshot.data.columns
     .filter((column) => numericViewType(column.type))
@@ -46,8 +54,12 @@ export function datasetDisplayIssue(snapshot: DatasetSnapshot, display?: Dataset
   return undefined
 }
 
-export function validateDatasetDisplay(snapshot: DatasetSnapshot, display?: DatasetDisplay) {
-  return datasetDisplayIssue(snapshot, display)?.path.split('/').slice(0, 3).join('/')
+export function validateDatasetDisplay(
+  snapshot: DatasetSnapshot,
+  display?: DatasetDisplay,
+  view?: ResolvedDatasetView | ResolvedFrameView,
+) {
+  return datasetDisplayIssue(snapshot, display, view)?.path.split('/').slice(0, 3).join('/')
 }
 export type DatasetView = z.infer<typeof datasetViewSchema>
 export type ResolvedDatasetView =

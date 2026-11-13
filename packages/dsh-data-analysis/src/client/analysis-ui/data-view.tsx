@@ -157,7 +157,7 @@ export function AnalysisDataView({
     (!filters?.length || !snapshotFilterViewIssue(snapshot, resolution)) &&
     (isFrameSnapshotV2(snapshot)
       ? !validateFrameDisplay(snapshot, resolution.view, display)
-      : !validateDatasetDisplay(snapshot, display))
+      : !validateDatasetDisplay(snapshot, display, resolution.view))
   const ready =
     valid && resource?.kind === 'snapshot'
       ? {
@@ -437,8 +437,9 @@ function DatasetDataView({
         visibleRowIndices,
         display?.formats,
         t.locale,
+        display?.time,
       ),
-    [snapshot, chart, visibleRowIndices, display?.formats, t.locale],
+    [snapshot, chart, visibleRowIndices, display?.formats, display?.time, t.locale],
   )
   if (!resolution.ok)
     return (
@@ -679,7 +680,12 @@ function DatasetDataView({
             (chart.chart === 'heatmap' ? (
               <Heatmap model={model} view={chart} height={display?.height} />
             ) : (
-              <TimeChart model={model} view={chart} height={display?.height} />
+              <TimeChart
+                model={model}
+                view={chart}
+                height={display?.height}
+                seriesLayout={display?.seriesLayout}
+              />
             ))
           ) : metric ? (
             <MetricGroup

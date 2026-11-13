@@ -15,6 +15,70 @@ import {
 import type { FrameView } from '../../src/presentation/contracts/frame-view.ts'
 import { datasetSnapshot } from './dataset-fixtures.ts'
 
+test('line overlay accepts unknown units and rejects conflicting units or formats', () => {
+  const snapshot = datasetSnapshot(
+    [['A', 1, 2]],
+    [
+      { id: 'x', label: 'x', type: 'string', nullable: false },
+      { id: 'a', label: 'a', type: 'float64', nullable: false },
+      { id: 'b', label: 'b', type: 'float64', nullable: false },
+    ],
+  )
+  const resolved = resolveDatasetView(snapshot, {
+    chart: 'line',
+    encoding: { axis: 'x', values: ['a', 'b'] },
+  })
+  assert.ok(resolved.ok)
+  const display = { seriesLayout: 'overlay' as const }
+  assert.equal(datasetDisplayIssue(snapshot, display, resolved.view), undefined)
+  snapshot.data.columns[1]!.unit = 'USD'
+  snapshot.data.columns[2]!.unit = 'EUR'
+  assert.equal(datasetDisplayIssue(snapshot, display, resolved.view)?.path, '/display/seriesLayout')
+  delete snapshot.data.columns[2]!.unit
+  assert.equal(
+    datasetDisplayIssue(
+      snapshot,
+      { ...display, formats: [{ value: 'a', format: 'percent' }] },
+      resolved.view,
+    )?.path,
+    '/display/seriesLayout',
+  )
+  assert.equal(
+    datasetDisplayIssue(snapshot, display, { chart: 'table', columns: ['x'] })?.path,
+    '/display/seriesLayout',
+  )
+})
+
+test('datetime tick formatting preserves distinct coordinates and exact tooltip labels', () => {
+  const source = ['2026-11-01T01:30:00-04:00', '2026-11-01T01:30:00-05:00']
+  const snapshot = datasetSnapshot(
+    source.map((value) => [value, 1]),
+    [
+      { id: 'when', label: 'When', type: 'datetime', nullable: false },
+      { id: 'value', label: 'Value', type: 'float64', nullable: false },
+    ],
+  )
+  const model = datasetChartModel(snapshot.data, ['when'], undefined, undefined, 'en-US', {
+    tickFormat: 'date-time',
+    showTimezone: false,
+  })
+  const axis = axisOf(model, 'when')!
+  const { ticks, tickOf } = ticksOf(model, axis)
+  assert.deepEqual(
+    ticks.map((tick) => tick.label),
+    ['2026-11-01 01:30', '2026-11-01 01:30'],
+  )
+  assert.deepEqual(
+    ticks.map((tick) => tick.title),
+    source,
+  )
+  assert.notEqual(tickOf(0), tickOf(1))
+  assert.deepEqual(
+    snapshot.data.rows.map((row) => row[0]),
+    source,
+  )
+})
+
 test('Dataset display admits numeric column formats and reports invalid references on save', () => {
   const snapshot = datasetSnapshot()
   const display = {

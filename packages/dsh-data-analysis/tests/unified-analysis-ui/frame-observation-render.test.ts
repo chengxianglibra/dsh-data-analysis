@@ -5,6 +5,7 @@ import {
   type FrameSnapshotV2,
   parseAnalysisSnapshot,
 } from '../../src/presentation/contracts/snapshot.ts'
+import { datasetSnapshot } from './dataset-fixtures.ts'
 import {
   align,
   attributeAdditive,
@@ -220,6 +221,63 @@ test('time-category charts preserve distinct series and their point identities',
   // Every equal-valued point remains represented in its own series and exposes its formatted value.
   assert.equal(count(html, /data-mark="filled"/), 72)
   assert.equal(count(html, /role="button" tabindex="0" aria-label="[^"]*: \$50\.00"/), 72)
+})
+
+test('explicit line layouts overlay or separate values without losing series or points', async () => {
+  const snapshot = observeTimeCategory(3, 2)
+  for (const column of snapshot.data.columns) {
+    if (column.id === 'm0' || column.id === 'm1') column.unit = 'USD'
+  }
+  const view = { chart: 'line' as const }
+  const overlay = await r().render(snapshot, {
+    view,
+    display: { seriesLayout: 'overlay' },
+    askPoint: true,
+  })
+  assert.equal(count(overlay, /<section class="fv-parent"/), 0)
+  assert.equal(count(overlay, /class="recharts-layer recharts-line"/), 6)
+  assert.equal(count(overlay, /role="button" tabindex="0"/), snapshot.data.rows.length * 2)
+  assert.match(overlay, /var\(--chart-1\)/)
+  assert.match(overlay, /var\(--chart-2\)/)
+
+  const facet = await r().render(snapshot, { view, display: { seriesLayout: 'facet' } })
+  assert.equal(count(facet, /<section class="fv-parent"/), 2)
+  assert.equal(count(facet, /class="recharts-layer recharts-line"/), 6)
+
+  const singleAxis = observeTime(3, 2)
+  for (const column of singleAxis.data.columns) {
+    if (column.id === 'm0' || column.id === 'm1') column.unit = 'USD'
+  }
+  assert.equal(count(await r().render(singleAxis, { view }), /<section class="fv-parent"/), 0)
+  assert.equal(
+    count(
+      await r().render(singleAxis, { view, display: { seriesLayout: 'facet' } }),
+      /<section class="fv-parent"/,
+    ),
+    2,
+  )
+})
+
+test('Dataset line values with unknown units can share one plot when explicitly requested', async () => {
+  const snapshot = datasetSnapshot(
+    [
+      ['A', 1, 2],
+      ['B', 2, 3],
+    ],
+    [
+      { id: 'x', label: 'x', type: 'string', nullable: false },
+      { id: 'p50', label: 'P50', type: 'float64', nullable: false },
+      { id: 'p90', label: 'P90', type: 'float64', nullable: false },
+    ],
+  )
+  const view = { chart: 'line' as const, encoding: { axis: 'x', values: ['p50', 'p90'] } }
+  const automatic = await r().render(snapshot, { view })
+  assert.equal(count(automatic, /<section class="fv-parent"/), 2)
+  const overlay = await r().render(snapshot, { view, display: { seriesLayout: 'overlay' } })
+  assert.equal(count(overlay, /<section class="fv-parent"/), 0)
+  assert.equal(count(overlay, /class="recharts-layer recharts-line"/), 2)
+  assert.match(overlay, /P50/)
+  assert.match(overlay, /P90/)
 })
 
 test('long time series never connect null gaps', async () => {

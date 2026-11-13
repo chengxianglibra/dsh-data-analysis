@@ -1,7 +1,7 @@
 import type { FrameDisplay } from '../../../presentation/contracts/frame-view.ts'
 import { formatCell } from '../../../presentation/contracts/index.ts'
 import type { PresentationLocale, TypedDataset } from '../../../presentation/contracts/types.ts'
-import { displayExplicitFormat } from '../frame/model.ts'
+import { displayExplicitFormat, formattedTimeTick } from '../frame/model.ts'
 import { type ChartModel, exact } from './model.ts'
 
 /** Discrete axis slots follow first appearance in the saved rows, including dates. */
@@ -11,6 +11,7 @@ export function datasetChartModel(
   visibleRowIndices?: readonly number[],
   formats?: FrameDisplay['formats'],
   locale: PresentationLocale = 'en-US',
+  time?: FrameDisplay['time'],
 ): ChartModel {
   return {
     data,
@@ -43,10 +44,33 @@ export function datasetChartModel(
     axes: [...new Set(axes)].map((id) => {
       const index = data.columns.findIndex((c) => c.id === id)
       const column = data.columns[index]!
+      const keys = data.rows.map((row) => JSON.stringify(row[index]))
+      const ticks: NonNullable<ChartModel['axes'][number]['ticks']>['ticks'] = []
+      const tickIndices = new Map<string, number>()
+      if ((column.type === 'datetime' || column.type === 'date') && time) {
+        for (const row of data.rows) {
+          const value = row[index] ?? null
+          const key = JSON.stringify(value)
+          if (tickIndices.has(key)) continue
+          tickIndices.set(key, ticks.length)
+          const title = formatCell(value, column)
+          const formatted = formattedTimeTick(title, time)
+          ticks.push({
+            key,
+            label: formatted ?? title,
+            title,
+            incomplete: false,
+            ...(formatted === undefined ? {} : { formatted: true }),
+          })
+        }
+      }
       return {
         id,
         name: id,
-        keys: data.rows.map((row) => JSON.stringify(row[index])),
+        keys,
+        ...(ticks.length
+          ? { ticks: { ticks, indices: keys.map((key) => tickIndices.get(key) ?? -1) } }
+          : {}),
         labels: data.rows.map((row) => {
           const cell = row[index] ?? null
           const label =

@@ -110,7 +110,7 @@ function ResourceView({
 export const AnalysisFrameView = defineComponent({
   name: 'AnalysisFrameView',
   description:
-    'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition. Display supports height, title, subtitle, formats, density, dataTable, rowLimit, comparisonLabels, highlight, decompositionTotals and recordPreview; options are validated against the saved Frame and resolved view.',
+    'Persisted Frame snapshot; view auto/table/metric/line/area/bar/pie/heatmap/comparison/decomposition. Display supports time tick format and timezone, timeContext, seriesLayout for lines, title, subtitle, numeric formats, density and other Frame options; options are validated against the saved Frame and resolved view.',
   props: frameProps,
   component: ({ props, statementId }) => (
     <ResourceView kind="frame" props={props} statementId={statementId} />
@@ -119,7 +119,7 @@ export const AnalysisFrameView = defineComponent({
 export const DatasetView = defineComponent({
   name: 'DatasetView',
   description:
-    'Captured DataFrame snapshot; auto/table/metric/line/area/bar/heatmap. Chart encoding names saved columns; axis order follows saved rows. No aggregation or analysis semantics.',
+    'Captured DataFrame snapshot; auto/table/metric/line/area/bar/heatmap. Display supports time tick format and timezone, seriesLayout for lines, title, subtitle and numeric formats. Chart encoding names saved columns; axis order follows saved rows. No aggregation or analysis semantics.',
   props: datasetProps,
   component: ({ props, statementId }) => (
     <ResourceView kind="dataset" props={props} statementId={statementId} />

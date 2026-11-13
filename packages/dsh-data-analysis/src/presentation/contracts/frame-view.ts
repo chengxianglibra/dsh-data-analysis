@@ -54,6 +54,7 @@ export const frameViewSchema = z.union([
 ])
 export const frameDisplaySchema = z.strictObject({
   ...commonDisplayFields,
+  timeContext: z.enum(['auto', 'hidden']).optional(),
   density: z.enum(['full', 'compact']).optional(),
   dataTable: z.enum(['collapsed', 'visible']).optional(),
   rowLimit: z.number().int().min(1).max(100).optional(),

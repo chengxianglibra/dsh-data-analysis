@@ -1,10 +1,149 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { displayFrameCell, periodLabel } from '../../src/client/analysis-ui/frame/model.ts'
+import {
+  displayFrameCell,
+  formattedTimeTick,
+  periodLabel,
+  timeTicks,
+} from '../../src/client/analysis-ui/frame/model.ts'
+import { translator } from '../../src/client/i18n/copy.ts'
 import { displayCell } from '../../src/client/presentation/display.ts'
 import { columnLabel } from '../../src/client/presentation/model.ts'
 import type { DatasetColumn } from '../../src/presentation/contracts/types.ts'
-import { correlate, shareByRegion } from './frame-fixtures.ts'
+import { correlate, frame, shareByRegion, token } from './frame-fixtures.ts'
+
+test('automatic time formatting converts the clock and offset together without losing precision', () => {
+  const raw = '2026-01-01T20:30:03.123456Z'
+  assert.equal(
+    formattedTimeTick(raw, { showTimezone: true }, 'Asia/Shanghai'),
+    '2026-01-02 04:30:03.123456 GMT+08:00',
+  )
+  assert.equal(
+    formattedTimeTick(raw, { tickFormat: 'auto', showTimezone: false }, 'Asia/Shanghai'),
+    '2026-01-02 04:30:03.123456',
+  )
+  assert.equal(formattedTimeTick(raw, { showTimezone: true }), '2026-01-01T20:30:03.123456 Z')
+})
+
+test('Frame time ticks honor display format while preserving period identity', () => {
+  const keys = ['2026-11-01T01:30:00-04:00', '2026-11-01T01:30:00-05:00']
+  const source = frame({
+    axes: [
+      {
+        name: 'hour',
+        type: 'datetime',
+        keys,
+        variant: {
+          kind: 'calendar',
+          timezone: 'America/New_York',
+          grain: { kind: 'builtin', unit: 'hour', step: 1 },
+        },
+      },
+    ],
+    values: [{ name: 'v', values: [1, 2] }],
+    periods: [
+      {
+        target: { kind: 'axis', axisToken: token('hour') },
+        totalCount: 2,
+        hasMore: false,
+        items: keys.map((key) => ({
+          kind: 'calendar',
+          key: [key],
+          label: key,
+          timezone: 'America/New_York',
+          selection: 'full',
+          cutoff: null,
+        })),
+      },
+    ],
+  })
+  const snapshot = {
+    ...source,
+    frameDisplay: { time: { tickFormat: 'date-time' as const, showTimezone: false } },
+  }
+  const result = timeTicks(translator('en-US'), snapshot, snapshot.frame.axes[0]!)
+  assert.deepEqual(
+    result.ticks.map((tick) => tick.label),
+    ['2026-11-01 01:30', '2026-11-01 01:30'],
+  )
+  assert.notEqual(result.tickOf(0), result.tickOf(1))
+  assert.match(result.ticks[0]!.title, /-04:00/)
+  assert.match(result.ticks[1]!.title, /-05:00/)
+
+  const civil = structuredClone(source)
+  const periods = civil.frame.sections.periods
+  assert.equal(periods.status, 'captured')
+  if (periods.status !== 'captured') throw new Error('missing periods')
+  for (const item of periods.pages[0]!.items)
+    if (item.kind === 'calendar') item.label = '2026-11-01T01:30:00'
+  const withZone = {
+    ...civil,
+    frameDisplay: { time: { tickFormat: 'date-time' as const, showTimezone: true } },
+  }
+  assert.deepEqual(
+    timeTicks(translator('en-US'), withZone, withZone.frame.axes[0]!).ticks.map(
+      (tick) => tick.label,
+    ),
+    ['2026-11-01 01:30 America/New_York', '2026-11-01 01:30 America/New_York'],
+  )
+})
+
+test('Frame time ticks convert saved instants to the axis timezone without period metadata', () => {
+  const source = frame({
+    axes: [
+      {
+        name: 'hour',
+        type: 'datetime',
+        keys: ['2026-01-01T00:00:00Z'],
+        variant: {
+          kind: 'calendar',
+          timezone: 'Asia/Shanghai',
+          grain: { kind: 'builtin', unit: 'hour', step: 1 },
+        },
+      },
+    ],
+    values: [{ name: 'v', values: [1] }],
+  })
+  const snapshot = {
+    ...source,
+    frameDisplay: { time: { tickFormat: 'date-time' as const, showTimezone: false } },
+  }
+  const ticks = timeTicks(translator('en-US'), snapshot, snapshot.frame.axes[0]!).ticks
+  assert.equal(ticks[0]?.label, '2026-01-01 08:00')
+})
+
+test('formatted interval ticks retain exact saved bounds and existing range in their tooltip', () => {
+  const start = '2026-01-01T00:00:03.123456Z'
+  const end = '2026-01-01T01:00:59.654321Z'
+  const source = frame({
+    axes: [
+      {
+        name: 'window',
+        type: 'datetime',
+        keys: [start],
+        variant: { kind: 'interval', timezone: 'Asia/Shanghai' },
+      },
+    ],
+    values: [{ name: 'v', values: [1] }],
+    periods: [
+      {
+        target: { kind: 'axis', axisToken: token('window') },
+        totalCount: 1,
+        hasMore: false,
+        items: [{ kind: 'interval', key: [start], timezone: 'Asia/Shanghai', start, end }],
+      },
+    ],
+  })
+  const snapshot = {
+    ...source,
+    frameDisplay: { time: { tickFormat: 'date-time' as const, showTimezone: false } },
+  }
+  const tick = timeTicks(translator('en-US'), snapshot, snapshot.frame.axes[0]!).ticks[0]!
+  assert.equal(tick.label, '2026-01-01 08:00')
+  assert.ok(tick.title.includes(start))
+  assert.ok(tick.title.includes(end))
+  assert.ok(tick.title.includes('2026-01-01 08:00 – 2026-01-01 09:00'))
+})
 
 const column = (type: DatasetColumn['type'], unit?: string): DatasetColumn => ({
   id: 'value',

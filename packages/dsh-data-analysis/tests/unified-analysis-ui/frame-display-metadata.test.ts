@@ -8,7 +8,7 @@ import {
   resolveFrameView,
 } from '../../src/presentation/contracts/frame-view.ts'
 import { browserTestsEnabled, skipBrowserTest } from '../browser-test.ts'
-import { categoryAxis, frame, months, timeAxis } from './frame-fixtures.ts'
+import { categoryAxis, comparedIntervalMonth, frame, months, timeAxis } from './frame-fixtures.ts'
 import { bundleRenderer, comparedScalar, type Renderer } from './frame-render-fixtures.ts'
 
 let renderer: Renderer
@@ -51,6 +51,74 @@ test('explicit scalar formats and titles preserve the saved values', async (t) =
   assert.match(html, /14\.5%/)
   assert.match(html, /3\.51 mile/)
   assert.equal(JSON.stringify(snapshot), original)
+})
+
+test('a metric can hide its automatic time context while retaining its authored subtitle', async (t) => {
+  if (skipBrowserTest(t)) return
+  const snapshot = frame({
+    values: [
+      {
+        name: 'v',
+        values: [42],
+        context: {
+          kind: 'observation',
+          subject: null,
+          window: null,
+          time: {
+            kind: 'fixed',
+            start: '2024-01-01T01:02:03Z',
+            end: '2025-01-01T03:04:05Z',
+            timezone: 'UTC',
+          },
+        },
+      },
+    ],
+  })
+  const original = JSON.stringify(snapshot)
+  const view = { chart: 'metric' as const }
+  const auto = await renderer.render(snapshot, { view })
+  assert.match(auto, /2024-01-01 01:02:03 GMT/)
+  const hidden = await renderer.render(snapshot, {
+    view,
+    display: { timeContext: 'hidden', subtitle: 'Custom period' },
+  })
+  assert.doesNotMatch(hidden, /2024-01-01 01:02:03 GMT/)
+  assert.match(hidden, /Custom period/)
+  assert.match(hidden, /42\.00/)
+  assert.equal(JSON.stringify(snapshot), original)
+})
+
+test('hiding time context preserves category comparison and authored endpoint labels', () => {
+  const t = translator('en-US')
+  const ordinary = comparedScalar({ current: 1, baseline: 2, absolute: -1, relative: -0.5 })
+  assert.equal(
+    headerContext(t, { ...ordinary, frameDisplay: { timeContext: 'hidden' } }, [], 0),
+    'west ⇄ east',
+  )
+  const temporal = comparedIntervalMonth()
+  assert.equal(headerContext(t, temporal, [], 0), '2025-06 ⇄ 2025-05')
+  assert.equal(
+    headerContext(t, { ...temporal, frameDisplay: { timeContext: 'hidden' } }, [], 0),
+    undefined,
+  )
+  const facts = temporal.frame.sections.interpretation
+  if (facts.status !== 'captured') throw new Error('expected captured interpretation')
+  const alias = facts.comparisons[0]!.alias
+  assert.equal(
+    headerContext(
+      t,
+      {
+        ...temporal,
+        frameDisplay: {
+          timeContext: 'hidden',
+          comparisonLabels: [{ ...(alias ? { alias } : {}), current: 'June', baseline: 'May' }],
+        },
+      },
+      [],
+      0,
+    ),
+    'June ⇄ May',
+  )
 })
 
 test('comparison endpoint labels bind to a saved alias and preserve the endpoint values', async (t) => {

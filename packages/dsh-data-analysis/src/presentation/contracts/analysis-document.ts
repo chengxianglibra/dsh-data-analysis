@@ -257,8 +257,17 @@ export function validateAnalysisResources(
         : resolveFrameView(source.snapshot, view.data)
     if (resolved.ok) {
       if (source.snapshot.kind === 'dataset') {
-        const issue = datasetDisplayIssue(source.snapshot, display.data)
-        if (issue) throw viewError('analysis-view-invalid', node, issue.path, issue)
+        const issue = datasetDisplayIssue(source.snapshot, display.data, resolved.view)
+        if (issue)
+          throw viewError(
+            'analysis-view-invalid',
+            node,
+            issue.path,
+            issue,
+            issue.path === '/display/seriesLayout'
+              ? 'Use seriesLayout on line charts; overlay requires compatible declared units and number formats. Choose facet or auto for conflicting values.'
+              : undefined,
+          )
       }
       if (source.snapshot.kind === 'frame') {
         const issue = frameDisplayIssue(source.snapshot, resolved.view, display.data)
@@ -268,11 +277,13 @@ export function validateAnalysisResources(
             node,
             issue.path,
             issue,
-            issue.path === '/display/rowLimit'
-              ? 'Use rowLimit only for horizontal category bars or ordinary tables; recordPreview uses its own limit.'
-              : issue.expectedKind === 'comparison-alias'
-                ? 'Use a unique saved comparison alias; omit alias to address a unique anonymous comparison.'
-                : undefined,
+            issue.path === '/display/seriesLayout'
+              ? 'Use seriesLayout on line charts; overlay requires compatible declared units and number formats. Choose facet or auto for conflicting values.'
+              : issue.path === '/display/rowLimit'
+                ? 'Use rowLimit only for horizontal category bars or ordinary tables; recordPreview uses its own limit.'
+                : issue.expectedKind === 'comparison-alias'
+                  ? 'Use a unique saved comparison alias; omit alias to address a unique anonymous comparison.'
+                  : undefined,
           )
       }
       continue

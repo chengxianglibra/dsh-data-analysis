@@ -11,6 +11,7 @@ export interface Tick {
   label: string
   title: string
   incomplete: boolean
+  formatted?: boolean
 }
 export interface ChartAxis {
   id: string

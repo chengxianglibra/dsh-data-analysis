@@ -116,13 +116,18 @@ export function SelectableMark({
     </g>
   )
 }
-export function TimeChart(props: ChartProps<'line' | 'area' | 'bar' | 'interval-bar'>) {
+export function TimeChart(
+  props: ChartProps<'line' | 'area' | 'bar' | 'interval-bar'> & {
+    seriesLayout?: 'auto' | 'overlay' | 'facet'
+  },
+) {
+  const layout = props.view.chart === 'line' ? (props.seriesLayout ?? 'auto') : 'auto'
   const groups = unitGroups(props.model, props.view.values, props.view.broadcast).flatMap((unit) =>
-    props.view.series && unit.values.length > 1
+    (layout === 'facet' || (layout === 'auto' && props.view.series)) && unit.values.length > 1
       ? unit.values.map((name) => ({ values: [name], broadcast: unit.broadcast }))
       : [unit],
   )
-  if (groups.length <= 1) return <TimeChartPlot {...props} />
+  if (layout === 'overlay' || groups.length <= 1) return <TimeChartPlot {...props} />
   return (
     <div className="fv-parents">
       {groups.map((group, index) => (
@@ -175,7 +180,9 @@ function TimeChartPlot({
       key: `s${gi}_${vi}`,
       name,
       label: [group.label, valueLabelWithUnit(s, name)].filter(Boolean).join(' · '),
-      color: color(seriesAxis ? gi : vi),
+      color: color(
+        seriesAxis && view.values.length > 1 ? gi * view.values.length + vi : seriesAxis ? gi : vi,
+      ),
       marker: seriesAxis ? gi : undefined,
       rows: new Map(group.rows.map((row) => [tickOf(row), row])),
     })),
@@ -1185,14 +1192,14 @@ interface HeatmapLabel {
   period?: boolean
 }
 
-/** Resolve display labels from captured period facts while retaining the original grouping key. */
+/** Preserve period facts and use explicitly formatted ticks without changing grouping keys. */
 function heatmapLabel(axis: ChartAxis, group: ChartGroup): HeatmapLabel {
   const row = group.rows[0]
   const index = row === undefined ? undefined : axis.ticks?.indices[row]
   const tick = index === undefined ? undefined : axis.ticks?.ticks[index]
-  return tick && index !== undefined && axis.ticks?.captured?.[index]
-    ? { ...tick, period: true }
-    : { label: group.label, title: group.label, incomplete: false }
+  if (tick && index !== undefined && axis.ticks?.captured?.[index]) return { ...tick, period: true }
+  if (tick?.formatted) return { ...tick }
+  return { label: group.label, title: group.label, incomplete: false }
 }
 
 /** Captured period labels are bounded to the fixed two-line header; full text stays in title. */
