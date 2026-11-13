@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { analysisResourceDeclaration, pythonCodeRef } from './resource-declaration.ts'
 import { type FrameSnapshotV2, snapshotMetadataSchemas } from './snapshot.ts'
+import { selectionSourcesSchema } from './snapshot-filter.ts'
 
 const text = z.string()
 const names = z.array(text)
@@ -71,6 +72,7 @@ export const reportDefinition = z.strictObject({
   locale: z.enum(['zh-CN', 'en-US']),
   catalog: z.strictObject({ id: text, build: text }),
   program: text,
+  selectionSources: selectionSourcesSchema.optional(),
   resources: z.record(text, reportResourceSummary),
   sources: z.array(reportSourceSummary).optional(),
 })
@@ -173,6 +175,12 @@ export const reportDefinitionToolSchema = {
     locale: { type: 'string', enum: ['zh-CN', 'en-US'], required: true },
     reuseGroups: { type: 'array', items: namesSpec, required: true },
     program: { ...stringSpec, required: true },
+    selectionSources: {
+      type: 'object',
+      additionalProperties: true,
+      description:
+        'Selection source map: each entry has ref, field, mode and optional defaultValues/options. Values are validated against the saved snapshot.',
+    },
     catalog: {
       type: 'object',
       additionalProperties: false,

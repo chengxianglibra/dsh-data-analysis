@@ -8,7 +8,7 @@ import { useCopy } from '../i18n/context.tsx'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
-import { candidateResources } from './candidate.ts'
+import { candidateResources, candidateSelectionSources } from './candidate.ts'
 import { CandidateView } from './candidate-view.tsx'
 import type { AnalysisDraftView } from './drafts.ts'
 import { CandidateAnalysisSurface } from './lazy-surface.tsx'
@@ -88,7 +88,9 @@ export function DraftReportView({ view, rpc }: { view: AnalysisDraftView; rpc: P
           document.program,
           candidate.program,
           !candidate.complete,
-          candidate.resourcePatchInput === 'incomplete',
+          candidate.resourcePatchInput === 'incomplete' ||
+            candidate.selectionSourcesInput === 'incomplete' ||
+            (candidate.selectionSourcesInput === 'complete' && !candidate.selectionSources),
         )
       : document?.program
   const resources =
@@ -107,6 +109,9 @@ export function DraftReportView({ view, rpc }: { view: AnalysisDraftView; rpc: P
           title={(streaming && candidate.title) || document.title}
           locale={(streaming && candidate.locale) || document.locale}
           resources={resources ?? {}}
+          selectionSources={
+            streaming ? candidateSelectionSources(document, candidate) : document.selectionSources
+          }
           isStreaming={Boolean(streaming)}
           candidateProgram={streaming ? candidate.program : undefined}
           removedResourceNames={streaming ? candidate.resourcePatch?.remove : undefined}

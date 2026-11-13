@@ -16,7 +16,7 @@ import {
   isFrameSnapshotV2,
 } from '../../presentation/contracts/snapshot.ts'
 import {
-  type SnapshotFilter,
+  type SelectionBinding,
   snapshotFilterViewIssue,
 } from '../../presentation/contracts/snapshot-filter.ts'
 import type { Cell, DatasetColumn, TypedDataset } from '../../presentation/contracts/types.ts'
@@ -52,7 +52,7 @@ import { displayExplicitFormat } from './frame/model.ts'
 import { AnalysisFrame } from './frame/view.tsx'
 import { useReportReading } from './reading-state.tsx'
 import { ResourceAskButton } from './resource-ask-button.tsx'
-import { SnapshotFilterSummary, useSnapshotFilters } from './snapshot-filter-controls.tsx'
+import { resolveSelectionBindings, SelectionSummary } from './selection-data.tsx'
 
 export interface AnalysisViewProps {
   ref?: string
@@ -142,15 +142,27 @@ export function AnalysisDataView({
   kind: AnalysisSnapshot['kind']
   component?: ComponentIdentity
   configuration?: 'pending' | 'invalid'
-  filters?: readonly (string | { filter: string; field: SnapshotFilter['field'] })[]
+  filters?: readonly SelectionBinding[]
 }) {
   const t = useCopy()
-  const { readResource, candidate, isStreaming, removedResourceNames } = useAnalysisResources()
+  const {
+    readResource,
+    candidate,
+    isStreaming,
+    removedResourceNames,
+    selectionDefinitions,
+    selectionErrors,
+  } = useAnalysisResources()
   const resource = resourceName ? readResource(resourceName) : undefined
   const removed = Boolean(resourceName && removedResourceNames?.includes(resourceName))
   const snapshot =
     resource?.kind === 'snapshot' && resource.snapshot.kind === kind ? resource.snapshot : undefined
-  const filterState = useSnapshotFilters(filters ?? [], resourceName, snapshot)
+  const filterState = resolveSelectionBindings(
+    filters ?? [],
+    selectionDefinitions ?? new Map(),
+    resourceName,
+    snapshot,
+  )
   const filterContext =
     snapshot && filters?.length && filterState.ready
       ? viewFilterContext(filterState.filters, snapshot.data.rows.length)
@@ -194,6 +206,19 @@ export function AnalysisDataView({
   // Retain the exact prior snapshot AND configuration while a replacement arrives.
   // Explicit removal and saved-reader failures never resurrect old content.
   const visible = ready ?? (candidate && !removed && !removedRetained ? retained : undefined)
+  const invalidDateSource = filters?.find(
+    (filter) => selectionErrors?.get(filter.source) === 'date-unrepresentable',
+  )
+  if (invalidDateSource && !visible)
+    return (
+      <Alert role="alert" variant="destructive">
+        <AlertDescription>
+          {t('marivo.presentation.ui-filter-date-unrepresentable', {
+            p0: invalidDateSource.source,
+          })}
+        </AlertDescription>
+      </Alert>
+    )
   if (!visible) {
     if (candidate && (isStreaming || !filterState.ready) && !removed)
       return (
@@ -209,7 +234,7 @@ export function AnalysisDataView({
   }
   const filterProps = {
     filterContext: visible.filterContext,
-    filterSummary: <SnapshotFilterSummary filters={visible.filterSummary} />,
+    filterSummary: <SelectionSummary filters={visible.filterSummary} />,
     filterSelectionKey: visible.filterSelectionKey,
     visibleRowIndices: visible.visibleRowIndices,
   }

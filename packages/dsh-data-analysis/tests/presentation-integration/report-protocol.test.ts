@@ -579,7 +579,7 @@ test('refresh-data atomically rejects a mixed batch and preserves revision, curr
   assert.deepEqual(subset.reused, ['b'])
   assert.deepEqual(subset.unchangedAliases, ['b'])
   const current = await f.document(subset.ref)
-  assert.equal(current.schemaVersion, 'dsh.analysis-ui/v3')
+  assert.equal(current.schemaVersion, 'dsh.analysis-ui/v4')
   assert.equal(current.program, baseDoc.program)
   assert.deepEqual(current.resources.b, baseDoc.resources.b)
   await f.write({ stage: 'save', ref: subset.ref, title: 'Edited title' })

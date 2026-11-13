@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { AnalysisResource } from '../../presentation/contracts/analysis-document.ts'
 import type { FrameDisplay, FrameView } from '../../presentation/contracts/frame-view.ts'
+import type { ResolvedSnapshotFilter } from '../../presentation/contracts/snapshot-filter.ts'
 import type { PythonCodeRef, PythonExecutionDatasource } from '../../python-execution-contracts.ts'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 
@@ -19,6 +20,8 @@ export interface ComponentIdentity {
 
 export interface AnalysisResourceContext {
   readResource: (name: string) => AnalysisResource | undefined
+  selectionDefinitions?: ReadonlyMap<string, ResolvedSnapshotFilter>
+  selectionErrors?: ReadonlyMap<string, 'date-unrepresentable'>
   candidate?: boolean
   isStreaming?: boolean
   pendingStatementId?: string

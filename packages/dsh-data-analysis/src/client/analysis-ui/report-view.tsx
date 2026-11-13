@@ -9,7 +9,7 @@ import { parseResourceStream } from '../../presentation/contracts/resource-strea
 import { useCopy } from '../i18n/context.tsx'
 import type { PresentationRpc } from '../presentation/delivery-model.ts'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
-import { candidateResources } from './candidate.ts'
+import { candidateResources, candidateSelectionSources } from './candidate.ts'
 import { isIncompatibleReport, readSavedAnalysis } from './candidate-view.tsx'
 import type { AnalysisResourceContext } from './context.tsx'
 import { ReportAnalysisSurface } from './lazy-surface.tsx'
@@ -194,7 +194,9 @@ export function ReportView({
           document?.program,
           candidate.program,
           !candidate.complete,
-          candidate.resourcePatchInput === 'incomplete',
+          candidate.resourcePatchInput === 'incomplete' ||
+            candidate.selectionSourcesInput === 'incomplete' ||
+            (candidate.selectionSourcesInput === 'complete' && !candidate.selectionSources),
         )
       : document?.program
   const nextResources =
@@ -205,6 +207,7 @@ export function ReportView({
     reading: ReportViewState['reading']
     program: string
     resources: AnalysisDocument['resources']
+    selectionSources: AnalysisDocument['selectionSources']
     title: string
     locale: AnalysisDocument['locale']
   }>()
@@ -220,6 +223,10 @@ export function ReportView({
             reading: view.reading,
             program: nextProgram,
             resources: nextResources ?? {},
+            selectionSources:
+              streaming && candidate
+                ? candidateSelectionSources(document, candidate)
+                : document?.selectionSources,
             title:
               (streaming ? candidate?.title : undefined) ??
               document?.title ??
@@ -295,6 +302,7 @@ export function ReportView({
             title={content.title}
             locale={content.locale}
             resources={content.resources}
+            selectionSources={content.selectionSources}
             candidate={!published}
             isStreaming={streaming}
             candidateProgram={streaming ? candidate?.program : undefined}

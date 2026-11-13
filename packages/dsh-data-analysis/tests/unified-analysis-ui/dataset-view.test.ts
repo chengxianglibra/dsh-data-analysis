@@ -385,20 +385,42 @@ test('report admission checks every selectable filter tuple before accepting a m
       binding: { workspaceId: 'workspace' },
     },
   }
-  const program = `root = Stack([day, cluster, v]);
-day = SnapshotFilter("day", "data", {kind: "column", name: "day"}, "Day", "single", ["d1"], {allowAll: false});
-cluster = SnapshotFilter("cluster", "data", {kind: "column", name: "cluster"}, "Cluster", "single", ["A"], {allowAll: false});
-v = DatasetView("data", {chart: "metric", encoding: {value: "value"}}, {}, ["day", "cluster"]);`
-  assert.doesNotThrow(() => validateAnalysisResources(program, resources))
+  const sources = {
+    day: {
+      ref: 'data',
+      field: { kind: 'column' as const, name: 'day' },
+      mode: 'single' as const,
+      defaultValues: ['d1'],
+      options: { allowAll: false },
+    },
+    cluster: {
+      ref: 'data',
+      field: { kind: 'column' as const, name: 'cluster' },
+      mode: 'single' as const,
+      defaultValues: ['A'],
+      options: { allowAll: false },
+    },
+  }
+  const program = `$day = "a"
+$cluster = "a"
+root = DatasetView("data", {chart: "metric", encoding: {value: "value"}}, {}, [{source:"day",selection:$day}, {source:"cluster",selection:$cluster}]);`
+  assert.doesNotThrow(() => validateAnalysisResources(program, resources, sources))
   assert.throws(() =>
-    validateAnalysisResources(program.replace('{allowAll: false}', '{allowAll: true}'), resources),
+    validateAnalysisResources(program, resources, {
+      ...sources,
+      day: { ...sources.day, options: { allowAll: true } },
+    }),
   )
   assert.throws(() =>
-    validateAnalysisResources(program.replace('"cluster"]);', '"day"]);'), resources),
+    validateAnalysisResources(
+      program.replace('{source:"cluster",selection:$cluster}', '{source:"day",selection:$day}'),
+      resources,
+      sources,
+    ),
   )
   // The default tuple d1/A stays unique; another selectable tuple becomes ambiguous.
   snapshot.data.rows[2]![1] = 'A'
-  assert.throws(() => validateAnalysisResources(program, resources))
+  assert.throws(() => validateAnalysisResources(program, resources, sources))
 })
 
 test('shared chart lookup retains Frame token precedence over an earlier matching display name', () => {

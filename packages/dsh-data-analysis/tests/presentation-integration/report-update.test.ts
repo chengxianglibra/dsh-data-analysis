@@ -751,7 +751,7 @@ test('reference-only results save exact resources and survive capture removal an
   }
 })
 
-test('eight-component composition admits only saved image resources and exact compatible data views', async (t) => {
+test('composition admits only saved image resources and exact compatible data views', async (t) => {
   const f = await fixture(t)
   const image = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
@@ -779,7 +779,7 @@ test('eight-component composition admits only saved image resources and exact co
       'Image("Saved image","picture")',
       'Image("remote","https://example.com/picture.png")',
     ),
-    program.replace('TextContent("Saved data")', 'Stack([Button("unsupported")])'),
+    program.replace('TextContent("Saved data")', 'Stack([Unsupported("unsupported")])'),
   ])
     await assert.rejects(f.present({ resourcePatch: { put: resources }, program: bad }))
   await assert.rejects(
@@ -855,7 +855,7 @@ test('record reads omit rows; failed resource reads, cancellation and stale save
     updated.buildId,
   )
   assert.deepEqual(await readFile(original.receipt.files.document.path), bytes)
-  assert.equal(parseSavedPresentation(document).schemaVersion, 'dsh.analysis-ui/v3')
+  assert.equal(parseSavedPresentation(document).schemaVersion, 'dsh.analysis-ui/v4')
 })
 
 test('statement updates reuse embedded snapshots without resolving Runtime and save independent versions', async (t) => {

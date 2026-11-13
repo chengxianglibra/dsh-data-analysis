@@ -9,6 +9,8 @@ export const zh = {
   'marivo.presentation.ui-filter-end': '结束日期',
   'marivo.presentation.ui-filter-apply': '应用',
   'marivo.presentation.ui-filter-invalid-range': '请输入有效且按顺序排列的起止日期',
+  'marivo.presentation.ui-filter-date-unrepresentable':
+    '筛选来源 {p0} 的默认日期在当前时区无法表示，请更换浏览器时区或修正默认日期。',
   'marivo.presentation.ui-filter-no-options': '暂无候选项',
   'marivo.presentation.ui-filter-matched': '匹配 {p0} / 已捕获 {p1} 行',
   'marivo.presentation.ui-filter-short': '筛选 {p0} / {p1}',
@@ -284,6 +286,8 @@ export const en = {
   'marivo.presentation.ui-filter-end': 'End date',
   'marivo.presentation.ui-filter-apply': 'Apply',
   'marivo.presentation.ui-filter-invalid-range': 'Enter valid dates in order',
+  'marivo.presentation.ui-filter-date-unrepresentable':
+    'The default date for filter source {p0} cannot be represented in the current timezone. Change the browser timezone or correct the default date.',
   'marivo.presentation.ui-filter-no-options': 'No options available',
   'marivo.presentation.ui-filter-matched': 'Matched {p0} / {p1} captured rows',
   'marivo.presentation.ui-filter-short': 'Filter {p0} / {p1}',

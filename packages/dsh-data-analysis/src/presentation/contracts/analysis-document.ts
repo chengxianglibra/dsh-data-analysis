@@ -7,14 +7,16 @@ import { datasetDisplayIssue, datasetDisplaySchema, resolveDatasetView } from '.
 import { frameDisplayIssue } from './frame-display.ts'
 import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
+import { migrateLegacySelections } from './legacy-selection-migration.ts'
 import { analysisResourceDeclaration, pythonCodeRef } from './resource-declaration.ts'
+import { findSelectionWiringIssue } from './selection-wiring.ts'
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
 import {
   resolveSnapshotFilter,
   resolveSnapshotFilterBinding,
-  snapshotFilterBindingSchema,
+  selectionBindingSchema,
+  selectionSourcesSchema,
   snapshotFilterFieldNames,
-  snapshotFilterSchema,
   snapshotFilterViewIssue,
 } from './snapshot-filter.ts'
 import { type ViewFilterContext, viewFilterContext } from './view-filter-context.ts'
@@ -25,7 +27,8 @@ export { analysisResourceDeclaration } from './resource-declaration.ts'
 import type { AnalysisResourceDeclaration } from './resource-declaration.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
 
-export const ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v3'
+export const ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v4'
+const LEGACY_ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v3'
 const id = z
   .string()
   .min(1)
@@ -40,6 +43,7 @@ export const analysisPresentInput = z.strictObject({
   surface: z.enum(['tool', 'tab']).default('tool'),
   basedOnRecordId: z.string().min(1).max(512).optional(),
   resourcePatch: analysisResourcePatch.optional(),
+  selectionSources: selectionSourcesSchema.optional(),
   labels: z
     .record(
       z.string().min(1).max(80),
@@ -91,6 +95,7 @@ const documentFields = z.strictObject({
   }),
   program: z.string().min(1).max(PRESENTATION_BUDGETS.text),
   resources: z.record(id, resource),
+  selectionSources: selectionSourcesSchema.optional(),
 })
 const schema = z.strictObject({
   schemaVersion: z.literal(ANALYSIS_UI_FORMAT),
@@ -231,6 +236,7 @@ function viewError(
 export function validateAnalysisResources(
   program: string,
   resources: AnalysisDocument['resources'],
+  selectionSources?: AnalysisDocument['selectionSources'],
 ) {
   const nodes = analysisElements(parseAnalysisProgram(program))
   // Establish resource identity before resolving filters and view shapes.
@@ -243,7 +249,7 @@ export function validateAnalysisResources(
     )
       throw new Error('analysis-data-resource-invalid')
   }
-  const filterContexts = validateSnapshotFilters(program, nodes, resources)
+  const filterContexts = validateSelectionSources(program, nodes, resources, selectionSources)
   for (const node of nodes) {
     if (node.typeName === 'Image') {
       if (typeof node.props.src !== 'string' || resources[node.props.src]?.kind !== 'image')
@@ -349,24 +355,18 @@ export function validateAnalysisResources(
   }
 }
 
-export function validateSnapshotFilters(
-  program: string,
+/** Resolve immutable source metadata and validate each bound view without owning state. */
+export function validateSelectionSources(
+  _program: string,
   nodes: ElementNode[],
   resources: AnalysisDocument['resources'],
+  sources?: AnalysisDocument['selectionSources'],
 ): Map<ElementNode, ViewFilterContext> {
   const contexts = new Map<ElementNode, ViewFilterContext>()
-  const declarations = new Map<
-    string,
-    {
-      node: ElementNode
-      statement: string
-      ref: string
-      definition: ReturnType<typeof resolveSnapshotFilter>
-    }
-  >()
+  const definitions = new Map<string, ReturnType<typeof resolveSnapshotFilter>>()
   const timezones = new Map<string, string>()
-  const reachable = new Set<string>()
-  function fail(node: ElementNode, code: string, path: string, hint: string): never {
+  const consumed = new Set<string>()
+  function failNode(node: ElementNode, code: string, path: string, hint: string): never {
     throw new AnalysisViewError(
       code,
       `${node.statementId ?? node.typeName}/${path}`,
@@ -374,200 +374,209 @@ export function validateSnapshotFilters(
       String(node.props.ref ?? ''),
     )
   }
+  const sourceEntries = Object.entries(sources ?? {})
+  if (sourceEntries.length > PRESENTATION_BUDGETS.blocks)
+    throw new AnalysisViewError(
+      'analysis-filter-budget',
+      'selectionSources',
+      `Use at most ${PRESENTATION_BUDGETS.blocks} selection sources.`,
+      '',
+    )
+
+  // Reject malformed references and unused sources before resolving any saved
+  // fields. Otherwise each unused source can duplicate an entire snapshot.
+  const bindingsByNode = new Map<ElementNode, z.infer<typeof selectionBindingSchema>[]>()
   for (const node of nodes) {
-    if (node.typeName !== 'SnapshotFilter') continue
-    if (!node.statementId)
-      fail(
-        node,
-        'analysis-filter-named-required',
-        'filterId',
-        'Declare the filter in a named statement.',
-      )
-    const statement = node.statementId!
-    reachable.add(statement)
-    const parsed = snapshotFilterSchema.safeParse(node.props)
+    if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
+    if (node.props.filters === undefined) continue
+    const parsed = z.array(selectionBindingSchema).safeParse(node.props.filters)
     if (!parsed.success)
-      fail(node, 'analysis-filter-invalid', 'filterId', 'Use a valid filter declaration.')
-    const declaration = parsed.data!
-    const previous = declarations.get(declaration.filterId)
-    if (previous && previous.statement !== statement)
-      fail(node, 'analysis-filter-id-duplicate', 'filterId', 'Use one declaration per filter ID.')
-    if (previous) continue
-    const resource = resources[declaration.ref]
+      failNode(
+        node,
+        'analysis-filter-reference-invalid',
+        'filters',
+        'Use selection source bindings.',
+      )
+    const bindings = parsed.data!
+    if (new Set(bindings.map((binding) => binding.source)).size !== bindings.length)
+      failNode(
+        node,
+        'analysis-filter-reference-invalid',
+        'filters',
+        'Use distinct selection source IDs.',
+      )
+    for (const [index, binding] of bindings.entries()) {
+      const state = binding.selection
+      if (
+        !state ||
+        typeof state !== 'object' ||
+        !('k' in state) ||
+        state.k !== 'StateRef' ||
+        !('n' in state) ||
+        state.n !== `$${binding.source}`
+      )
+        failNode(
+          node,
+          'analysis-filter-reference-invalid',
+          `filters/${index}/selection`,
+          'Bind selection to the source state variable.',
+        )
+      if (!sources || !Object.hasOwn(sources, binding.source))
+        failNode(
+          node,
+          'analysis-filter-reference-invalid',
+          'filters',
+          'Reference an existing selection source.',
+        )
+      consumed.add(binding.source)
+    }
+    bindingsByNode.set(node, bindings)
+  }
+  for (const [id, source] of sourceEntries)
+    if (!consumed.has(id))
+      throw new AnalysisViewError(
+        'analysis-filter-unused',
+        `source_${id}/filterId`,
+        'Bind this source to a supported view.',
+        source.ref,
+      )
+
+  const wiring = findSelectionWiringIssue(nodes, sources)
+  if (wiring)
+    throw new AnalysisViewError(
+      'analysis-filter-reference-invalid',
+      `${wiring.statementId ?? wiring.component}/value`,
+      `Bind this control to ${wiring.expected}.`,
+      sources?.[wiring.source]?.ref ?? '',
+      { received: wiring.actual },
+    )
+
+  for (const [id, source] of sourceEntries) {
+    const resource = resources[source.ref]
     if (resource?.kind !== 'snapshot')
-      fail(node, 'analysis-filter-resource-invalid', 'ref', 'Use a saved snapshot resource.')
-    const fieldKind = resource.snapshot.kind === 'dataset' ? 'column' : 'axis'
-    if (declaration.field.kind !== fieldKind)
+      throw new AnalysisViewError(
+        'analysis-filter-resource-invalid',
+        `source_${id}/ref`,
+        'Use a saved snapshot resource.',
+        source.ref,
+      )
+    const expectedKind = resource.snapshot.kind === 'dataset' ? 'column' : 'axis'
+    if (source.field.kind !== expectedKind)
       throw new AnalysisViewError(
         'analysis-filter-field-invalid',
-        `${statement}/field/kind`,
+        `source_${id}/field/kind`,
         'Use the field kind supported by this snapshot.',
-        declaration.ref,
-        {
-          received: declaration.field.kind,
-          expectedKind: 'field-kind',
-          candidates: [fieldKind],
-        },
+        source.ref,
+        { received: source.field.kind, expectedKind: 'field-kind', candidates: [expectedKind] },
       )
-    let definition: ReturnType<typeof resolveSnapshotFilter>
     try {
-      definition = resolveSnapshotFilter(resource.snapshot, declaration)
+      const definition = resolveSnapshotFilter(resource.snapshot, {
+        ...source,
+        filterId: id,
+        label: source.label ?? id,
+      })
+      definitions.set(id, definition)
+      if (definition.calendarTimezone) timezones.set(id, definition.calendarTimezone)
     } catch (error) {
       const code = error instanceof Error ? error.message : 'analysis-filter-invalid'
       if (code === 'analysis-filter-field-invalid')
         throw new AnalysisViewError(
           code,
-          `${statement}/field/name`,
+          `source_${id}/field/name`,
           'Use a field of the indicated kind with an exact filterable type.',
-          declaration.ref,
+          source.ref,
           {
-            received: declaration.field.name,
-            expectedKind: resource.snapshot.kind === 'dataset' ? 'column' : 'axis',
+            received: source.field.name,
+            expectedKind,
             candidates: snapshotFilterFieldNames(resource.snapshot).slice(0, 8),
           },
         )
-      fail(
-        node,
+      throw new AnalysisViewError(
         code,
-        code === 'analysis-filter-default-invalid' ? 'defaultValues' : 'field',
+        `source_${id}/${code === 'analysis-filter-default-invalid' ? 'defaultValues' : 'field'}`,
         'Use a supported field and existing exact default values.',
+        source.ref,
       )
     }
-    declarations.set(declaration.filterId, {
-      node,
-      statement,
-      ref: declaration.ref,
-      definition: definition!,
-    })
-    if (definition!.calendarTimezone)
-      timezones.set(declaration.filterId, definition!.calendarTimezone)
   }
-  const statements = split(tokenize(analysisStatements(program)))
-  const statementCounts = new Map<string, number>()
-  for (const statement of statements)
-    statementCounts.set(statement.id, (statementCounts.get(statement.id) ?? 0) + 1)
-  for (const statement of statements) {
-    const expression = parseExpression(statement.tokens)
-    if (
-      expression.k === 'Comp' &&
-      expression.name === 'SnapshotFilter' &&
-      (statementCounts.get(statement.id) ?? 0) > 1
-    )
-      throw new AnalysisViewError(
-        'analysis-filter-declaration-duplicate',
-        `${statement.id}/filterId`,
-        'Declare the filter statement only once.',
-        '',
-      )
-    if (
-      expression.k === 'Comp' &&
-      expression.name === 'SnapshotFilter' &&
-      !reachable.has(statement.id)
-    )
-      throw new AnalysisViewError(
-        'analysis-filter-unreachable',
-        `${statement.id}/filterId`,
-        'Reference this filter from the root.',
-        '',
-      )
-  }
-  const consumed = new Set<string>()
-  for (const node of nodes) {
-    if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
-    const filters = node.props.filters
-    if (filters === undefined) continue
-    const parsed = z.array(snapshotFilterBindingSchema).safeParse(filters)
-    if (!parsed.success)
-      fail(node, 'analysis-filter-reference-invalid', 'filters', 'Use distinct filter IDs.')
-    const bindings = parsed.data!
-    const ids = bindings.map((binding) => (typeof binding === 'string' ? binding : binding.filter))
-    if (new Set(ids).size !== ids.length)
-      fail(node, 'analysis-filter-reference-invalid', 'filters', 'Use distinct filter IDs.')
+  for (const [node, bindings] of bindingsByNode) {
     if (!bindings.length) continue
     const resource = resources[String(node.props.ref)]
     if (resource?.kind !== 'snapshot')
-      fail(node, 'analysis-filter-resource-invalid', 'filters', 'Use a saved snapshot resource.')
+      failNode(
+        node,
+        'analysis-filter-resource-invalid',
+        'filters',
+        'Use a saved snapshot resource.',
+      )
     const resolvedBindings: Parameters<typeof viewFilterContext>[0][number][] = []
     for (const [index, binding] of bindings.entries()) {
-      const id = typeof binding === 'string' ? binding : binding.filter
-      const filter = declarations.get(id)
-      if (!filter)
-        fail(
+      const definition = definitions.get(binding.source)
+      if (!definition)
+        failNode(
           node,
           'analysis-filter-reference-invalid',
           'filters',
-          'Reference a reachable filter declaration.',
+          'Reference an existing selection source.',
         )
-      if (typeof binding === 'string' && filter.ref !== node.props.ref)
-        fail(
+      if (!binding.field && definition.declaration.ref !== node.props.ref)
+        failNode(
           node,
           'analysis-filter-resource-mismatch',
           'filters',
-          'Filter and view must use the same resource.',
+          'Select a target field for another resource.',
         )
       try {
         const target = resolveSnapshotFilterBinding(
           resource.snapshot,
-          filter.definition,
-          typeof binding === 'string' ? filter.definition.declaration.field : binding.field,
+          definition,
+          binding.field ?? definition.declaration.field,
         )
         if (target.calendarTimezone) {
-          const existing = timezones.get(id)
-          if (existing && existing !== target.calendarTimezone)
-            fail(
+          const previous = timezones.get(binding.source)
+          if (previous && previous !== target.calendarTimezone)
+            failNode(
               node,
               'analysis-filter-calendar-invalid',
               `filters/${index}`,
               'Use the same timezone on bound calendar axes.',
             )
-          timezones.set(id, target.calendarTimezone)
+          timezones.set(binding.source, target.calendarTimezone)
         }
-        resolvedBindings.push({ definition: filter.definition, values: target.values })
+        resolvedBindings.push({ definition, values: target.values })
       } catch (error) {
         if (error instanceof AnalysisViewError) throw error
-        fail(
+        failNode(
           node,
           error instanceof Error ? error.message : 'analysis-filter-field-invalid',
           `filters/${index}`,
           'Use a compatible saved field for this filter.',
         )
       }
-      consumed.add(id)
     }
     const parsedView = frameViewSchema.optional().safeParse(node.props.view ?? undefined)
     if (!parsedView.success) throw viewError('analysis-view-invalid', node, '/view')
-    const view = parsedView.data
     const { snapshot } = resource
     const context = viewFilterContext(resolvedBindings, snapshot.data.rows.length)
     contexts.set(node, context)
     const resolution =
       snapshot.kind === 'dataset'
-        ? resolveDatasetView(snapshot, view, context)
-        : resolveFrameView(snapshot, view, context)
+        ? resolveDatasetView(snapshot, parsedView.data, context)
+        : resolveFrameView(snapshot, parsedView.data, context)
     if (
       resolution.ok &&
       resolution.view.chart === 'metric' &&
-      (view?.chart !== 'metric' || !context.metricEligible)
+      (parsedView.data?.chart !== 'metric' || !context.metricEligible)
     )
-      fail(
+      failNode(
         node,
         'analysis-filter-view-unsupported',
         'filters',
         'Use an explicit metric with only required single filters whose combined values identify each row.',
       )
-    // Preserve the view's own structured error and repair candidates when its
-    // shape is invalid; filter compatibility only applies to resolved views.
     const issue = resolution.ok ? snapshotFilterViewIssue(snapshot, resolution) : undefined
-    if (issue) fail(node, 'analysis-filter-view-unsupported', 'filters', issue)
+    if (issue) failNode(node, 'analysis-filter-view-unsupported', 'filters', issue)
   }
-  for (const [id, filter] of declarations)
-    if (!consumed.has(id))
-      fail(
-        filter.node,
-        'analysis-filter-unused',
-        'filterId',
-        'Bind this filter to a supported view.',
-      )
   return contexts
 }
 export function parseAnalysisDocument(value: unknown): AnalysisDocument {
@@ -581,7 +590,7 @@ export function parseAnalysisDocument(value: unknown): AnalysisDocument {
     throw new Error('analysis-document-identity-invalid')
   for (const item of Object.values(result.resources))
     parseAnalysisResource(item, result.workspaceId)
-  validateAnalysisResources(result.program, result.resources)
+  validateAnalysisResources(result.program, result.resources, result.selectionSources)
   return result
 }
 /** Validate one Host-admitted resource without requiring unrelated components or data. */
@@ -616,15 +625,32 @@ export function parseAnalysisResource(value: unknown, workspaceId: string): Anal
     throw new Error('analysis-resource-result-identity-invalid')
   return item
 }
-/** Saved Builds use only the analysis UI format; earlier report documents are unsupported. */
+/** Convert legacy v3 in memory without modifying its immutable saved Build. */
 export function parseSavedPresentation(value: unknown): AnalysisDocument {
   if (
     !value ||
     typeof value !== 'object' ||
     !('schemaVersion' in value) ||
-    value.schemaVersion !== ANALYSIS_UI_FORMAT
+    ![ANALYSIS_UI_FORMAT, LEGACY_ANALYSIS_UI_FORMAT].includes(String(value.schemaVersion))
   )
     throw new Error('report-version-unsupported')
+  if (value.schemaVersion === LEGACY_ANALYSIS_UI_FORMAT) {
+    const legacy = z
+      .strictObject({
+        schemaVersion: z.literal(LEGACY_ANALYSIS_UI_FORMAT),
+        ...documentFields.omit({ selectionSources: true }).shape,
+      })
+      .parse(value)
+    let filtered = false
+    for (const statement of split(tokenize(analysisStatements(legacy.program)))) {
+      const expression = parseExpression(statement.tokens)
+      if (expression.k === 'Comp' && expression.name === 'SnapshotFilter') filtered = true
+    }
+    const migration = filtered
+      ? migrateLegacySelections(analysisStatements(legacy.program), legacy.locale)
+      : { program: legacy.program, selectionSources: undefined }
+    return parseAnalysisDocument({ ...legacy, ...migration, schemaVersion: ANALYSIS_UI_FORMAT })
+  }
   return parseAnalysisDocument(value)
 }
 

@@ -1,9 +1,11 @@
 import { Renderer } from '@openuidev/react-lang'
-import { useMemo } from 'react'
+import { ThemeProvider } from '@openuidev/react-ui'
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type {
   AnalysisDocument,
   AnalysisResource,
 } from '../../presentation/contracts/analysis-document.ts'
+import type { SelectionSources } from '../../presentation/contracts/snapshot-filter.ts'
 import { ReportCopyProvider } from '../i18n/context.tsx'
 import type { OpenSemanticRef } from '../presentation/source-facts.ts'
 import { PRESENTATION_STYLES } from '../presentation/styles.ts'
@@ -13,8 +15,9 @@ import { DASHBOARD_COMPONENT_STYLES } from './dashboard-components.tsx'
 import { FRAME_STYLES } from './frame/styles.ts'
 import { LAYOUT_STYLES } from './layout.tsx'
 import { analysisLibrary } from './library.tsx'
+import { useReportReading } from './reading-state.tsx'
 import { ReportMotion, type ReportProgress } from './report-motion.tsx'
-import { SnapshotFilterProvider } from './snapshot-filter-provider.tsx'
+import { prepareSelectionSources } from './selection-data.tsx'
 import { pendingAnalysisStatement, readableAnalysisPrefix } from './streaming-program.ts'
 
 const styles = `
@@ -68,6 +71,7 @@ export function AnalysisSurface({
       title={document.title}
       locale={document.locale}
       resources={document.resources}
+      selectionSources={document.selectionSources}
       recordId={document.recordId}
       readResource={readResource}
       openSemanticRef={openSemanticRef}
@@ -84,6 +88,7 @@ export interface AnalysisRendererProps {
   title: string
   locale: AnalysisDocument['locale']
   resources: AnalysisDocument['resources']
+  selectionSources?: SelectionSources
   recordId?: string
   /** Stable identity across candidate, admitted revisions and final publication. */
   viewId?: string
@@ -106,6 +111,7 @@ export function AnalysisRenderer({
   title,
   locale,
   resources: saved,
+  selectionSources,
   recordId,
   viewId,
   progress,
@@ -121,9 +127,54 @@ export function AnalysisRenderer({
   askDataset,
   askResource,
 }: AnalysisRendererProps) {
+  const themeId = useId().replace(/[^a-zA-Z0-9_-]/g, '')
+  const themeSource = useRef<HTMLElement>(null)
+  const [openUIMode, setOpenUIMode] = useState<'light' | 'dark'>('light')
+  useLayoutEffect(() => {
+    const origin = themeSource.current
+    if (!origin) return
+    const window = origin.ownerDocument.defaultView
+    if (!window) return
+    // Resolve the same CSS color-scheme that supplies the reader and its portals.
+    const update = () =>
+      setOpenUIMode(window.getComputedStyle(origin).colorScheme === 'dark' ? 'dark' : 'light')
+    update()
+    const observer = new MutationObserver(update)
+    for (let node: Element | null = origin; node; node = node.parentElement) {
+      observer.observe(node, {
+        attributes: true,
+        attributeFilter: [
+          'class',
+          'style',
+          'data-theme',
+          'data-mv-theme',
+          'data-ds-theme-source',
+          'data-ds-dark-theme',
+        ],
+      })
+    }
+    const system = window.matchMedia?.('(prefers-color-scheme: dark)')
+    system?.addEventListener('change', update)
+    return () => {
+      observer.disconnect()
+      system?.removeEventListener('change', update)
+    }
+  }, [])
+  const reading = useReportReading()
+  const selections = useMemo(
+    () =>
+      prepareSelectionSources(
+        selectionSources ?? {},
+        readResource ?? ((name) => saved[name]),
+        locale,
+      ),
+    [selectionSources, readResource, saved, locale],
+  )
   const resources = useMemo(
     () => ({
       readResource: readResource ?? ((name: string) => saved[name]),
+      selectionDefinitions: selections.definitions,
+      selectionErrors: selections.errors,
       candidate,
       isStreaming,
       removedResourceNames,
@@ -140,6 +191,8 @@ export function AnalysisRenderer({
     }),
     [
       saved,
+      selections.definitions,
+      selections.errors,
       readResource,
       candidate,
       isStreaming,
@@ -155,17 +208,37 @@ export function AnalysisRenderer({
     ],
   )
   const renderedProgram = candidate && isStreaming ? readableAnalysisPrefix(program) : program
+  const stateKey = candidate ? undefined : recordId
+  // Draft-to-saved publication keeps the rendered tree mounted; only switching
+  // between two distinct saved Builds requires a fresh OpenUI store.
+  const rendererIdentity = useRef<{ recordId?: string; generation: number }>({ generation: 0 })
+  if (recordId && rendererIdentity.current.recordId !== recordId) {
+    if (rendererIdentity.current.recordId) rendererIdentity.current.generation += 1
+    rendererIdentity.current.recordId = recordId
+  }
+  const snapshot = useRef<{ key: string | undefined; value: Record<string, unknown> }>()
+  if (snapshot.current && snapshot.current.key !== stateKey) snapshot.current = undefined
+  const initialState = useMemo(() => {
+    const constants = Object.fromEntries(
+      Object.entries(selections.initialState).filter(
+        ([name]) =>
+          name.startsWith('$source_') && (name.endsWith('_options') || name.endsWith('_default')),
+      ),
+    )
+    return {
+      ...selections.initialState,
+      ...(stateKey && reading?.openUIState?.key === stateKey ? reading.openUIState.value : {}),
+      ...snapshot.current?.value,
+      ...constants,
+    }
+  }, [selections.initialState, stateKey, reading])
   return (
     <ReportCopyProvider locale={locale}>
       <AnalysisResources.Provider value={resources} key={viewId ?? recordId}>
-        <SnapshotFilterProvider
-          program={renderedProgram}
-          readResource={resources.readResource}
-          recordId={recordId}
-          candidate={candidate}
-          pendingStatementId={resources.pendingStatementId}
-        >
+        <ThemeProvider mode={openUIMode} cssSelector={`[data-openui-scope="${themeId}"]`}>
           <article
+            ref={themeSource}
+            data-openui-scope={themeId}
             className="mv-ui pr-reader au-surface bg-background"
             lang={locale}
             aria-label={title}
@@ -185,15 +258,21 @@ export function AnalysisRenderer({
               )}
               <div className="au-surface-body">
                 <Renderer
+                  key={rendererIdentity.current.generation}
                   library={analysisLibrary}
                   response={renderedProgram}
                   isStreaming={isStreaming}
+                  initialState={initialState}
+                  onStateUpdate={(value) => {
+                    snapshot.current = { key: stateKey, value }
+                    if (stateKey && reading) reading.openUIState = { key: stateKey, value }
+                  }}
                   publishObservability={false}
                 />
               </div>
             </div>
           </article>
-        </SnapshotFilterProvider>
+        </ThemeProvider>
       </AnalysisResources.Provider>
     </ReportCopyProvider>
   )

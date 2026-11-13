@@ -4,10 +4,15 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { analysisCatalogSpec } from '../../src/presentation/contracts/analysis-catalog.ts'
+import { analysisElements } from '../../src/presentation/contracts/analysis-document.ts'
 import {
   analysisStatements,
   parseAnalysisProgram,
 } from '../../src/presentation/contracts/analysis-program.ts'
+import {
+  selectionBindingSchema,
+  selectionSourcesSchema,
+} from '../../src/presentation/contracts/snapshot-filter.ts'
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url))
 const skillNames = ['dsh-data-analysis-presentation', 'dsh-data-analysis-files']
@@ -116,6 +121,43 @@ test('custom page examples use valid OpenUI Lang and Catalog components', async 
     assert.ok(programs.length > 0, example.split('\n')[0])
     for (const block of programs) parseAnalysisProgram(analysisStatements(block[1]!))
   }
+})
+
+test('documented filter examples bind each view to its declared source state', async () => {
+  const content = await readFile(
+    path.join(packageRoot, 'skills/dsh-data-analysis-presentation/references/examples.md'),
+    'utf8',
+  )
+  const sections = content.split(/^## /m).slice(1)
+  let checked = 0
+  for (const section of sections) {
+    const json = /```json\n([\s\S]*?)\n```/.exec(section)?.[1]
+    const program = /```openui\n([\s\S]*?)\n```/.exec(section)?.[1]
+    if (!json || !program) continue
+    const sources = selectionSourcesSchema.parse(JSON.parse(json))
+    const nodes = analysisElements(parseAnalysisProgram(analysisStatements(program)))
+    const controlLabels = new Set(
+      nodes.filter((node) => node.typeName === 'FormControl').map((node) => node.props.label),
+    )
+    for (const [name, source] of Object.entries(sources)) {
+      assert.ok(source.label, `${name} needs a report-language summary label`)
+      assert.ok(controlLabels.has(source.label), `${name} label must match its control`)
+    }
+    const used = new Set<string>()
+    for (const node of nodes) {
+      if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
+      if (!Array.isArray(node.props.filters)) continue
+      for (const value of node.props.filters) {
+        const binding = selectionBindingSchema.parse(value)
+        assert.ok(Object.hasOwn(sources, binding.source), binding.source)
+        assert.deepEqual(binding.selection, { k: 'StateRef', n: `$${binding.source}` })
+        used.add(binding.source)
+      }
+    }
+    assert.deepEqual([...used].sort(), Object.keys(sources).sort())
+    checked++
+  }
+  assert.equal(checked, 2)
 })
 
 test('the comparison example reconciles its headline with the documented rows', async () => {

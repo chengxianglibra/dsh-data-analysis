@@ -8,6 +8,7 @@ import {
   AnalysisCandidates,
   analysisCandidate,
   candidateResources,
+  candidateSelectionSources,
 } from '../../src/client/analysis-ui/candidate.ts'
 import {
   pendingAnalysisStatement,
@@ -35,6 +36,40 @@ function call(args: PartialArguments, callId = 'call'): PreparingToolCall {
     subCalls: [],
   }
 }
+
+test('candidate source metadata is replaced only after the whole declaration is available', () => {
+  const base = {
+    selectionSources: {
+      region: { ref: 'saved', field: { kind: 'column' as const, name: 'region' } },
+    },
+  }
+  const incoming = {
+    region: { ref: 'fresh', field: { kind: 'column' as const, name: 'region' } },
+  }
+  const args = new PartialArguments()
+  args.append('{"stage":"preview","selectionSources":{"region":{"ref":"fresh"')
+  const partial = analysisCandidate(call(args), 's', 'w', generation)
+  assert.equal(partial.selectionSourcesInput, 'incomplete')
+  assert.deepEqual(candidateSelectionSources(base, partial), base.selectionSources)
+  args.append(',"field":{"kind":"column","name":"region"}}}')
+  const pendingScope = analysisCandidate(call(args), 's', 'w', generation)
+  assert.deepEqual(candidateSelectionSources(base, pendingScope), base.selectionSources)
+  args.append('}')
+  const complete = analysisCandidate(call(args), 's', 'w', generation)
+  assert.equal(complete.selectionSourcesInput, 'complete')
+  assert.deepEqual(candidateSelectionSources(base, complete), incoming)
+
+  const omitted = analysisCandidate(call(PartialArguments.fromObject({})), 's', 'w', generation)
+  assert.equal(omitted.selectionSourcesInput, 'omitted')
+  assert.deepEqual(candidateSelectionSources(base, omitted), base.selectionSources)
+  const malformed = analysisCandidate(
+    call(PartialArguments.fromObject({ selectionSources: { region: { ref: 'fresh' } } })),
+    's',
+    'w',
+    generation,
+  )
+  assert.deepEqual(candidateSelectionSources(base, malformed), base.selectionSources)
+})
 
 test('resource patch previews retain only unchanged admitted resources', () => {
   const image = (path: string): AnalysisResource => ({

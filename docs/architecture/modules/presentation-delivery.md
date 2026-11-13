@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-分析视图是右侧 Tab 中的整页分析结果，可包含一个或多个数据视图和说明。内部使用 `AnalysisDocument` 保存 OpenUI Lang program、元数据和资源。报告与看板是用户可要求的编排方式。`marivo_report_write` 预览草稿或保存不可变版本（`dsh.analysis-ui/v3`），Chat 保留打开入口。
+分析视图是右侧 Tab 中的整页分析结果，可包含一个或多个数据视图和说明。内部使用 `AnalysisDocument` 保存 OpenUI Lang program、元数据和资源。报告与看板是用户可要求的编排方式。`marivo_report_write` 预览草稿或保存不可变版本（`dsh.analysis-ui/v4`），Chat 保留打开入口。
 
 Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 Session/Turn、Workspace 成员关系和事件存储。插件拥有快照读取、文件完整提交、receipt、交付事件与分析视图目录。
 
@@ -55,9 +55,15 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
 未绑定筛选的 metric 要求完整单行快照，table 的 `columns` 使用互异的快照列 ID。Frame 图表 encoding 使用公开轴名和值名，Dataset 图表 encoding 使用列 ID，要求完整快照和数值列。坐标唯一性在没有必选 single 时检查完整快照，有必选 single 时在其所有目标字段原值元组的每个分组内检查。
 
-`SnapshotFilter` 须为可达的具名声明，数据视图通过 `filters` 引用它；字符串简写要求同资源同字段，对象绑定显式指定消费资源的目标字段。完整文档准入校验字段、类型、日期、候选默认值、唯一 ID、消费关系与原始视图。single、multiple、date-range 均以空数组表示全部；`allowAll:false` 要求非空默认值。single 和 date-range 可以使用 `latest` 按对应 Build 的捕获日期解析默认值。绑定的显式 metric 要求完整快照、所有绑定都是必选 single，且这些目标字段的原值元组在完整快照中唯一；零匹配显示无数据，不进行聚合。auto 按原始资源选图。刷新后显式默认成员消失或其他准入失败时拒绝新版本，保留最后成功的草稿和正式版本；latest 在新 Build 上重新解析。筛选选择只属于阅读状态，不进入更新请求或保存数据。
+`selectionSources` 按来源 ID 声明资源、字段、模式和默认策略；数据视图的 `filters` 绑定来源和 OpenUI 状态变量，可显式指定消费资源的目标字段。省略来源表时继承基版本，提供时整体替换。来源最多 64 项，且必须绑定视图；准入在读取来源字段前检查数量和消费关系。完整文档准入校验字段、类型、日期、候选默认值、唯一 ID、消费关系与原始视图。`allowAll:false` 要求非空默认值。single 和 date-range 可以使用 `latest` 按对应 Build 的捕获日期解析默认值。绑定的显式 metric 要求完整快照、所有绑定都是必选 single，且这些目标字段的原值元组在完整快照中唯一；零匹配显示无数据，不进行聚合。auto 按原始资源选图。刷新后显式默认成员消失或其他准入失败时拒绝新版本，保留最后成功的草稿和正式版本；latest 在新 Build 上重新解析。筛选选择只属于阅读状态，不进入更新请求或保存数据。
 
-旧 v3 报告继续按当前声明与快照契约读取，不要求 Catalog build 相等。早期 Frame 图表曾允许重复坐标并在绘图时覆盖其中的行；这类筛选图不满足当前唯一性约束，读取会明确拒绝，需要修复报告配置或数据。
+来源 ID 以字母开头，只能包含字母、数字和下划线，保留 `source_` 前缀避免与注入状态冲突。来源 `region` 的候选、默认值和草稿变量分别命名为 `$source_6_region_options`、`$source_6_region_default`、`$source_6_region_draft`；数字为 ID 的字符长度。控件通过官方 `@Each` 使用候选，数据视图通过对应 `$region` 状态消费已应用选择。
+
+当官方选择控件明确使用来源候选时，准入检查控件的状态变量能否直接或通过可达的 `@Set` 应用到该来源；明确不连通时返回可修复的绑定错误。不强制页面必须包含选择控件，也不推断无法静态判断的表达式。
+
+筛选来源的可选 `label` 用于消费视图的筛选摘要，应与控件标签和报告语言一致；省略时显示来源 ID。
+
+`dsh.analysis-ui/v3` 报告读取时在内存中转换为当前组件声明和状态绑定，不修改已保存的不可变 Build，不要求 Catalog build 相等；转换后的文档仍须通过当前快照与视图校验。早期 Frame 图表曾允许重复坐标并在绘图时覆盖其中的行；这类筛选图不满足当前唯一性约束，读取会明确拒绝，需要修复报告配置或数据。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
 模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。`report-ref-invalid` 提示准确复制成功回执，或通过 `marivo_report_list` 检索已保存报告，再读取选中的 ref 确认目标；不解码、修补引用或自动选择最新报告。`marivo_report_read({draft:true})` 仅恢复尚未保存的当前 Turn 草稿，成功保存会立即清除草稿。保存 ref 编码后执行解析自检；提交证明与 canonical 回执复用同一个 ref，文本回执核对其与持久化 receipt 的身份一致。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。
@@ -187,7 +193,7 @@ current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 
 默认 client 从 Workspace 会话头部的「分析视图」入口打开当前 Workspace 的原生目录 Tab。列表按 Report ID 去重，
 只显示「分析视图标题」「生成对话」「更新时间」三列；搜索框随输入筛选标题，列表按成功保存时间降序，
 同时间以 Report ID 稳定排序。统一列出所有已保存的分析视图，不按生成时的 surface 分类或过滤；
-发布历史中的 `source.surface` 保留旧格式兼容，不决定当前阅读位置。列表包含支持的 `dsh.analysis-ui/v3` 记录，旧格式报告被隐藏。
+发布历史中的 `source.surface` 保留旧格式兼容，不决定当前阅读位置。列表包含支持的 `dsh.analysis-ui/v4` 和可转换的 `dsh.analysis-ui/v3` 记录，其他旧格式报告被隐藏。
 
 来源会话使用发布时记录的 Harness Session ID，通过 Host 当前会话列表解析标题和导航；不可用时明确披露，不猜测来源。
 历史版本从报告正文的「历史版本」入口打开，版本切换读取精确 receipt，历史只读；返回当前版本显式重新 resolve。

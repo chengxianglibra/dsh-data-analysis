@@ -157,6 +157,12 @@ export function createMarivoPresentTool(
           remove: { type: 'array', items: { type: 'string' } },
         },
       },
+      selectionSources: {
+        type: 'object',
+        additionalProperties: true,
+        description:
+          'Complete map of selection source names to {ref,field:{kind,name},label?,mode?,defaultValues?,options?:{allowAll?,defaultPolicy?}}. Set label in the report locale for filter summaries; omitted labels fall back to the source name. Values come from saved snapshots; OpenUI variables hold the reader selection. Omit to inherit. Do not change during data refresh.',
+      },
       labels: {
         type: 'object',
         description:
@@ -432,7 +438,7 @@ export function createMarivoPresentTool(
               'Read the target saved report and start refresh-data with its saved ref.',
               { applied: false },
             )
-          for (const field of ['program', 'title', 'locale', 'labels'] as const)
+          for (const field of ['program', 'title', 'locale', 'labels', 'selectionSources'] as const)
             if (input[field] !== undefined)
               throw new PresentationRecoveryError(
                 'report-refresh-field-forbidden',
@@ -1001,6 +1007,7 @@ export function createMarivoUiReadTool(
           locale: document.locale,
           catalog: document.catalog,
           program: document.program,
+          ...(document.selectionSources ? { selectionSources: document.selectionSources } : {}),
           resources: Object.fromEntries(
             Object.entries(document.resources).map(([name, resource]) => [
               name,

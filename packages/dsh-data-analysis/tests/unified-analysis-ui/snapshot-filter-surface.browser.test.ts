@@ -42,11 +42,30 @@ test('one filter state synchronizes bound views without changing an unbound view
     locale: 'en-US',
     generatedAt: '2026-11-05T00:00:00Z',
     catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
-    program: `root = Stack([category, large, first, second, baseline], "row", "m", "start", "start", true);
-category = SnapshotFilter("category", "sales", {kind:"column",name:"category"}, "Category filter", "multiple", []);
-large = SnapshotFilter("large", "sales", {kind:"column",name:"large"}, "ID filter", "multiple", []);
-first = DatasetView("sales", {chart:"table"}, {}, ["category", "large"]);
-second = DatasetView("sales", {chart:"table"}, {}, ["category", "large"]);
+    selectionSources: {
+      category: {
+        ref: 'sales',
+        field: { kind: 'column', name: 'category' },
+        label: 'Category filter',
+        mode: 'multiple',
+      },
+      large: {
+        ref: 'sales',
+        field: { kind: 'column', name: 'large' },
+        label: 'ID filter',
+        mode: 'multiple',
+      },
+    },
+    program: `$category = {}; $large = {};
+root = Stack([category, categoryApply, categoryClear, large, largeApply, largeClear, first, second, baseline], "row", "m", "start", "start", true);
+category = CheckBoxGroup("category", @Each($source_8_category_options, "i", CheckBoxItem(i.label,"",i.id)), null, $source_8_category_draft);
+categoryApply = Button("Apply category", @Set($category, @SelectionOrCurrent($category, $source_8_category_draft, $source_8_category_options, "multiple", true)));
+categoryClear = Button("Clear category", Action([@Set($category,{}), @Set($source_8_category_draft,{})]));
+large = CheckBoxGroup("large", @Each($source_5_large_options, "i", CheckBoxItem(i.label,"",i.id)), null, $source_5_large_draft);
+largeApply = Button("Apply ID", @Set($large, @SelectionOrCurrent($large, $source_5_large_draft, $source_5_large_options, "multiple", true)));
+largeClear = Button("Clear ID", Action([@Set($large,{}), @Set($source_5_large_draft,{})]));
+first = DatasetView("sales", {chart:"table"}, {}, [{source:"category",selection:$category}, {source:"large",selection:$large}]);
+second = DatasetView("sales", {chart:"table"}, {}, [{source:"category",selection:$category}, {source:"large",selection:$large}]);
 baseline = DatasetView("sales", {chart:"table"});`,
     resources: {
       sales: {
@@ -91,11 +110,12 @@ const replacement={sales:{...doc.resources.sales,snapshot:${JSON.stringify(repla
 window.renderReport=(stage='saved')=>{
   const candidate=stage!=='saved';
   const useReplacement=stage==='replacement' || stage==='unsupported';
-  let program=candidate?doc.program.replace('"Category filter", "multiple", []','"Category filter", "multiple", '+(useReplacement?'[""]':'[null]')):doc.program;
+  let program=doc.program;
+  const sources = candidate ? {...doc.selectionSources,category:{...doc.selectionSources.category,defaultValues:useReplacement?['']:[null]}} : doc.selectionSources;
   if(stage==='unsupported') program=program.replace('first = DatasetView("sales", {chart:"table"}', 'first = DatasetView("sales", {chart:"heatmap",encoding:{x:"category",y:"large",value:"large"}}');
   root.render(h('div',{'data-stage':stage},h(AnalysisRenderer,{
     program,title:doc.title,locale:doc.locale,resources:useReplacement?replacement:doc.resources,recordId:doc.recordId,
-    viewId:'reader',candidate,isStreaming:candidate,
+    viewId:'reader',candidate,isStreaming:candidate,selectionSources:sources,
     askPoint:hostCall('askPoint'),askDataset:hostCall('askDataset'),askResource:hostCall('askResource'),
     readCode:hostCall('readCode'),openSemanticRef:hostCall('openSemanticRef')
   })));
@@ -122,8 +142,8 @@ window.renderReport();`,
       if (/^https?:/i.test(request.url())) remoteRequests.push(request.url())
     })
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
-    const category = page.locator('[data-snapshot-filter="category"]')
-    const large = page.locator('[data-snapshot-filter="large"]')
+    const category = page
+    const large = page
     const assertRows = async (selected: string[], first = selected, all = ['0', '1', '2', '3']) => {
       const expected = [first, selected, all]
       await page.waitForFunction((target) => {
@@ -142,29 +162,41 @@ window.renderReport();`,
     await assertRows(['0', '1', '2', '3'])
     assert.equal(await page.locator('.au-stack > .au-filter-summary').count(), 0)
     assert.equal(await page.locator('[data-resource="sales"] .au-filter-summary').count(), 2)
+    for (const summary of await page.locator('[data-resource="sales"] .au-filter-summary').all()) {
+      assert.match((await summary.textContent()) ?? '', /Category filter/)
+      assert.match((await summary.textContent()) ?? '', /ID filter/)
+    }
     await category.getByRole('checkbox', { name: 'Missing value', exact: true }).check()
+    await page.getByRole('button', { name: 'Apply category' }).click()
     await assertRows(['0'])
     await category.getByRole('checkbox', { name: 'Empty string', exact: true }).check()
+    await page.getByRole('button', { name: 'Apply category' }).click()
     await assertRows(['0', '1', '3'])
     await category.getByRole('checkbox', { name: 'Missing value', exact: true }).uncheck()
+    await page.getByRole('button', { name: 'Apply category' }).click()
     await category.getByRole('checkbox', { name: '"Missing value"', exact: true }).check()
+    await page.getByRole('button', { name: 'Apply category' }).click()
     await assertRows(['1', '2', '3'])
-    await large.getByRole('checkbox', { name: '9007199254740993', exact: true }).check()
+    await large.getByRole('checkbox', { name: '"9007199254740993"', exact: true }).check()
+    await page.getByRole('button', { name: 'Apply ID' }).click()
     await assertRows(['1', '2'])
-    await category.getByRole('button', { name: 'Clear', exact: true }).click()
+    await category.getByRole('button', { name: 'Clear category', exact: true }).click()
     await assertRows(['1', '2'])
-    await large.getByRole('checkbox', { name: '9007199254740993', exact: true }).uncheck()
-    await large.getByRole('checkbox', { name: '9007199254740992', exact: true }).check()
+    await large.getByRole('checkbox', { name: '"9007199254740993"', exact: true }).uncheck()
+    await page.getByRole('button', { name: 'Apply ID' }).click()
+    await large.getByRole('checkbox', { name: '"9007199254740992"', exact: true }).check()
+    await page.getByRole('button', { name: 'Apply ID' }).click()
     await assertRows(['0', '3'])
     const first = page.locator('[data-resource="sales"]').first()
     const sort = first.locator('th[data-column-id="large"] button')
     await sort.click()
     await sort.click()
     await category.getByRole('checkbox', { name: '"Missing value"', exact: true }).check()
+    await page.getByRole('button', { name: 'Apply category' }).click()
     await assertRows([])
     assert.equal(await first.getByText('No matching rows', { exact: true }).isVisible(), true)
-    await category.getByRole('button', { name: 'Clear', exact: true }).click()
-    await large.getByRole('button', { name: 'Clear', exact: true }).click()
+    await category.getByRole('button', { name: 'Clear category', exact: true }).click()
+    await large.getByRole('button', { name: 'Clear ID', exact: true }).click()
     await assertRows(['0', '1', '2', '3'], ['1', '2', '0', '3'])
 
     const renderStage = async (stage: string) => {
@@ -270,17 +302,49 @@ test('shared date controls project saved rows and keep the KPI on its selected r
     locale: 'en-US',
     generatedAt: '2026-11-13T00:00:00Z',
     catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
-    program: `root = Stack([day, range, requiredCluster, region, clusters, metric, singleTrend, rangeTrend, frameTrend, details]);
-day = SnapshotFilter("day", "daily", {kind:"column",name:"day"}, "Day", "single", [], {allowAll:false,defaultPolicy:"latest"});
-range = SnapshotFilter("range", "daily", {kind:"column",name:"day"}, "Range", "date-range", [], {allowAll:false,defaultPolicy:"latest"});
-requiredCluster = SnapshotFilter("requiredCluster", "daily", {kind:"column",name:"cluster"}, "KPI cluster", "single", ["B"], {allowAll:false});
-region = SnapshotFilter("region", "dimensions", {kind:"column",name:"region"}, "Region", "single", []);
-clusters = SnapshotFilter("clusters", "dimensions", {kind:"column",name:"cluster"}, "Clusters", "multiple", []);
-metric = DatasetView("daily", {chart:"metric",encoding:{value:"value"}}, {}, ["day", "requiredCluster"]);
-singleTrend = DatasetView("hourly", {chart:"line",encoding:{axis:"time",values:["value"]}}, {}, [{filter:"day",field:{kind:"column",name:"day"}}]);
-rangeTrend = DatasetView("hourly", {chart:"line",encoding:{axis:"time",values:["value"]}}, {}, [{filter:"range",field:{kind:"column",name:"time"}}]);
-frameTrend = AnalysisFrameView("hourFrame", {chart:"line",encoding:{axis:"hour",values:["reading"]}}, {}, [{filter:"range",field:{kind:"axis",name:"hour"}}]);
-details = DatasetView("dimensions", {chart:"table"}, {}, [{filter:"range",field:{kind:"column",name:"day"}}, "region", "clusters"]);`,
+    selectionSources: {
+      day: {
+        ref: 'daily',
+        field: { kind: 'column', name: 'day' },
+        label: 'Day',
+        options: { allowAll: false, defaultPolicy: 'latest' },
+      },
+      range: {
+        ref: 'daily',
+        field: { kind: 'column', name: 'day' },
+        label: 'Range',
+        mode: 'date-range',
+        options: { allowAll: false, defaultPolicy: 'latest' },
+      },
+      requiredCluster: {
+        ref: 'daily',
+        field: { kind: 'column', name: 'cluster' },
+        label: 'KPI cluster',
+        defaultValues: ['B'],
+        options: { allowAll: false },
+      },
+      region: { ref: 'dimensions', field: { kind: 'column', name: 'region' }, label: 'Region' },
+      clusters: {
+        ref: 'dimensions',
+        field: { kind: 'column', name: 'cluster' },
+        label: 'Clusters',
+        mode: 'multiple',
+      },
+    },
+    program: `$day = "a"; $range = {}; $requiredCluster = "a"; $region = "a"; $clusters = {};
+root = Stack([day, range, rangeApply, requiredCluster, region, clusters, clustersApply, metric, singleTrend, rangeTrend, frameTrend, details]);
+day = Select("day", @Each($source_3_day_options, "i", SelectItem(i.id,i.label)), null, null, $day);
+range = DatePicker("range", "range", null, $source_5_range_draft);
+rangeApply = Button("Apply range", @Set($range, @SelectionOrCurrent($range, $source_5_range_draft, $source_5_range_options, "date-range", false)));
+requiredCluster = Select("requiredCluster", @Each($source_15_requiredCluster_options, "i", SelectItem(i.id,i.label)), null, null, $requiredCluster);
+region = Select("region", @Each($source_6_region_options, "i", SelectItem(i.id,i.label)), null, null, $region);
+clusters = CheckBoxGroup("clusters", @Each($source_8_clusters_options, "i", CheckBoxItem(i.label,"",i.id)), null, $source_8_clusters_draft);
+clustersApply = Button("Apply clusters", @Set($clusters, @SelectionOrCurrent($clusters, $source_8_clusters_draft, $source_8_clusters_options, "multiple", true)));
+metric = DatasetView("daily", {chart:"metric",encoding:{value:"value"}}, {}, [{source:"day",selection:$day}, {source:"requiredCluster",selection:$requiredCluster}]);
+singleTrend = DatasetView("hourly", {chart:"line",encoding:{axis:"time",values:["value"]}}, {}, [{source:"day",field:{kind:"column",name:"day"},selection:$day}]);
+rangeTrend = DatasetView("hourly", {chart:"line",encoding:{axis:"time",values:["value"]}}, {}, [{source:"range",field:{kind:"column",name:"time"},selection:$range}]);
+frameTrend = AnalysisFrameView("hourFrame", {chart:"line",encoding:{axis:"hour",values:["reading"]}}, {}, [{source:"range",field:{kind:"axis",name:"hour"},selection:$range}]);
+details = DatasetView("dimensions", {chart:"table"}, {}, [{source:"range",field:{kind:"column",name:"day"},selection:$range}, {source:"region",selection:$region}, {source:"clusters",selection:$clusters}]);`,
     resources: {
       daily: resource(daily),
       hourly: resource(hourly),
@@ -304,7 +368,7 @@ import {createRoot} from 'react-dom/client';
 import {AnalysisRenderer} from './src/client/analysis-ui/surface.tsx';
 const doc=${JSON.stringify(report)};
 createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{
-  program:doc.program,title:doc.title,locale:doc.locale,resources:doc.resources,recordId:doc.recordId,
+  program:doc.program,title:doc.title,locale:doc.locale,resources:doc.resources,selectionSources:doc.selectionSources,recordId:doc.recordId,
   askDataset:async()=>{},askResource:async()=>{},askPoint:async()=>{}
 }));`,
       },
@@ -346,18 +410,26 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{
       ['2026-11-13T00:00:00Z', '2026-11-13T13:00:00Z'],
     )
     assert.match((await metric.textContent()) ?? '', /106/)
-    await page.getByRole('combobox', { name: 'Day' }).selectOption({ label: '"2026-11-12"' })
+    await page.getByRole('combobox').nth(0).click()
+    await page.getByRole('option', { name: '"2026-11-12"' }).click()
     await single.locator('[data-frame-point="143:value"]').first().waitFor()
     assert.equal(await single.locator('[data-frame-point$=":value"]').count(), 24)
     await metric.getByRole('status').filter({ hasText: 'No matching rows' }).waitFor()
     assert.doesNotMatch((await metric.textContent()) ?? '', /106/)
-    await page.getByRole('combobox', { name: 'KPI cluster' }).selectOption({ label: '"A"' })
+    await page.getByRole('combobox').nth(1).click()
+    await page.getByRole('option', { name: '"A"' }).click()
     await metric.getByText('105', { exact: true }).waitFor()
-    const start = page.getByLabel('Start date')
-    const end = page.getByLabel('End date')
-    await start.fill('2026-11-12')
+    const chooseRange = async (from: string, to: string) => {
+      await page.locator('.openui-date-picker-renderer-floating-input-container').click()
+      for (const day of [from, to])
+        await page
+          .locator('.openui-date-picker-renderer-floating-content button')
+          .filter({ hasText: new RegExp(`^${day}$`) })
+          .click()
+    }
+    await chooseRange('12', '13')
     assert.equal(await range.locator('[data-frame-point$=":value"]').count(), 14)
-    await page.getByRole('button', { name: 'Apply' }).click()
+    await page.getByRole('button', { name: 'Apply range' }).click()
     await range.locator('[data-frame-point="120:value"]').first().waitFor()
     assert.equal(await range.locator('[data-frame-point$=":value"]').count(), 38)
     assert.equal(await range.locator('[data-frame-point="119:value"]').count(), 0)
@@ -378,22 +450,23 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{
         count,
       )
     await waitForDetailRows(6)
-    await page.getByRole('combobox', { name: 'Region' }).selectOption({ label: '"East"' })
+    await page.getByRole('combobox').nth(2).click()
+    await page.getByRole('option', { name: '"East"' }).click()
     await waitForDetailRows(4)
-    await page.getByRole('checkbox', { name: 'A', exact: true }).check()
-    await page.getByRole('checkbox', { name: 'B', exact: true }).check()
+    await page.getByRole('checkbox', { name: '"A"', exact: true }).check()
+    await page.getByRole('checkbox', { name: '"B"', exact: true }).check()
+    await page.getByRole('button', { name: 'Apply clusters' }).click()
     await waitForDetailRows(4)
-    await start.fill('2026-11-13')
-    await page.getByRole('button', { name: 'Apply' }).click()
+    await chooseRange('13', '13')
+    await page.getByRole('button', { name: 'Apply range' }).click()
     await waitForDetailRows(2)
-    await page.getByRole('combobox', { name: 'Region' }).selectOption({ label: '"South"' })
+    await page.getByRole('combobox').nth(2).click()
+    await page.getByRole('option', { name: '"South"' }).click()
     await waitForDetailRows(0)
     await details.getByRole('status').filter({ hasText: 'No matching rows' }).waitFor()
-    await start.fill('2026-11-12')
-    await page.getByRole('button', { name: 'Apply' }).click()
+    await chooseRange('12', '13')
+    await page.getByRole('button', { name: 'Apply range' }).click()
     await range.locator('[data-frame-point="120:value"]').first().waitFor()
-    await end.fill('2026-11-11')
-    assert.equal(await page.getByRole('button', { name: 'Apply' }).isDisabled(), true)
     assert.equal(await range.locator('[data-frame-point$=":value"]').count(), 38)
     assert.deepEqual(errors, [])
   } finally {

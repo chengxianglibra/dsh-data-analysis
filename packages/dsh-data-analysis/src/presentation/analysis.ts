@@ -15,7 +15,7 @@ import {
   parseAnalysisDocument,
   parseAnalysisResource,
   sameAnalysisDeclaration,
-  validateSnapshotFilters,
+  validateSelectionSources,
 } from './contracts/analysis-document.ts'
 import {
   analysisStatements,
@@ -366,6 +366,7 @@ export async function createAnalysisDocument(
       catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
       program,
       resources,
+      selectionSources: input.selectionSources ?? base?.selectionSources,
     })
   } catch (error) {
     if (error instanceof AnalysisViewError) {
@@ -383,8 +384,18 @@ export async function createAnalysisDocument(
 /** Compare resolved chart identity; data-dependent geometry and row layout can still vary. */
 export function validateRefreshShape(base: AnalysisDocument, next: AnalysisDocument): void {
   const nodes = analysisElements(parseAnalysisProgram(base.program))
-  const previousContexts = validateSnapshotFilters(base.program, nodes, base.resources)
-  const nextContexts = validateSnapshotFilters(base.program, nodes, next.resources)
+  const previousContexts = validateSelectionSources(
+    base.program,
+    nodes,
+    base.resources,
+    base.selectionSources,
+  )
+  const nextContexts = validateSelectionSources(
+    base.program,
+    nodes,
+    next.resources,
+    next.selectionSources,
+  )
   for (const node of nodes) {
     if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
     const name = String(node.props.ref)

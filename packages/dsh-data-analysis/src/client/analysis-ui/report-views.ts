@@ -7,10 +7,9 @@ import {
 import type { ResourceStreamResponse } from '../../presentation/contracts/resource-stream.ts'
 import type { DraftDelivery, PresentationDelivery } from '../../presentation/receipt.ts'
 import type { AnalysisCandidate } from './candidate.ts'
-import type { SnapshotFilterStore } from './snapshot-filter-controls.tsx'
 
 export interface ReportReadingState {
-  filters?: { key: string; store: SnapshotFilterStore }
+  openUIState?: { key: string; value: Record<string, unknown> }
   tabs: Map<string, string>
   accordions: Map<string, string>
   tables: Map<

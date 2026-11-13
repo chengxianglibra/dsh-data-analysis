@@ -30,9 +30,19 @@ test('a real Frame filter preserves saved point identities and table rows', asyn
         codeRef: { executionId: 'run', sha256: 'a'.repeat(64) },
       },
     }
-    const program =
-      'root = Stack([filter, chart, table]);\nfilter = SnapshotFilter("region", "frame", {kind:"axis", name:"sales.customer.region"}, "Region", "single", []);\nchart = AnalysisFrameView("frame", {chart:"auto"}, {}, ["region"]);\ntable = AnalysisFrameView("frame", {chart:"table"}, {}, ["region"]);'
-    validateAnalysisResources(program, { frame: resource })
+    const selectionSources = {
+      region: {
+        ref: 'frame',
+        field: { kind: 'axis' as const, name: 'sales.customer.region' },
+        label: 'Region',
+      },
+    }
+    const program = `$region = "a";
+root = Stack([filter, chart, table]);
+filter = Select("region", @Each($source_6_region_options, "i", SelectItem(i.id,i.label)), null, null, $region);
+chart = AnalysisFrameView("frame", {chart:"auto"}, {}, [{source:"region",selection:$region}]);
+table = AnalysisFrameView("frame", {chart:"table"}, {}, [{source:"region",selection:$region}]);`
+    validateAnalysisResources(program, { frame: resource }, selectionSources)
     await build({
       stdin: {
         resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
@@ -42,7 +52,7 @@ import {AnalysisRenderer} from './src/client/analysis-ui/surface.tsx';
 const resource=${JSON.stringify(resource)};
 window.requests=[];
 window.snapshot=resource.snapshot;
-createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:${JSON.stringify(program)},title:'Frame filter',locale:'en-US',recordId:'saved-build',resources:{frame:resource},askPoint:async selection=>window.requests.push(selection)}));`,
+createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:${JSON.stringify(program)},title:'Frame filter',locale:'en-US',recordId:'saved-build',resources:{frame:resource},selectionSources:${JSON.stringify(selectionSources)},askPoint:async selection=>window.requests.push(selection)}));`,
       },
       outfile: path.join(directory, 'page.js'),
       bundle: true,
@@ -70,7 +80,8 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:$
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
       ['0', '1', '2', '3', '4', '5'],
     )
-    await page.getByRole('combobox', { name: 'Region' }).selectOption({ label: '"south"' })
+    await page.getByRole('combobox').first().click()
+    await page.getByRole('option', { name: '"south"' }).click()
     await page.waitForFunction(
       () => document.querySelectorAll('[data-frame-view="table"] tbody tr').length === 3,
     )

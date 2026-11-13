@@ -32,6 +32,33 @@ export const snapshotFilterSchema = z.strictObject({
     .optional(),
 })
 export type SnapshotFilter = z.infer<typeof snapshotFilterSchema>
+/** Immutable source configuration; current selections belong to OpenUI state. */
+export const selectionSourceSchema = snapshotFilterSchema.omit({ filterId: true }).extend({
+  label: snapshotFilterSchema.shape.label.optional(),
+})
+export const selectionSourcesSchema = z
+  .record(
+    z
+      .string()
+      .min(1)
+      .max(80)
+      .regex(/^(?!source_)[a-zA-Z][a-zA-Z0-9_]*$/),
+    selectionSourceSchema,
+  )
+  .refine((sources) => Object.keys(sources).length <= PRESENTATION_BUDGETS.blocks, {
+    message: `Use at most ${PRESENTATION_BUDGETS.blocks} selection sources.`,
+  })
+export type SelectionSources = z.infer<typeof selectionSourcesSchema>
+export const selectionBindingSchema = z.strictObject({
+  source: z
+    .string()
+    .min(1)
+    .max(80)
+    .regex(/^(?!source_)[a-zA-Z][a-zA-Z0-9_]*$/),
+  field: snapshotFilterSchema.shape.field.optional(),
+  selection: z.unknown(),
+})
+export type SelectionBinding = z.infer<typeof selectionBindingSchema>
 export const snapshotFilterBindingSchema = z.union([
   snapshotFilterSchema.shape.filterId,
   z.strictObject({

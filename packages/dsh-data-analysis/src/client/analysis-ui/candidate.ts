@@ -8,6 +8,7 @@ import {
   sameAnalysisDeclaration,
 } from '../../presentation/contracts/analysis-document.ts'
 import { parseReportRef } from '../../presentation/contracts/report-ref.ts'
+import { selectionSourcesSchema } from '../../presentation/contracts/snapshot-filter.ts'
 import { PRESENTATION_BUDGETS } from '../../presentation/contracts/types.ts'
 import type { DraftDelivery } from '../../presentation/receipt.ts'
 import { type PresentationDelivery, parsePresentationDelivery } from '../../presentation/receipt.ts'
@@ -46,6 +47,8 @@ export interface AnalysisCandidate {
   locale?: 'zh-CN' | 'en-US'
   resourcePatch?: AnalysisPresentInput['resourcePatch']
   resourcePatchInput: 'omitted' | 'incomplete' | 'complete'
+  selectionSources?: AnalysisPresentInput['selectionSources']
+  selectionSourcesInput: 'omitted' | 'incomplete' | 'complete'
   delivery?: PresentationDelivery
 }
 export const candidateKey = (sessionId: string, turn: number, callId: string) =>
@@ -75,6 +78,9 @@ export function analysisCandidate(
       : undefined
   const patch = args.complete('resourcePatch')
     ? analysisResourcePatch.safeParse(args.value('resourcePatch'))
+    : undefined
+  const sources = args.complete('selectionSources')
+    ? selectionSourcesSchema.safeParse(args.value('selectionSources'))
     : undefined
   const locale = args.complete('locale') ? args.text('locale') : undefined
   const readRef = (field: 'ref' | 'onto') => {
@@ -137,6 +143,14 @@ export function analysisCandidate(
     title: args.complete('title') ? args.text('title') : undefined,
     locale: locale === 'en-US' || locale === 'zh-CN' ? locale : undefined,
     resourcePatch: patch?.success ? patch.data : undefined,
+    selectionSources: sources?.success ? sources.data : undefined,
+    selectionSourcesInput: !args.has('selectionSources')
+      ? args.closed()
+        ? 'omitted'
+        : 'incomplete'
+      : args.complete('selectionSources')
+        ? 'complete'
+        : 'incomplete',
     resourcePatchInput: args.has('resources')
       ? 'incomplete'
       : !args.has('resourcePatch')
@@ -148,6 +162,21 @@ export function analysisCandidate(
           : 'incomplete',
     delivery,
   }
+}
+
+/** A source declaration is a complete replacement; never interpret a partial object. */
+export function candidateSelectionSources(
+  document: Pick<AnalysisDocument, 'selectionSources'> | undefined,
+  candidate: Pick<
+    AnalysisCandidate,
+    'selectionSources' | 'selectionSourcesInput' | 'resourcePatchInput'
+  >,
+): AnalysisDocument['selectionSources'] {
+  return candidate.resourcePatchInput !== 'incomplete' &&
+    candidate.selectionSourcesInput === 'complete' &&
+    candidate.selectionSources
+    ? candidate.selectionSources
+    : document?.selectionSources
 }
 
 /** A candidate can reuse admitted bytes only when its declaration is known unchanged. */

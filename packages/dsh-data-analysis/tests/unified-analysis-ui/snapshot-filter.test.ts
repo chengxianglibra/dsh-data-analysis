@@ -4,9 +4,12 @@ import {
   isSnapshotFilterSelectionValid,
   resolveSnapshotFilter,
   resolveSnapshotFilterBinding,
+  type SelectionSources,
+  selectionSourcesSchema,
   snapshotFilterSchema,
   visibleSnapshotRows,
 } from '../../src/presentation/contracts/snapshot-filter.ts'
+import { PRESENTATION_BUDGETS } from '../../src/presentation/contracts/types.ts'
 import { datasetSnapshot } from './dataset-fixtures.ts'
 
 const snapshot = datasetSnapshot(
@@ -92,6 +95,52 @@ test('invalid defaults and unsupported fields are rejected', () => {
   assert.deepEqual(resolveSnapshotFilter(empty, { ...definition, defaultValues: [] }).options, [])
 })
 
+test('selection source names cannot collide with injected OpenUI state', () => {
+  const source = { ref: 'sales', field: { kind: 'column', name: 'category' } }
+  assert.equal(selectionSourcesSchema.safeParse({ region: source }).success, true)
+  assert.equal(selectionSourcesSchema.safeParse({ source_6_region_options: source }).success, false)
+})
+
+test('selection sources have a bounded count and unused sources never scan saved rows', async () => {
+  const { AnalysisViewError, validateAnalysisResources } = await import(
+    '../../src/presentation/contracts/analysis-document.ts'
+  )
+  const source = { ref: 'sales', field: { kind: 'column' as const, name: 'category' } }
+  const sources = Object.fromEntries(
+    Array.from({ length: PRESENTATION_BUDGETS.blocks }, (_, i) => [`filter${i}`, source]),
+  )
+  assert.equal(selectionSourcesSchema.safeParse(sources).success, true)
+  const tooMany = { ...sources, extra: source }
+  assert.equal(selectionSourcesSchema.safeParse(tooMany).success, false)
+
+  const large = datasetSnapshot(
+    Array.from({ length: PRESENTATION_BUDGETS.rows }, (_, i) => [`category-${i}`]),
+    [{ id: 'category', label: 'Category', type: 'string', nullable: false }],
+  )
+  Object.defineProperty(large.data, 'rows', {
+    get() {
+      throw new Error('unused snapshot rows were scanned')
+    },
+  })
+  const resources = {
+    sales: {
+      kind: 'snapshot' as const,
+      declaration: { kind: 'dataset-snapshot' as const, snapshotRef: 'data' },
+      snapshot: large,
+      binding: { workspaceId: 'workspace' },
+    },
+  }
+  const program = 'root = TextContent("No bound views");'
+  assert.throws(
+    () => validateAnalysisResources(program, resources, sources),
+    (error) => error instanceof AnalysisViewError && error.code === 'analysis-filter-unused',
+  )
+  assert.throws(
+    () => validateAnalysisResources(program, resources, tooMany),
+    (error) => error instanceof AnalysisViewError && error.code === 'analysis-filter-budget',
+  )
+})
+
 test('document admission checks filter bindings on the complete saved snapshot', async () => {
   const { AnalysisViewError, validateAnalysisResources } = await import(
     '../../src/presentation/contracts/analysis-document.ts'
@@ -120,86 +169,84 @@ test('document admission checks filter bindings on the complete saved snapshot',
       },
     },
   }
-  const declaration =
-    'f = SnapshotFilter("category", "sales", {kind: "column", name: "category"}, "Category", "multiple", [null]);'
-  const view = 'v = DatasetView("sales", {chart: "table"}, {}, ["category"]);'
-  const program = (children: string, extra = '') =>
-    `root = Stack([${children}]);\n${declaration}\n${view}\n${extra}`
-  assert.doesNotThrow(() => validateAnalysisResources(program('f, f, v'), resources))
+  const sources = {
+    category: {
+      ref: 'sales',
+      field: { kind: 'column' as const, name: 'category' },
+      label: 'Category',
+      mode: 'multiple' as const,
+      defaultValues: [null],
+    },
+  } satisfies SelectionSources
+  const program = (
+    ref = 'sales',
+    bindings = '[{source:"category",selection:$category}]',
+    view = '{chart:"table"}',
+  ) => `$category = {}\nroot = DatasetView("${ref}", ${view}, {}, ${bindings})`
+  assert.doesNotThrow(() => validateAnalysisResources(program(), resources, sources))
   assert.throws(
     () =>
       validateAnalysisResources(
-        program('f, v').replace('{chart: "table"}', '{chart: "table", columns: ["missing"]}'),
+        program('sales', undefined, '{chart:"table",columns:["missing"]}'),
         resources,
+        sources,
       ),
     (error) => {
       assert(error instanceof AnalysisViewError)
       assert.equal(error.code, 'analysis-columns-invalid')
-      assert.equal(error.path, 'v/view/columns/0')
+      assert.equal(error.path, 'root/view/columns/0')
       assert(error.details.candidates?.includes('category'))
       return true
     },
   )
-  const wrongKind = program('f, v').replace('kind: "column"', 'kind: "axis"')
+  const wrongKind = {
+    category: { ...sources.category, field: { kind: 'axis' as const, name: 'category' } },
+  }
   assert.throws(
-    () => validateAnalysisResources(wrongKind, resources),
+    () => validateAnalysisResources(program(), resources, wrongKind),
     (error) => {
       assert(error instanceof AnalysisViewError)
-      assert.equal(error.path, 'f/field/kind')
+      assert.equal(error.path, 'source_category/field/kind')
       assert.deepEqual(error.details, {
         received: 'axis',
         expectedKind: 'field-kind',
         candidates: ['column'],
       })
-      validateAnalysisResources(
-        wrongKind.replace('kind: "axis"', `kind: ${JSON.stringify(error.details.candidates[0])}`),
-        resources,
-      )
       return true
     },
   )
-  const check = (source: string, code: string) => {
+  const check = (source: string, code: string, selectionSources: SelectionSources = sources) => {
     assert.throws(
-      () => validateAnalysisResources(source, resources),
+      () => validateAnalysisResources(source, resources, selectionSources),
       (error) => error instanceof AnalysisViewError && error.code === code && Boolean(error.path),
     )
   }
-  check(program('v'), 'analysis-filter-unreachable')
-  check(program('f, v', declaration), 'analysis-filter-declaration-duplicate')
-  check(program('f'), 'analysis-filter-unused')
+  check('root = TextContent("No filter consumer");', 'analysis-filter-unused')
+  check(program('other'), 'analysis-filter-resource-mismatch')
   check(
-    program(
-      'f, v',
-      'f2 = SnapshotFilter("category", "sales", {kind: "column", name: "category"}, "Other");\nroot = Stack([f, f2, v]);',
-    ),
-    'analysis-filter-id-duplicate',
-  )
-  check(
-    program('f, DatasetView("other", {chart: "table"}, {}, ["category"])'),
-    'analysis-filter-resource-mismatch',
-  )
-  check(
-    program('f, DatasetView("sales", {chart: "table"}, {}, ["missing"])'),
-    'analysis-filter-reference-invalid',
-  )
-  check(
-    program('f, DatasetView("sales", {chart: "table"}, {}, ["category", "category"])'),
+    program('sales', '[{source:"missing",selection:$missing}]'),
     'analysis-filter-reference-invalid',
   )
   check(
     program(
-      'f, DatasetView("sales", {chart: "heatmap", encoding: {x: "category", y: "flag", value: "large"}}, {}, ["category"])',
+      'sales',
+      '[{source:"category",selection:$category},{source:"category",selection:$category}]',
     ),
+    'analysis-filter-reference-invalid',
+  )
+  check(
+    program('sales', undefined, '{chart:"heatmap",encoding:{x:"category",y:"flag",value:"large"}}'),
     'analysis-filter-view-unsupported',
   )
-  check(program('f, v').replace('[null]', '["absent"]'), 'analysis-filter-default-invalid')
+  check(program(), 'analysis-filter-default-invalid', {
+    category: { ...sources.category, defaultValues: ['absent'] },
+  })
+  check(program(), 'analysis-filter-field-invalid', {
+    category: { ...sources.category, field: { kind: 'column', name: 'missing' } },
+  })
   check(
-    program('f, v').replace('name: "category"', 'name: "missing"'),
-    'analysis-filter-field-invalid',
-  )
-  check(
-    `root = Stack([SnapshotFilter("category", "sales", {kind: "column", name: "category"}, "Category"), DatasetView("sales", {chart: "table"}, {}, ["category"])]);`,
-    'analysis-filter-named-required',
+    program('sales', '[{source:"category",selection:$other}]'),
+    'analysis-filter-reference-invalid',
   )
 })
 
@@ -232,21 +279,33 @@ test('real Frame axes and interpretation gate filter admission and auto views', 
     [0],
   )
   const source = (view: string) =>
-    `root = Stack([f, AnalysisFrameView("frame", ${view}, {}, ["region"])]);\nf = SnapshotFilter("region", "frame", {kind:"axis", name:"sales.customer.region"}, "Region", "single", ["east"]);`
+    `$region = "a"\nroot = AnalysisFrameView("frame", ${view}, {}, [{source:"region",selection:$region}])`
   const check = (snapshot: typeof observation, view: string) =>
-    validateAnalysisResources(source(view), {
-      frame: {
-        kind: 'snapshot',
-        declaration: { kind: 'frame-snapshot', snapshotRef: 'frame' },
-        snapshot,
-        binding: {
-          workspaceId: 'workspace',
-          codeRef: { executionId: 'run', sha256: 'a'.repeat(64) },
-          sessionId: 'session',
-          callId: 'call',
+    validateAnalysisResources(
+      source(view),
+      {
+        frame: {
+          kind: 'snapshot',
+          declaration: { kind: 'frame-snapshot', snapshotRef: 'frame' },
+          snapshot,
+          binding: {
+            workspaceId: 'workspace',
+            codeRef: { executionId: 'run', sha256: 'a'.repeat(64) },
+            sessionId: 'session',
+            callId: 'call',
+          },
         },
       },
-    })
+      {
+        region: {
+          ref: 'frame',
+          field: { kind: 'axis', name: 'sales.customer.region' },
+          label: 'Region',
+          mode: 'single',
+          defaultValues: ['east'],
+        },
+      },
+    )
   assert.doesNotThrow(() => check(observation, '{chart:"auto"}'))
   assert.doesNotThrow(() => check(observation, '{chart:"table"}'))
   const missing = structuredClone(observation)

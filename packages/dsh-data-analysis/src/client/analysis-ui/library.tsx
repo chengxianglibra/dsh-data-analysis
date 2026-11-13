@@ -1,5 +1,5 @@
 import type { ElementNode } from '@openuidev/lang-core'
-import { createLibrary, defineComponent } from '@openuidev/react-lang'
+import { createLibrary, defineComponent, defineFunction } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
 import { createContext, type ReactNode, useContext, useLayoutEffect, useRef } from 'react'
 import { z } from 'zod/v4'
@@ -8,31 +8,29 @@ import {
   datasetViewSchema,
 } from '../../presentation/contracts/dataset-view.ts'
 import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
-import {
-  snapshotFilterBindingSchema,
-  snapshotFilterSchema,
-} from '../../presentation/contracts/snapshot-filter.ts'
+import { selectionBindingSchema } from '../../presentation/contracts/snapshot-filter.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { Markdown } from '../presentation/markdown.tsx'
 import { Tabs } from '../ui/tabs.tsx'
 import { useAnalysisResources } from './context.tsx'
 import { DashboardAccordion, DashboardTextCallout } from './dashboard-components.tsx'
 import { AnalysisDataView } from './data-view.tsx'
+import { AnalysisDatePicker } from './date-picker.tsx'
 import { Card, DashboardGrid as Grid, DashboardGridItem as GridItem, Stack } from './layout.tsx'
 import { ReadingComponent, useReportReading } from './reading-state.tsx'
-import { SnapshotFilterControl } from './snapshot-filter-controls.tsx'
+import { validSelectionDraft } from './selection-data.tsx'
 
 const frameProps = z.object({
   ref: z.string().min(1),
   view: frameViewSchema.optional(),
   display: frameDisplaySchema.optional(),
-  filters: z.array(snapshotFilterBindingSchema).optional(),
+  filters: z.array(selectionBindingSchema).optional(),
 })
 const datasetProps = z.object({
   ref: z.string().min(1),
   view: datasetViewSchema.optional(),
   display: datasetDisplaySchema.optional(),
-  filters: z.array(snapshotFilterBindingSchema).optional(),
+  filters: z.array(selectionBindingSchema).optional(),
 })
 
 type AnalysisTabItem = ElementNode & {
@@ -128,13 +126,6 @@ export const DatasetView = defineComponent({
     <ResourceView kind="dataset" props={props} statementId={statementId} />
   ),
 })
-export const SnapshotFilter = defineComponent({
-  name: 'SnapshotFilter',
-  description:
-    'Select saved dimension values or a date range for explicitly bound views; no recalculation.',
-  props: snapshotFilterSchema,
-  component: ({ props }) => <SnapshotFilterControl declaration={props} />,
-})
 function ResourceImage({
   src,
   alt,
@@ -179,6 +170,14 @@ const officialNames = [
   'TextCallout',
   'Accordion',
   'AccordionItem',
+  'Select',
+  'SelectItem',
+  'CheckBoxGroup',
+  'CheckBoxItem',
+  'DatePicker',
+  'Button',
+  'FormControl',
+  'Label',
 ] as const
 const official = Object.fromEntries(
   officialNames.map((name) => {
@@ -214,11 +213,10 @@ const DashboardGrid = defineComponent({
 })
 const content = z.union([
   ...officialNames
-    .filter((name) => name !== 'TabItem' && name !== 'AccordionItem')
+    .filter((name) => !['TabItem', 'AccordionItem', 'SelectItem', 'CheckBoxItem'].includes(name))
     .map((name) => official[name]!.ref),
   AnalysisFrameView.ref,
   DatasetView.ref,
-  SnapshotFilter.ref,
   DashboardGrid.ref,
 ])
 
@@ -268,12 +266,23 @@ const StackLayout = defineComponent({
 // definitions. Its root/id are not configurable by extend in 1.0.1.
 const subsetBase = openuiLibrary.extend({
   components: {
-    add: [AnalysisFrameView, DatasetView, SnapshotFilter, DashboardGrid, DashboardGridItemBase],
+    add: [AnalysisFrameView, DatasetView, DashboardGrid, DashboardGridItemBase],
     remove: Object.keys(openuiLibrary.components).filter(
       (name) => !officialNames.some((item) => item === name),
     ),
     override: [
       StackLayout,
+      defineComponent({
+        ...official.DatePicker!,
+        component: ({ props }) => (
+          <AnalysisDatePicker
+            name={typeof props.name === 'string' ? props.name : ''}
+            mode={props.mode === 'range' ? 'range' : 'single'}
+            rules={props.rules}
+            value={props.value}
+          />
+        ),
+      }),
       defineComponent({
         ...official.Card!,
         props: official.Card!.props.extend({ children: z.array(content) }),
@@ -382,7 +391,13 @@ const DashboardGridItem = defineComponent({
         Object.values(subsetBase.components)
           .filter(
             (component) =>
-              !['TabItem', 'AccordionItem', 'DashboardGridItem'].includes(component.name),
+              ![
+                'TabItem',
+                'AccordionItem',
+                'DashboardGridItem',
+                'SelectItem',
+                'CheckBoxItem',
+              ].includes(component.name),
           )
           .map((component) => component.ref),
       ),
@@ -392,10 +407,32 @@ const DashboardGridItem = defineComponent({
 const subset = subsetBase.extend({ components: { override: [DashboardGridItem] } })
 // A domain component may be the root; keep the plugin identity and omit the
 // official Stack-only root and full-library prompt groups.
+const selectionCheckParams = {
+  draft: z.unknown().optional(),
+  items: z.array(z.object({ id: z.string(), label: z.string() })),
+  mode: z.enum(['single', 'multiple', 'date-range']),
+  allowAll: z.boolean(),
+}
+const selectionValid = defineFunction({
+  name: 'SelectionValid',
+  description: 'Whether a selection draft is valid for its mode and allowed options.',
+  params: z.object(selectionCheckParams),
+  returns: z.boolean(),
+  fn: ({ draft, items, mode, allowAll }) => validSelectionDraft(draft, items, mode, allowAll),
+})
+const selectionOrCurrent = defineFunction({
+  name: 'SelectionOrCurrent',
+  description: 'Apply a valid selection draft or retain the current selection.',
+  params: z.object({ current: z.unknown().optional(), ...selectionCheckParams }),
+  fn: ({ current, draft, items, mode, allowAll }) =>
+    validSelectionDraft(draft, items, mode, allowAll) ? (draft ?? null) : (current ?? null),
+})
 export const analysisLibrary = createLibrary({
   id: analysisCatalogId,
   components: Object.values(subset.components),
+  functions: [selectionValid, selectionOrCurrent],
 })
 export const analysisRootComponents = Object.keys(analysisLibrary.components).filter(
-  (name) => !['TabItem', 'AccordionItem', 'DashboardGridItem'].includes(name),
+  (name) =>
+    !['TabItem', 'AccordionItem', 'DashboardGridItem', 'SelectItem', 'CheckBoxItem'].includes(name),
 )

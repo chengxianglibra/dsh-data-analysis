@@ -185,8 +185,23 @@ test('offline filters begin at saved defaults and operate on the complete embedd
     locale: 'en-US',
     generatedAt: '2026-11-05T00:00:00Z',
     catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
-    program:
-      'root = Stack([f, v]);\nf = SnapshotFilter("category", "result", {kind:"column", name:"category"}, "Category", "multiple", ["A"]);\nv = DatasetView("result", {chart:"table"}, {}, ["category"]);',
+    selectionSources: {
+      category: {
+        ref: 'result',
+        field: { kind: 'column', name: 'category' },
+        mode: 'multiple',
+        defaultValues: ['A'],
+      },
+    },
+    program: [
+      '$category = {};',
+      'root = Stack([f, apply, clear, reset, v]);',
+      'f = CheckBoxGroup("category", @Each($source_8_category_options, "i", CheckBoxItem(i.label, "", i.id)), null, $source_8_category_draft);',
+      'apply = Button("Apply", @Set($category, @SelectionOrCurrent($category, $source_8_category_draft, $source_8_category_options, "multiple", true)));',
+      'clear = Button("Clear", Action([@Set($category, {}), @Set($source_8_category_draft, {})]));',
+      'reset = Button("Restore defaults", Action([@Set($category, $source_8_category_default), @Set($source_8_category_draft, $source_8_category_default)]));',
+      'v = DatasetView("result", {chart:"table"}, {}, [{source:"category",selection:$category}]);',
+    ].join('\n'),
     resources: {
       result: {
         kind: 'snapshot',
@@ -219,14 +234,15 @@ test('offline filters begin at saved defaults and operate on the complete embedd
     })
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto(pathToFileURL(reportPath).href)
-    await page.getByRole('checkbox', { name: 'A' }).waitFor()
+    await page.getByRole('checkbox', { name: '"A"' }).waitFor()
     assert.deepEqual(
       await page
-        .locator('tbody tr')
+        .locator('tbody tr[data-row-index]')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
       ['0', '2'],
     )
-    await page.getByRole('checkbox', { name: 'B' }).check()
+    await page.getByRole('checkbox', { name: '"B"' }).check()
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
     assert.deepEqual(
       await page
         .locator('tbody tr')
@@ -234,7 +250,7 @@ test('offline filters begin at saved defaults and operate on the complete embedd
       ['0', '1', '2'],
     )
     await page.getByRole('button', { name: 'Clear', exact: true }).click()
-    assert.equal(await page.getByRole('checkbox', { name: 'A' }).isChecked(), false)
+    assert.equal(await page.getByRole('checkbox', { name: '"A"' }).isChecked(), false)
     await page.getByRole('button', { name: 'Restore defaults' }).click()
     assert.deepEqual(
       await page
@@ -242,10 +258,10 @@ test('offline filters begin at saved defaults and operate on the complete embedd
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
       ['0', '2'],
     )
-    await page.getByRole('checkbox', { name: 'B' }).check()
+    await page.getByRole('checkbox', { name: '"B"' }).check()
     await page.reload()
-    await page.getByRole('checkbox', { name: 'A' }).waitFor()
-    assert.equal(await page.getByRole('checkbox', { name: 'B' }).isChecked(), false)
+    await page.getByRole('checkbox', { name: '"A"' }).waitFor()
+    assert.equal(await page.getByRole('checkbox', { name: '"B"' }).isChecked(), false)
     assert.deepEqual(
       await page
         .locator('tbody tr')
@@ -381,12 +397,32 @@ test('exported filters combine single, multiple and date range selections withou
     locale: 'en-US',
     generatedAt: '2026-11-13T00:00:00Z',
     catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+    selectionSources: {
+      region: { ref: 'result', field: { kind: 'column', name: 'region' }, defaultValues: ['East'] },
+      cluster: {
+        ref: 'result',
+        field: { kind: 'column', name: 'cluster' },
+        mode: 'multiple',
+        defaultValues: ['A', 'B'],
+      },
+      period: {
+        ref: 'result',
+        field: { kind: 'column', name: 'day' },
+        mode: 'date-range',
+        options: { defaultPolicy: 'latest' },
+      },
+    },
     program: [
-      'root = Stack([region, cluster, period, view]);',
-      'region = SnapshotFilter("region", "result", {kind:"column",name:"region"}, "Region", "single", ["East"]);',
-      'cluster = SnapshotFilter("cluster", "result", {kind:"column",name:"cluster"}, "Cluster", "multiple", ["A","B"]);',
-      'period = SnapshotFilter("period", "result", {kind:"column",name:"day"}, "Period", "date-range", [], {defaultPolicy:"latest"});',
-      'view = DatasetView("result", {chart:"table"}, {}, ["region", "cluster", {filter:"period",field:{kind:"column",name:"time"}}]);',
+      '$region = "a";',
+      '$cluster = {};',
+      '$period = {};',
+      'root = Stack([region, cluster, applyCluster, period, applyPeriod, view]);',
+      'region = Select("region", @Each($source_6_region_options, "i", SelectItem(i.id, i.label)), null, null, $region);',
+      'cluster = CheckBoxGroup("cluster", @Each($source_7_cluster_options, "i", CheckBoxItem(i.label, "", i.id)), null, $source_7_cluster_draft);',
+      'applyCluster = Button("Apply cluster", @Set($cluster, @SelectionOrCurrent($cluster, $source_7_cluster_draft, $source_7_cluster_options, "multiple", true)));',
+      'period = DatePicker("period", "range", null, $source_6_period_draft);',
+      'applyPeriod = Button("Apply period", @Set($period, @SelectionOrCurrent($period, $source_6_period_draft, $source_6_period_options, "date-range", true)));',
+      'view = DatasetView("result", {chart:"table"}, {}, [{source:"region",selection:$region}, {source:"cluster",selection:$cluster}, {source:"period",field:{kind:"column",name:"time"},selection:$period}]);',
     ].join('\n'),
     resources: {
       result: {
@@ -420,26 +456,37 @@ test('exported filters combine single, multiple and date range selections withou
     page.on('pageerror', (error) => errors.push(error.message))
     const visibleRows = () =>
       page
-        .locator('tbody tr')
+        .locator('tbody tr[data-row-index]')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index')))
     await page.goto(pathToFileURL(reportPath).href)
-    await page.getByRole('combobox', { name: 'Region' }).waitFor()
+    await page.getByRole('combobox').first().waitFor()
     assert.deepEqual(await visibleRows(), ['3', '4'])
-    const period = page.locator('[data-snapshot-filter="period"]')
-    assert.equal(await period.getByLabel('Start date').inputValue(), '2026-11-13')
-    assert.equal(await period.getByLabel('End date').inputValue(), '2026-11-13')
-    await period.getByLabel('Start date').fill('2026-11-12')
+    const period = page.locator('.openui-date-picker-renderer-floating-input-container')
+    assert.match((await period.textContent()) ?? '', /Nov 13, 2026/)
+    await period.click()
+    await page
+      .locator('.openui-date-picker-renderer-floating-content')
+      .locator('button')
+      .filter({ hasText: /^12$/ })
+      .click()
     assert.deepEqual(await visibleRows(), ['3', '4'])
-    await period.getByRole('button', { name: 'Apply' }).click()
+    await page
+      .locator('.openui-date-picker-renderer-floating-content')
+      .locator('button')
+      .filter({ hasText: /^13$/ })
+      .click()
+    await page.getByRole('button', { name: 'Apply period' }).click()
     assert.deepEqual(await visibleRows(), ['0', '1', '3', '4'])
-    await page.getByRole('combobox', { name: 'Region' }).selectOption({ label: '"South"' })
+    await page.getByRole('combobox').first().click()
+    await page.getByRole('option', { name: '"South"' }).click()
     assert.deepEqual(await visibleRows(), [])
-    await page.getByRole('checkbox', { name: 'C' }).check()
+    await page.getByRole('checkbox', { name: '"C"' }).check()
+    await page.getByRole('button', { name: 'Apply cluster' }).click()
     assert.deepEqual(await visibleRows(), ['2', '5'])
     await page.reload()
-    await page.getByRole('combobox', { name: 'Region' }).waitFor()
+    await page.getByRole('combobox').first().waitFor()
     assert.deepEqual(await visibleRows(), ['3', '4'])
-    assert.equal(await page.getByRole('checkbox', { name: 'C' }).isChecked(), false)
+    assert.equal(await page.getByRole('checkbox', { name: '"C"' }).isChecked(), false)
     assert.deepEqual(requests, [])
     assert.deepEqual(errors, [])
     await context.close()

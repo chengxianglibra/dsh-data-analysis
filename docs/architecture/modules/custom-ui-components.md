@@ -42,7 +42,8 @@ Button / IconButton 使用加入项目的 shadcn Button 源码及其组合，优
 普通 disabled 与需要解释的 unavailable 分开；后者保留可聚焦的 aria-disabled 入口和原因，阻止动作。
 通用控件只消费调用者提供的本地化标签，业务状态不由控件推断。
 
-Tooltip、Tabs、Table、Card、表单、反馈和图表配套部件来自 `client/ui/primitives/` 中的官方 shadcn 源码，
+Tooltip、Tabs、Table、Card、通用表单、反馈和图表配套部件来自 `client/ui/primitives/` 中的官方 shadcn 源码；
+分析视图的筛选控件使用 OpenUI 官方 Lang 表单组件和 Renderer 状态，见[分析文档 reader](presentation-reader.md)。
 允许为 Host、精确值及可访问性做必要修改。组件结构、标题层级、间距、尺寸、圆角、边框、图标和状态外观遵循同一 radix-nova 基准；
 页面级样式主要负责布局，不恢复旧页面的独立视觉体系。通用交互使用 Radix 公开能力，不维护第二套定位或键盘引擎。Tooltip 在祖先滚动时按基础库行为关闭，避免保留过期定位。
 

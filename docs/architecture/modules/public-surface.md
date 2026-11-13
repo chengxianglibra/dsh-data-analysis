@@ -8,7 +8,7 @@
 
 `marivo_python` 根据声明的数据源或结果导出推导省略的 `project`，详见[数据源与凭证](datasource-credentials.md)。`results[name].resource` 是唯一公共资源交接。
 
-旧工具名、旧参数和 Python 顶层 resultRefs/codeRef/resultMetadata 不再接受或返回。升级前排队的旧名称由 Harness 按未知工具在执行前拒绝，不自动翻译或重放副作用。恢复会话取得当前 schema 与新 Skill；Host receipt/RPC 内部 recordId 不作为模型参数协议。现行报告读写使用 `dsh.analysis-ui/v3` 文档和 v4 current 指针，详细契约见[展示交付](presentation-delivery.md)。
+旧工具名、旧参数和 Python 顶层 resultRefs/codeRef/resultMetadata 不再接受或返回。升级前排队的旧名称由 Harness 按未知工具在执行前拒绝，不自动翻译或重放副作用。恢复会话取得当前 schema 与新 Skill；Host receipt/RPC 内部 recordId 不作为模型参数协议。现行报告写入使用 `dsh.analysis-ui/v4` 文档和 v4 current 指针，读取支持兼容的 `dsh.analysis-ui/v3`，详细契约见[展示交付](presentation-delivery.md)。
 
 ## Host 限制与选择
 

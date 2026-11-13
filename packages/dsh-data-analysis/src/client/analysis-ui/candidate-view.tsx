@@ -12,7 +12,11 @@ import { useCopy } from '../i18n/context.tsx'
 import { type PresentationRpc, verifyPresentationAsset } from '../presentation/delivery-model.ts'
 import { Alert, AlertDescription } from '../ui/primitives/alert.tsx'
 import { UIStyleSheet } from '../ui/theme.ts'
-import { type AnalysisCandidate, candidateResources } from './candidate.ts'
+import {
+  type AnalysisCandidate,
+  candidateResources,
+  candidateSelectionSources,
+} from './candidate.ts'
 import { CandidateAnalysisSurface, SavedAnalysisSurface } from './lazy-surface.tsx'
 import { streamingAnalysisProgram } from './streaming-program.ts'
 
@@ -193,13 +197,17 @@ export function CandidateView({
       document.program,
       candidate.program,
       !candidate.complete,
-      candidate.resourcePatchInput === 'incomplete',
+      candidate.resourcePatchInput === 'incomplete' ||
+        candidate.selectionSourcesInput === 'incomplete' ||
+        (candidate.selectionSourcesInput === 'complete' && !candidate.selectionSources),
     )
   }, [
     candidate.preview,
     candidate.complete,
     candidate.program,
     candidate.resourcePatchInput,
+    candidate.selectionSourcesInput,
+    candidate.selectionSources,
     document,
     basedOnRecordId,
     terminal,
@@ -238,6 +246,7 @@ export function CandidateView({
           title={candidate.title ?? document?.title ?? 'Analysis'}
           locale={candidate.locale ?? document?.locale ?? 'zh-CN'}
           resources={resources}
+          selectionSources={candidateSelectionSources(document, candidate)}
           isStreaming={candidate.phase === 'preparing' || candidate.phase === 'start'}
           candidateProgram={candidate.program}
           removedResourceNames={candidate.resourcePatch?.remove}

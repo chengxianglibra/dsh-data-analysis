@@ -5,7 +5,7 @@
 ## Card
 
 ```text
-Card(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[], variant?: "card" | "sunk" | "clear", direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
+Card(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | Select | CheckBoxGroup | DatePicker | Button | FormControl | Label | AnalysisFrameView | DatasetView | DashboardGrid)[], variant?: "card" | "sunk" | "clear", direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
 ```
 
 ## TextContent
@@ -26,10 +26,58 @@ TextCallout(variant?: "neutral" | "info" | "warning" | "success" | "danger", tit
 Image(alt: string, src?: string)
 ```
 
+## FormControl
+
+```text
+FormControl(label: string, input: Select | DatePicker | CheckBoxGroup, hint?: string)
+```
+
+## Label
+
+```text
+Label(text: string)
+```
+
+## Select
+
+```text
+Select(name: string, items: SelectItem[], placeholder?: string, rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<string>, size?: "small" | "medium" | "large")
+```
+
+## SelectItem
+
+```text
+SelectItem(value: string, label: string)
+```
+
+## DatePicker
+
+```text
+DatePicker(name: string, mode?: "single" | "range", rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<any>)
+```
+
+## CheckBoxGroup
+
+```text
+CheckBoxGroup(name: string, items: CheckBoxItem[], rules?: {required?: boolean, email?: boolean, url?: boolean, numeric?: boolean, min?: number, max?: number, minLength?: number, maxLength?: number, pattern?: string}, value?: $binding<Record<string, boolean>>)
+```
+
+## CheckBoxItem
+
+```text
+CheckBoxItem(label: string, description: string, name: string, defaultChecked?: boolean)
+```
+
+## Button
+
+```text
+Button(label: string, action?: ActionExpression, variant?: "primary" | "secondary" | "tertiary", type?: "normal" | "destructive", size?: "extra-small" | "small" | "medium" | "large")
+```
+
 ## Stack
 
 ```text
-Stack(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[], direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
+Stack(children: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | Select | CheckBoxGroup | DatePicker | Button | FormControl | Label | AnalysisFrameView | DatasetView | DashboardGrid)[], direction?: "row" | "column", gap?: "none" | "xs" | "s" | "m" | "l" | "xl" | "2xl", align?: "start" | "center" | "end" | "stretch" | "baseline", justify?: "start" | "center" | "end" | "between" | "around" | "evenly", wrap?: boolean)
 ```
 
 ## Tabs
@@ -41,7 +89,7 @@ Tabs(items: TabItem[])
 ## TabItem
 
 ```text
-TabItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[])
+TabItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | Select | CheckBoxGroup | DatePicker | Button | FormControl | Label | AnalysisFrameView | DatasetView | DashboardGrid)[])
 ```
 
 ## Accordion
@@ -53,13 +101,13 @@ Accordion(items: AccordionItem[])
 ## AccordionItem
 
 ```text
-AccordionItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[])
+AccordionItem(value: string, trigger: string, content: (Stack | TextContent | Card | Tabs | Image | TextCallout | Accordion | Select | CheckBoxGroup | DatePicker | Button | FormControl | Label | AnalysisFrameView | DatasetView | DashboardGrid)[])
 ```
 
 ## AnalysisFrameView
 
 ```text
-AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", style?: "stacked", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, title?: string, subtitle?: string, time?: {tickFormat?: "auto" | "date" | "date-time" | "time", showTimezone?: boolean}, seriesLayout?: "auto" | "overlay" | "facet", formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[], timeContext?: "auto" | "hidden", density?: "full" | "compact", dataTable?: "collapsed" | "visible", rowLimit?: number, comparisonLabels?: {alias?: string, current: string, baseline: string}[], highlight?: {axis: string, key: (string | number | boolean)[]}, decompositionTotals?: {current: string, baseline: string, currentLabel: string, baselineLabel: string}, recordPreview?: {coordinates: string[], values: string[], limit: number, label: string}}, filters?: (string | {filter: string, field: {kind: "column", name: string} | {kind: "axis", name: string}})[])
+AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", style?: "stacked", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, title?: string, subtitle?: string, time?: {tickFormat?: "auto" | "date" | "date-time" | "time", showTimezone?: boolean}, seriesLayout?: "auto" | "overlay" | "facet", formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[], timeContext?: "auto" | "hidden", density?: "full" | "compact", dataTable?: "collapsed" | "visible", rowLimit?: number, comparisonLabels?: {alias?: string, current: string, baseline: string}[], highlight?: {axis: string, key: (string | number | boolean)[]}, decompositionTotals?: {current: string, baseline: string, currentLabel: string, baselineLabel: string}, recordPreview?: {coordinates: string[], values: string[], limit: number, label: string}}, filters?: {source: string, field?: {kind: "column", name: string} | {kind: "axis", name: string}, selection: any}[])
 ```
 
 Frame 字段取自结果 metadata 的 `viewCandidates`：表格 `columns` 和 metric `encoding.value` 使用 `columns` 列 ID；line/area 的 `encoding.axis` 使用 `timeAxis` 公开轴名（仅 calendar/interval），bar 的 axis 及图表的 series 使用 `axis` 公开轴名；图表 values 使用 `values` 中的公开值名，绘图使用 `numericValues`。`axis.0` 等 token 用于 `coordinateColumns` 与轴关联，不直接填入 encoding。候选是字段级提示，仍需通过图表数据约束。auto 在时间与类别组合中以 8 个系列为选图阈值；显式 line/area/bar 不设此系列上限。
@@ -67,13 +115,7 @@ Frame 字段取自结果 metadata 的 `viewCandidates`：表格 `columns` 和 me
 ## DatasetView
 
 ```text
-DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number, title?: string, subtitle?: string, time?: {tickFormat?: "auto" | "date" | "date-time" | "time", showTimezone?: boolean}, seriesLayout?: "auto" | "overlay" | "facet", formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[]}, filters?: (string | {filter: string, field: {kind: "column", name: string} | {kind: "axis", name: string}})[])
-```
-
-## SnapshotFilter
-
-```text
-SnapshotFilter(filterId: string, ref: string, field: {kind: "column", name: string} | {kind: "axis", name: string}, label: string, mode?: "single" | "multiple" | "date-range", defaultValues?: (string | boolean | null)[], options?: {allowAll?: boolean, defaultPolicy?: "latest"})
+DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number, title?: string, subtitle?: string, time?: {tickFormat?: "auto" | "date" | "date-time" | "time", showTimezone?: boolean}, seriesLayout?: "auto" | "overlay" | "facet", formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[]}, filters?: {source: string, field?: {kind: "column", name: string} | {kind: "axis", name: string}, selection: any}[])
 ```
 
 ## DashboardGrid
@@ -85,7 +127,7 @@ DashboardGrid(items: DashboardGridItem[], columns?: 1 | 2 | 3 | 4, gap?: "s" | "
 ## DashboardGridItem
 
 ```text
-DashboardGridItem(content: (Card | TextContent | TextCallout | Image | Stack | Tabs | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[], span?: 1 | 2 | 3 | 4)
+DashboardGridItem(content: (Card | TextContent | TextCallout | Image | FormControl | Label | Select | DatePicker | CheckBoxGroup | Button | Stack | Tabs | Accordion | AnalysisFrameView | DatasetView | DashboardGrid)[], span?: 1 | 2 | 3 | 4)
 ```
 
 Image.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 使用完整单行结果，或由必选单选筛选器唯一定位完整快照中的保存行；Dataset 图表要求完整快照。Dataset 的 display 可声明 title、subtitle 与数值列 formats；格式只改变主视图，详细数据保留精确值。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。

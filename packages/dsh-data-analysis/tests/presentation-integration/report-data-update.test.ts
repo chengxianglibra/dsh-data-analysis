@@ -505,8 +505,17 @@ test('refresh with a missing default member leaves the last draft, current build
   const f = await fixture(t)
   const delivery = await f.present({
     resourcePatch: { put: { data: f.declarations().data } },
+    selectionSources: {
+      region: {
+        ref: 'data',
+        field: { kind: 'column', name: 'category' },
+        label: 'Region',
+        mode: 'single',
+        defaultValues: ['A'],
+      },
+    },
     program:
-      'root = Stack([f, DatasetView("data", {chart: "table"}, {}, ["region"])]);\nf = SnapshotFilter("region", "data", {kind: "column", name: "category"}, "Region", "single", ["A"]);',
+      '$region = "a";\nroot = DatasetView("data", {chart: "table"}, {}, [{source:"region",selection:$region}]);',
   })
   const base = await readReceiptDocument(f.root, delivery.receipt)
   const preview = await f.tool.execute(
@@ -554,9 +563,25 @@ test('rolling refresh resolves latest independently for each saved build', async
   })
   const initial = await f.present({
     resourcePatch: { put: { data: f.declarations().data } },
-    program: `root = Stack([day, period, DatasetView("data", {chart: "table"}, {}, ["day", "period"])]);
-day = SnapshotFilter("day", "data", {kind: "column", name: "day"}, "Day", "single", [], {allowAll: false, defaultPolicy: "latest"});
-period = SnapshotFilter("period", "data", {kind: "column", name: "day"}, "Period", "date-range", [], {allowAll: false, defaultPolicy: "latest"});`,
+    selectionSources: {
+      day: {
+        ref: 'data',
+        field: { kind: 'column', name: 'day' },
+        label: 'Day',
+        mode: 'single',
+        options: { allowAll: false, defaultPolicy: 'latest' },
+      },
+      period: {
+        ref: 'data',
+        field: { kind: 'column', name: 'day' },
+        label: 'Period',
+        mode: 'date-range',
+        options: { allowAll: false, defaultPolicy: 'latest' },
+      },
+    },
+    program: `$day = "a";
+$period = null;
+root = DatasetView("data", {chart: "table"}, {}, [{source:"day",selection:$day},{source:"period",selection:$period}]);`,
   })
   const old = await readReceiptDocument(f.root, initial.receipt)
   const updated = await f.present({
@@ -567,13 +592,13 @@ period = SnapshotFilter("period", "data", {kind: "column", name: "day"}, "Period
   const readDefaults = (document: typeof old, mode: 'single' | 'date-range') => {
     const resource = document.resources.data
     assert(resource?.kind === 'snapshot')
+    const source = document.selectionSources?.[mode === 'single' ? 'day' : 'period']
+    assert(source)
     return resolveSnapshotFilter(resource.snapshot, {
+      ...source,
       filterId: mode,
-      ref: 'data',
-      field: { kind: 'column', name: 'day' },
-      label: mode,
+      label: source.label ?? mode,
       mode,
-      options: { allowAll: false, defaultPolicy: 'latest' },
     }).defaultValues
   }
   assert.deepEqual(readDefaults(old, 'single'), ['2026-11-12'])

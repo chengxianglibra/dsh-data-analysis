@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-本模块把已保存的分析文档（新保存为 `dsh.analysis-ui/v3`）呈现在原生右侧 Tab 中，并在真实 Turn 的 Chat 节点保留入口。
+本模块把已保存的分析文档（新保存为 `dsh.analysis-ui/v4`）呈现在原生右侧 Tab 中，并在真实 Turn 的 Chat 节点保留入口。
 插件拥有 Catalog/Renderer、阅读状态、分析视图目录与版本历史视图；Marivo 拥有分析语义与来源事实，
 Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 消费已保存文档及交付链路提供的当前 Turn 草稿和候选，
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
@@ -45,7 +45,7 @@ preview/save 回执触发文档读取时，已显示内容持续挂载，直到�
 
 ## 组件与数据视图
 
-对外组件为 AnalysisFrameView、DatasetView、SnapshotFilter、Stack、TextContent、Card、Tabs、TabItem、Image、DashboardGrid、DashboardGridItem、TextCallout、Accordion、AccordionItem。
+对外组件为 AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image、DashboardGrid、DashboardGridItem、TextCallout、Accordion、AccordionItem，以及 OpenUI 官方 Select、SelectItem、CheckBoxGroup、CheckBoxItem、DatePicker、Button、FormControl、Label。
 [Catalog 生成器](../../../packages/dsh-data-analysis/scripts/generate-analysis-catalog.mjs)从组件库生成本地 TypeScript Catalog，并校验 Git 中的随包 Skill 签名。
 OpenUI Lang / Renderer 负责分析视图编排；私有 Stack / Card / Tabs、主题、控件和共用结果外壳见[插件私有 UI 组件](custom-ui-components.md)。
 DashboardGrid 使用 1–4 列和显式 item 跨列，按容器宽度缩减列数并保持内容顺序；span 不得超过声明列数。TextCallout 展示作者声明的静态提示；Accordion 每组单项展开且可全部折叠，展开选择属于当前阅读状态，具名组件按语句与出现次序识别，inline 组件按位置识别。DashboardGridItem 和 AccordionItem 只用于各自父组件的槽位。
@@ -131,9 +131,11 @@ Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原�
 
 ### 固定快照筛选
 
-`SnapshotFilter` 提供原值单选、原值多选和包含两端的日期范围；多个控件之间为 AND，多选内部为 OR。单选使用下拉框，多选使用复选框，日期范围在两端完整有效后整体应用。可显式跨资源绑定字段；普通 Dataset 表格、line/area/bar 和 Frame observation 表格及普通图表支持筛选，受限的显式 metric 显示唯一匹配的保存值或无数据。auto 在原始快照上解析。未绑定视图与静态正文保持原值，筛选不发起 Host 请求或重新计算。表格、图表和数据详情消费相同原始行索引；坐标随可见数据收缩并保留内部缺口，排序、分页和点引用保留保存行身份。改变筛选条件时表格回到第一页，零匹配期间也保留有效排序。
+官方 OpenUI Lang 控件与状态提供原值单选、原值多选和包含两端的日期范围；`selectionSources` 声明来源与默认值，数据视图绑定对应状态。多选和日期范围先编辑草稿，再校验并应用；多个控件之间为 AND，多选内部为 OR。可显式跨资源绑定字段；普通 Dataset 表格、line/area/bar 和 Frame observation 表格及普通图表支持筛选，受限的显式 metric 显示唯一匹配的保存值或无数据。auto 在原始快照上解析。未绑定视图与静态正文保持原值，筛选不发起 Host 请求或重新计算。表格、图表和数据详情消费相同原始行索引；坐标随可见数据收缩并保留内部缺口，排序、分页和点引用保留保存行身份。改变筛选条件时表格回到第一页，零匹配期间也保留有效排序。
 
-筛选状态归属阅读实例和固定 Build：同一实例在生成和保存期间保留；独立重开、切换 Build 或离线打开从各自默认值开始。候选及草稿控件禁用，仅显示默认投影。候选替换未就绪时，已可读的组件保留上次的快照、视图和筛选投影，首次加载的组件显示局部等待。本地选择不写入历史或导出文件。
+OpenUI 选择状态归属阅读实例和固定 Build：同一实例切换阅读位置时恢复状态；独立重开、切换 Build 或离线打开从各自默认值开始。候选替换未就绪时，已可读的组件保留上次的快照、视图和筛选投影，首次加载的组件显示局部等待。本地选择不写入历史或导出文件。
+
+当前官方 DatePicker 的日历导航限定在 1900–2100 年；这属于控件限制，不改变已保存数据的日期契约。若浏览器当前时区无法表示来源的默认日历日期（例如时区历史中被跳过的日期），受影响视图显示来源和日期错误，不将其静默归一化到其他日期；其他视图仍可阅读。插件沿用官方组件签名、控件和字段状态，通过局部 renderer 适配管理弹层：依次选择范围两端后自动收起，同日选择同一天两次；不另存筛选值。弹层继续由官方控件定位。
 
 ## 来源与范围详情
 

@@ -32,14 +32,15 @@ governed 输入和受支持的类型化分析优先保留 AnalysisFrame，用 An
 
 ## 固定快照筛选
 
-读者筛选已保存行时使用具名 `SnapshotFilter`，`ref` 和 `field` 提供候选或日期范围来源。视图的 `filters` 用字符串绑定同资源同字段，或用 `{filter:"筛选器 ID",field:{kind:"column"|"axis",name:"目标字段"}}` 显式绑定消费字段；普通模式两端类型须相同。Dataset 使用保存列 ID，Frame 使用公开轴名。普通 single/multiple 匹配保存的 string、boolean、int64 或 date 原值，`null`、空字符串和精确 int64 保持各自身份。空数组表示全部，多选内部为 OR，多个筛选器之间为 AND。
+读者筛选已保存行时，在 `marivo_report_write` 的 `selectionSources` 声明来源，见[示例](examples.md#跨资源日期筛选)。`label` 与控件一致并使用报告语言；缺省时摘要显示来源 ID。ID 以字母开头，只含字母、数字和下划线，不能以 `source_` 开头。program 使用官方 `Select`、`CheckBoxGroup` 或 `DatePicker` 绑定 `$region` 等状态；视图用 `filters:[{source:"region",selection:$region}]`，跨资源或不同字段时加 `field:{kind:"column"|"axis",name:"目标字段"}`。普通模式两端类型须相同。Dataset 使用保存列 ID，Frame 使用公开轴名。普通 single/multiple 匹配保存的 string、boolean、int64 或 date 原值，`null`、空字符串和精确 int64 保持各自身份。多选内部为 OR，多个筛选器之间为 AND。
+
+来源 `region` 的候选为 `$source_6_region_options`，含 `id`、`label`；6 是 ID 长度。用 `@Each` 生成选项，不手写或猜测成员。单选的全部为 `"a"`，其他 ID 为 `"v:"` 加原值的 JSON；多选状态以候选 ID 为键、boolean 为值，空对象表示全部。`$source_6_region_default` 是当前 Build 的默认状态；用 `@Set` 恢复，不假设固定成员或 `@Reset` 能表达 `latest`。多选和日期范围使用 `$source_<长度>_<ID>_draft` 草稿与 `$<ID>` 已应用状态；通过官方按钮用 `@SelectionOrCurrent(current,draft,items,mode,allowAll)` 校验并 `@Set` 应用，无效时保留现有值。选择不写入报告。
 
 `single` 的 `options:{allowAll:false,defaultPolicy:"latest"}` 选择最新保存日期：来源须为 date 或非 null 值均为严格有效日期字符串的字段。它仍按原值匹配；小时等资源须已有同类型 day 字段，不能从 datetime 或 calendar 自动派生日，也不要为控件强制转换 Frame。
 
-`date-range` 的两个 `YYYY-MM-DD` 边界包含两端，可绑定严格日期字符串、date、已保存 datetime，或 builtin hour/day、step=1 的 Frame calendar 轴；后者按轴的业务时区解释日期。可指定同日、超出捕获范围的边界或 `defaultPolicy:"latest"`；选择只投影已保存数据。`allowAll:false` 要求有效非空默认值。刷新时 latest 按新 Build 捕获数据解析；显式普通默认成员失效则拒绝新版本。
+`date-range` 的两个 `YYYY-MM-DD` 边界包含两端，可绑定严格日期字符串、date、已保存 datetime，或 builtin hour/day、step=1 的 Frame calendar 轴；后者按轴的业务时区解释日期。可指定同日、超出捕获范围的边界或 `defaultPolicy:"latest"`；选择只投影已保存数据。官方 DatePicker 导航为 1900–2100 年，并非数据契约范围。`allowAll:false` 要求有效非空默认值。刷新时 latest 按新 Build 捕获数据解析；显式普通默认成员失效则拒绝新版本。
 
 普通表格和支持的 line/area/bar 观察视图可筛选。显式 metric 要求完整快照、所有绑定均为必选 single 且字段元组唯一，显示唯一保存行；零匹配显示无数据。multiple 和 date-range 不能绑定 metric 或让浏览器重算范围指标。auto 按原始快照选视图，饼图、热力图、比较和分解等限制不变。静态结论和未绑定视图不随选择变化；覆盖范围按原快照披露，离线 HTML 包含完整已保存数据并从默认值开始。
-
 
 ### 筛选范围与布局
 

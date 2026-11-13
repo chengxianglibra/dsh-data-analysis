@@ -18,12 +18,19 @@ test('generated Host schema matches the installed Client library without importi
     'Accordion',
     'AccordionItem',
     'AnalysisFrameView',
+    'Button',
     'Card',
+    'CheckBoxGroup',
+    'CheckBoxItem',
     'DashboardGrid',
     'DashboardGridItem',
     'DatasetView',
+    'DatePicker',
+    'FormControl',
     'Image',
-    'SnapshotFilter',
+    'Label',
+    'Select',
+    'SelectItem',
     'Stack',
     'TabItem',
     'Tabs',
@@ -39,9 +46,9 @@ test('generated Host schema matches the installed Client library without importi
     assert.equal(parseAnalysisProgram(`root = ${name}("resource");`).typeName, name)
     assert.match(analysisCatalogSpec.components[name]!.signature, /ref: string, view\?/)
   }
-  assert.match(
-    analysisCatalogSpec.components.SnapshotFilter!.signature,
-    /defaultValues\?: \(string \| boolean \| null\)\[\]/,
+  assert.equal(
+    parseAnalysisProgram('root = Select("region", [SelectItem("a", "All")]);').typeName,
+    'Select',
   )
   assert.equal(parseAnalysisProgram(program).typeName, 'Stack')
   for (const source of [
@@ -67,8 +74,7 @@ test('generated Host schema matches the installed Client library without importi
 
 test('unsupported nodes and wrong parent slots cannot enter the subset', () => {
   for (const source of [
-    'root = Button("unsupported");',
-    'root = Card([Stack([Button("unsupported")])]);',
+    'root = SelectItem("a", "wrong root");',
     'root = Stack(["not a component"]);',
     'root = Tabs([DatasetView("wrong-parent")]);',
     'root = Stack([TabItem("wrong", "wrong", [])]);',

@@ -50,6 +50,7 @@ type Schema = {
   oneOf?: Schema[]
   items?: Schema
   properties?: Record<string, Schema>
+  required?: string[]
   const?: string | number | boolean | null
   enum?: (string | number | boolean | null)[]
 }
@@ -119,7 +120,7 @@ export function analysisStatements(source: string): string {
       const position = start + fragment.length - fragment.trimStart().length
       start = i + 1
       if (!raw) continue
-      if (!/^[A-Za-z_][A-Za-z0-9_]*\s*=\s*[^=]/.test(raw))
+      if (!/^\$?[A-Za-z_][A-Za-z0-9_]*\s*=\s*[^=]/.test(raw))
         invalid(position, 'analysis-program-invalid-statement')
       try {
         const parsed = split(tokenize(raw))
@@ -302,7 +303,50 @@ function componentRefs(schema: Schema): string[] {
 // against the generated slot schema, without a second component relation table.
 function checkSlots(node: ElementNode, inheritedLocation = node.typeName): void {
   const location = node.statementId ?? inheritedLocation
-  const checked = validators[node.typeName]!.safeParse(node.props)
+  const props = { ...node.props }
+  const definition = definitions[node.typeName]!
+  for (const [key, value] of Object.entries(props))
+    if (value === null && !definition.required?.includes(key)) delete props[key]
+  const input =
+    node.typeName === 'Select' ||
+    node.typeName === 'CheckBoxGroup' ||
+    node.typeName === 'DatePicker'
+  if (
+    input &&
+    props.value &&
+    typeof props.value === 'object' &&
+    'k' in props.value &&
+    props.value.k === 'StateRef'
+  )
+    delete props.value
+  const items = props.items
+  const dynamicItems =
+    (node.typeName === 'Select' || node.typeName === 'CheckBoxGroup') &&
+    items &&
+    typeof items === 'object' &&
+    'k' in items &&
+    items.k === 'Comp' &&
+    'name' in items &&
+    items.name === 'Each' &&
+    'args' in items &&
+    Array.isArray(items.args) &&
+    items.args.length === 3 &&
+    items.args[0]?.k === 'StateRef' &&
+    items.args[1]?.k === 'Str' &&
+    items.args[2]?.k === 'Comp' &&
+    items.args[2]?.name === (node.typeName === 'Select' ? 'SelectItem' : 'CheckBoxItem')
+  if (dynamicItems) props.items = []
+  if (
+    node.typeName === 'Button' &&
+    props.action &&
+    typeof props.action === 'object' &&
+    'k' in props.action &&
+    props.action.k === 'Comp' &&
+    'name' in props.action &&
+    ['Set', 'Reset', 'Action'].includes(String(props.action.name))
+  )
+    delete props.action
+  const checked = validators[node.typeName]!.safeParse(props)
   if (!checked.success) {
     const issue = focusIssue(checked.error.issues[0]!, definitions[node.typeName]!, node.props)
     const relative = issue.path
@@ -318,6 +362,7 @@ function checkSlots(node: ElementNode, inheritedLocation = node.typeName): void 
     if (!accepted.length) continue
     const value = node.props[prop]
     if (value === undefined) continue
+    if (prop === 'items' && dynamicItems) continue
     const children = schema.items ? value : [value]
     if (!Array.isArray(children))
       componentError(node, location, `/${prop}`, { expected: 'an array of components' })
