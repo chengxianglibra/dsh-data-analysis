@@ -82,6 +82,8 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
           })
           assert.equal(await trigger.getAttribute('aria-haspopup'), 'dialog')
           assert.equal(await trigger.getAttribute('aria-expanded'), 'false')
+          await trigger.hover()
+          await page.getByRole('tooltip', { name: 'Coverage', exact: true }).waitFor()
           if (name === 'partial') await trigger.click()
           else {
             await trigger.focus()
@@ -119,6 +121,8 @@ createRoot(document.getElementById('root')).render(params.has('portal')?h(Overla
         const trigger = page
           .locator('[data-resource="partial"]')
           .getByRole('button', { name: '覆盖', exact: true })
+        await trigger.hover()
+        await page.getByRole('tooltip', { name: '覆盖', exact: true }).waitFor()
         await trigger.click()
         const dialog = page.getByRole('dialog', { name: '覆盖', exact: true })
         await dialog.waitFor()

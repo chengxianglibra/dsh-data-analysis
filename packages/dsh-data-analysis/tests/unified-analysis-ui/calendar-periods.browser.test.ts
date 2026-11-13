@@ -85,6 +85,8 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
     const page = await browser.newPage()
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
     const fullCard = page.locator('[data-resource="full"]')
+    await fullCard.locator('[data-icon="periods"] button').hover()
+    await page.getByRole('tooltip', { name: 'Period correspondence', exact: true }).waitFor()
     await fullCard.locator('[data-icon="periods"] button').click()
     const dialog = page.getByRole('dialog')
     assert.match(
@@ -109,6 +111,13 @@ createRoot(document.getElementById('root')).render(createElement(AnalysisRendere
       const button = unavailableCard.locator(`[data-icon="${kind}"] button`)
       assert.equal(await button.getAttribute('aria-disabled'), null)
       assert.equal(await button.getAttribute('aria-haspopup'), 'dialog')
+      await button.hover()
+      await page
+        .getByRole('tooltip', {
+          name: kind === 'periods' ? 'Period correspondence' : 'Semantic origins',
+          exact: true,
+        })
+        .waitFor()
       await button.click()
       const details = page.getByRole('dialog').locator('[data-unavailable-details]')
       await details.waitFor()

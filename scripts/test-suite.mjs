@@ -109,6 +109,7 @@ if (suite === 'plugin-integration-delivery') {
     'scripts/dependency-policy.test.mjs',
     'scripts/test-reporter.test.mjs',
     'scripts/test-tier.test.mjs',
+    'scripts/typecheck-config.test.mjs',
   )
 }
 if (listOnly) {

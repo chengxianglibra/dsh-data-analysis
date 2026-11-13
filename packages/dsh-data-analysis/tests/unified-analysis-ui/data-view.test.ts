@@ -192,14 +192,13 @@ function semanticSections() {
   }
 }
 
-test('current Frame keeps its table and semantic origins without process metadata', () => {
+test('current Frame keeps its table and semantic origins entry', () => {
   const value = frameSnapshot() as Record<string, any>
   value.frame.sections = { ...value.frame.sections, ...semanticSections() }
   const snapshot = parseAnalysisSnapshot(value)
   const html = render(snapshot, true)
   assert.match(html, /<table/)
   assert.match(html, /data-icon="origins"/)
-  assert.match(html, /sales\.revenue/)
 })
 
 test('semantic origins show distinct concrete objects and exclude datasource and entity', () => {

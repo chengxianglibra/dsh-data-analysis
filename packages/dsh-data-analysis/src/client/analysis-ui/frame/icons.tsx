@@ -15,7 +15,7 @@ import {
 } from '../../ui/primitives/table.tsx'
 import { DataActions } from '../components/result.tsx'
 import { useAnalysisResources } from '../context.tsx'
-import { SemanticOrigins, semanticObjects } from '../metadata-view.tsx'
+import { SemanticOrigins } from '../metadata-view.tsx'
 import { FrameIcon } from './frame-icon.tsx'
 import {
   aggregationSymbol,
@@ -122,7 +122,7 @@ function UnavailableDetails({ reason, action }: { reason: string; action: string
   )
 }
 
-/** Ring arc shows the captured fraction; the tooltip retains both saved counts. */
+/** Ring arc shows the captured fraction; details retain both saved counts. */
 export function CoverageIcon({
   snapshot: s,
 }: {
@@ -131,7 +131,6 @@ export function CoverageIcon({
   const t = useCopy()
   const [open, setOpen] = useState(false)
   const { capturedRows, totalRows } = s.coverage
-  const counts = `${capturedRows.toLocaleString(t.locale)}/${totalRows.toLocaleString(t.locale)}`
   const share = totalRows === 0 ? 1 : capturedRows / totalRows
   const c = 2 * Math.PI * 6
   const label = t(`${P}ui-frame-coverage`)
@@ -140,7 +139,7 @@ export function CoverageIcon({
       <FrameIconButton
         kind="coverage"
         label={label}
-        tip={t(`${P}ui-frame-coverage-tip`, { p0: counts, p1: s.fetchedAt })}
+        tip={label}
         hasPopup="dialog"
         expanded={open}
         onOpen={() => setOpen(true)}
@@ -185,7 +184,7 @@ function PeriodsIcon({ snapshot: s, index }: { snapshot: Snapshot; index: number
       <FrameIconButton
         kind="periods"
         label={label}
-        tip={state ?? `${ends.current} ⇄ ${ends.baseline}`}
+        tip={label}
         unavailable={!!state}
         hasPopup="dialog"
         expanded={open}
@@ -253,7 +252,6 @@ function OriginsIcon({
   const [open, setOpen] = useState(false)
   const section = s.frame.sections.semantics
   const state = sectionState(t, section as Section)
-  const paths = semanticObjects(section).map((origin) => origin.path)
   const label = t(`${P}ui-metadata-semantics`)
   const facts = interpretationOf(s)
   const columns = values.flatMap((name) => {
@@ -284,7 +282,7 @@ function OriginsIcon({
       <FrameIconButton
         kind="origins"
         label={label}
-        tip={state ?? (paths.slice(0, 6).join('\n') + (paths.length > 6 ? '\n…' : '') || label)}
+        tip={label}
         unavailable={!!state}
         hasPopup="dialog"
         expanded={open}
@@ -406,7 +404,7 @@ export function PythonIcon({
       <FrameIconButton
         kind="python"
         label={label}
-        tip={state ?? `executionId ${codeRef!.executionId}\nsha256 ${codeRef!.sha256.slice(0, 12)}`}
+        tip={label}
         unavailable={greyed}
         hasPopup="dialog"
         expanded={open}

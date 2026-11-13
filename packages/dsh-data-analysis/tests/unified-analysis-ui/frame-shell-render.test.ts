@@ -118,13 +118,11 @@ test('compact density keeps the name, header numbers or the main view and only u
 test('icons grey out for missing sections and Python sources, never as zero items', async () => {
   const html = await r().render(observeCategory(3, 9))
   assert.match(html, /data-icon="coverage"/)
-  assert.match(html, /3\/9/)
   assert.doesNotMatch(html, /<span>3\/9<\/span>/)
   assert.doesNotMatch(html, /data-icon="coverage" data-unavailable/)
   assert.match(html, /data-icon="origins"/)
   assert.doesNotMatch(html, /data-icon="origins"[\s\S]*?<span>0<\/span>/)
   assert.match(html, /data-icon="python" data-unavailable="true"/)
-  assert.match(html, /No script source/)
   assert.match(html, /aria-label="Python"/)
   assert.doesNotMatch(html, /data-icon="periods"/)
   // Complete snapshots show no coverage icon; incomplete ones show the captured fraction.
@@ -147,11 +145,9 @@ test('icons grey out for missing sections and Python sources, never as zero item
     readCode: true,
   })
   assert.doesNotMatch(origins, /data-icon="origins" data-unavailable/)
-  assert.match(origins, /sales\.revenue/)
   // The source icon carries no count badge; the dialog lists the deduplicated objects.
   assert.doesNotMatch(origins, /<span>1<\/span>/)
   assert.doesNotMatch(origins, /data-icon="python" data-unavailable/)
-  assert.match(origins, /executionId 6f9619ff/)
   // sessionId and artifactId only live in the (closed) developer area of the Python dialog.
   assert.doesNotMatch(origins, /sessionId|artifactId|>session</)
 })

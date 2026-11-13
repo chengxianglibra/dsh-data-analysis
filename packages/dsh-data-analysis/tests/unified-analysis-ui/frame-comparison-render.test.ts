@@ -78,7 +78,6 @@ test('restricted decompositions detach the total; has_more falls back to a table
     const html = await r().render(snapshot)
     assert.equal(viewOf(html), 'table')
     assert.match(html, /data-icon="coverage"/)
-    assert.match(html, new RegExp(coverage))
     assert.doesNotMatch(html, new RegExp(`<span>${coverage}</span>`))
   }
 })

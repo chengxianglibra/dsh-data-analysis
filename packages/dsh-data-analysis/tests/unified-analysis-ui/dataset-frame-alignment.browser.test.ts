@@ -159,6 +159,8 @@ root.render(createElement(AnalysisRenderer,{resources,title:'Alignment',locale:'
       await page.locator('[data-resource="datasetPartial"] [data-icon="coverage"]').count(),
       1,
     )
+    await page.locator('[data-resource="datasetPartial"] [data-icon="coverage"] button').hover()
+    await page.getByRole('tooltip', { name: 'Coverage', exact: true }).waitFor()
     await page.goto(`${url}?candidate`)
     await page.locator('[data-resource="datasetMetric"]').waitFor()
     await page.evaluate(() => {
