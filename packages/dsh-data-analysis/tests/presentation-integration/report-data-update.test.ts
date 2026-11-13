@@ -16,6 +16,7 @@ import {
   resultReference,
 } from '../../src/presentation/contracts/result-reference.ts'
 import { parseAnalysisSnapshot } from '../../src/presentation/contracts/snapshot.ts'
+import { resolveSnapshotFilter } from '../../src/presentation/contracts/snapshot-filter.ts'
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
 import {
@@ -35,6 +36,7 @@ import { reportReadInput, reportReadOutput, reportWriteInput } from './report-pr
 async function fixture(
   t: { after(fn: () => Promise<void>): void },
   frameOverride?: ReturnType<typeof comparedScalar>,
+  datasetOverride?: (id: string) => ReturnType<typeof datasetSnapshot>,
 ) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'report-data-update-')))
   const priorHome = process.env.DSH_HOME
@@ -71,7 +73,7 @@ async function fixture(
       const raw =
         ref.schema === 'marivo.frame_ref/v2'
           ? structuredClone(frameOverride ?? frameSnapshotV2())
-          : datasetSnapshot()
+          : (datasetOverride?.(ref.result_id) ?? datasetSnapshot())
       if (ref.schema === 'marivo.frame_ref/v2')
         Object.assign(raw.source, { sessionId: ref.session_id, artifactId: ref.artifact_id })
       const snapshot = parseAnalysisSnapshot(raw)
@@ -537,4 +539,48 @@ test('refresh with a missing default member leaves the last draft, current build
       base.buildId,
     )
   }
+})
+
+test('rolling refresh resolves latest independently for each saved build', async (t) => {
+  const f = await fixture(t, undefined, (id) => {
+    const days = id.endsWith('2') ? ['2026-11-12', '2026-11-13'] : ['2026-11-11', '2026-11-12']
+    return datasetSnapshot(
+      days.map((day, i) => [day, i]),
+      [
+        { id: 'day', label: 'Day', type: 'string', nullable: false },
+        { id: 'value', label: 'Value', type: 'float64', nullable: false },
+      ],
+    )
+  })
+  const initial = await f.present({
+    resourcePatch: { put: { data: f.declarations().data } },
+    program: `root = Stack([day, period, DatasetView("data", {chart: "table"}, {}, ["day", "period"])]);
+day = SnapshotFilter("day", "data", {kind: "column", name: "day"}, "Day", "single", [], {allowAll: false, defaultPolicy: "latest"});
+period = SnapshotFilter("period", "data", {kind: "column", name: "day"}, "Period", "date-range", [], {allowAll: false, defaultPolicy: "latest"});`,
+  })
+  const old = await readReceiptDocument(f.root, initial.receipt)
+  const updated = await f.present({
+    basedOnRecordId: old.recordId,
+    resourcePatch: { put: { data: f.declarations(undefined, '2').data } },
+  })
+  const next = await readReceiptDocument(f.root, updated.receipt)
+  const readDefaults = (document: typeof old, mode: 'single' | 'date-range') => {
+    const resource = document.resources.data
+    assert(resource?.kind === 'snapshot')
+    return resolveSnapshotFilter(resource.snapshot, {
+      filterId: mode,
+      ref: 'data',
+      field: { kind: 'column', name: 'day' },
+      label: mode,
+      mode,
+      options: { allowAll: false, defaultPolicy: 'latest' },
+    }).defaultValues
+  }
+  assert.deepEqual(readDefaults(old, 'single'), ['2026-11-12'])
+  assert.deepEqual(readDefaults(old, 'date-range'), ['2026-11-12', '2026-11-12'])
+  assert.deepEqual(readDefaults(next, 'single'), ['2026-11-13'])
+  assert.deepEqual(readDefaults(next, 'date-range'), ['2026-11-13', '2026-11-13'])
+  const reopened = await readReceiptDocument(f.root, initial.receipt)
+  assert.deepEqual(readDefaults(reopened, 'single'), ['2026-11-12'])
+  assert.equal((await readReportHistory(f.root, 'workspace', old.reportId)).versions.length, 2)
 })

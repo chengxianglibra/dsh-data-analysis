@@ -15,7 +15,11 @@ export const resultConfigurationSummary = z.strictObject({
   coverage: snapshotMetadataSchemas.coverage,
   values: z.array(z.string()).optional(),
   axes: z
-    .array(snapshotMetadataSchemas.axes.element.pick({ token: true, name: true, role: true }))
+    .array(
+      snapshotMetadataSchemas.axes.element
+        .pick({ token: true, name: true, role: true, variant: true })
+        .extend({ keyTypes: z.array(snapshotMetadataSchemas.column.shape.type) }),
+    )
     .optional(),
 })
 export const analysisResultSummarySchema = z.discriminatedUnion('status', [
@@ -39,7 +43,13 @@ export function analysisResultSummary(
     const columns = snapshot.data.columns.map(({ id, type }) => ({ id, type }))
     const frame = snapshot.kind === 'frame' ? snapshot.frame : undefined
     const values = frame?.fields.filter(({ role }) => role === 'value').map(({ id }) => id)
-    const axes = frame?.axes.map(({ token, name, role }) => ({ token, name, role }))
+    const axes = frame?.axes.map(({ token, name, role, variant, keys }) => ({
+      token,
+      name,
+      role,
+      variant,
+      keyTypes: keys.map(({ dtype }) => dtype.type),
+    }))
     const ids = columns.map(({ id }) => id)
     const valueNames = values ?? ids
     summaries[name] = {
@@ -100,7 +110,7 @@ export const analysisResultSummaryToolSchema = {
           additionalProperties: true,
           required: true,
           description:
-            'Resource-name map. Each entry has kind, columns:[{id,type}], coverage, optional Frame values and axes:[{token,name,role}], viewCandidates:{columns,axis,timeAxis,values,numericValues} (name arrays), viewCandidateUsage mapping each candidate group to {nameKind,parameters} (chart.parameter paths), and coordinateColumns:[{name,axisToken,axisName?,endpoint,part}].',
+            'Resource-name map. Each entry has kind, columns:[{id,type}], coverage, optional Frame values and axes:[{token,name,role,variant,keyTypes}] (variant includes calendar timezone and grain), viewCandidates:{columns,axis,timeAxis,values,numericValues} (name arrays), viewCandidateUsage mapping each candidate group to {nameKind,parameters} (chart.parameter paths), and coordinateColumns:[{name,axisToken,axisName?,endpoint,part}].',
         },
       },
     },

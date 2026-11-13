@@ -158,7 +158,7 @@ function TimeChartPlot({
   const [activeMark, setActiveMark] = useState<string>()
   const axis = axisOf(s, view.axis)
   if (!axis) return null
-  const { ticks, tickOf } = ticksOf(s, axis)
+  const { ticks, tickOf, gapBefore } = ticksOf(s, axis)
   const axisType = columnOf(s, axis.id)?.column.type
   const showAllCategories =
     !axis.ticks && axisType !== 'date' && axisType !== 'datetime' && ticks.length <= 12
@@ -170,20 +170,27 @@ function TimeChartPlot({
         s,
         [seriesAxis],
         s.data.rows.map((_, i) => i),
-      ).map((group) => ({
-        ...group,
-        rows: visible ? group.rows.filter((row) => visible.has(row)) : group.rows,
-      }))
-    : [{ key: '', label: '', rows: rowsOf(s) }]
+      )
+        .map((group, originalIndex) => ({
+          ...group,
+          originalIndex,
+          rows: visible ? group.rows.filter((row) => visible.has(row)) : group.rows,
+        }))
+        .filter((group) => group.rows.length > 0)
+    : [{ key: '', label: '', rows: rowsOf(s), originalIndex: 0 }]
   const series = groups.flatMap((group, gi) =>
     view.values.map((name, vi) => ({
       key: `s${gi}_${vi}`,
       name,
       label: [group.label, valueLabelWithUnit(s, name)].filter(Boolean).join(' · '),
       color: color(
-        seriesAxis && view.values.length > 1 ? gi * view.values.length + vi : seriesAxis ? gi : vi,
+        seriesAxis && view.values.length > 1
+          ? group.originalIndex * view.values.length + vi
+          : seriesAxis
+            ? group.originalIndex
+            : vi,
       ),
-      marker: seriesAxis ? gi : undefined,
+      marker: seriesAxis ? group.originalIndex : undefined,
       rows: new Map(group.rows.map((row) => [tickOf(row), row])),
     })),
   )
@@ -232,10 +239,16 @@ function TimeChartPlot({
       }
     }),
   )
-  const referenceData = data.map((item) => ({
-    ...item,
-    __reference: refs.find((ref) => item.index >= ref.from && item.index <= ref.to)?.y ?? null,
-  }))
+  const referenceData = data.flatMap((item) => {
+    const entry = {
+      ...item,
+      __reference: refs.find((ref) => item.index >= ref.from && item.index <= ref.to)?.y ?? null,
+    }
+    // A null point between surviving category ticks breaks a line without adding a coordinate.
+    return !bars && gapBefore.has(item.index)
+      ? [{ index: item.index - 0.5, __reference: null }, entry]
+      : [entry]
+  })
   const tip = (index: number) =>
     [
       ticks[index]?.title ?? '',

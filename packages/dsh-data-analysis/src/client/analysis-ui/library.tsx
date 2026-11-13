@@ -8,7 +8,10 @@ import {
   datasetViewSchema,
 } from '../../presentation/contracts/dataset-view.ts'
 import { frameDisplaySchema, frameViewSchema } from '../../presentation/contracts/frame-view.ts'
-import { snapshotFilterSchema } from '../../presentation/contracts/snapshot-filter.ts'
+import {
+  snapshotFilterBindingSchema,
+  snapshotFilterSchema,
+} from '../../presentation/contracts/snapshot-filter.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { Markdown } from '../presentation/markdown.tsx'
 import { Tabs } from '../ui/tabs.tsx'
@@ -23,13 +26,13 @@ const frameProps = z.object({
   ref: z.string().min(1),
   view: frameViewSchema.optional(),
   display: frameDisplaySchema.optional(),
-  filters: z.array(z.string()).optional(),
+  filters: z.array(snapshotFilterBindingSchema).optional(),
 })
 const datasetProps = z.object({
   ref: z.string().min(1),
   view: datasetViewSchema.optional(),
   display: datasetDisplaySchema.optional(),
-  filters: z.array(z.string()).optional(),
+  filters: z.array(snapshotFilterBindingSchema).optional(),
 })
 
 type AnalysisTabItem = ElementNode & {
@@ -128,7 +131,7 @@ export const DatasetView = defineComponent({
 export const SnapshotFilter = defineComponent({
   name: 'SnapshotFilter',
   description:
-    'Select saved category values for explicitly bound views of the same snapshot; no recalculation.',
+    'Select saved dimension values or a date range for explicitly bound views; no recalculation.',
   props: snapshotFilterSchema,
   component: ({ props }) => <SnapshotFilterControl declaration={props} />,
 })

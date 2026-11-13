@@ -15,8 +15,15 @@ import {
   type DatasetSnapshot,
   isFrameSnapshotV2,
 } from '../../presentation/contracts/snapshot.ts'
-import { snapshotFilterViewIssue } from '../../presentation/contracts/snapshot-filter.ts'
+import {
+  type SnapshotFilter,
+  snapshotFilterViewIssue,
+} from '../../presentation/contracts/snapshot-filter.ts'
 import type { Cell, DatasetColumn, TypedDataset } from '../../presentation/contracts/types.ts'
+import {
+  type ViewFilterContext,
+  viewFilterContext,
+} from '../../presentation/contracts/view-filter-context.ts'
 import type { PythonExecutionDatasource } from '../../python-execution-contracts.ts'
 import { useCopy } from '../i18n/context.tsx'
 import { cellText } from '../presentation/model.ts'
@@ -135,7 +142,7 @@ export function AnalysisDataView({
   kind: AnalysisSnapshot['kind']
   component?: ComponentIdentity
   configuration?: 'pending' | 'invalid'
-  filters?: readonly string[]
+  filters?: readonly (string | { filter: string; field: SnapshotFilter['field'] })[]
 }) {
   const t = useCopy()
   const { readResource, candidate, isStreaming, removedResourceNames } = useAnalysisResources()
@@ -143,12 +150,16 @@ export function AnalysisDataView({
   const removed = Boolean(resourceName && removedResourceNames?.includes(resourceName))
   const snapshot =
     resource?.kind === 'snapshot' && resource.snapshot.kind === kind ? resource.snapshot : undefined
-  const filterState = useSnapshotFilters(filters ?? [], resourceName)
+  const filterState = useSnapshotFilters(filters ?? [], resourceName, snapshot)
+  const filterContext =
+    snapshot && filters?.length && filterState.ready
+      ? viewFilterContext(filterState.filters, snapshot.data.rows.length)
+      : undefined
   const resolution =
     snapshot && !configuration
       ? isFrameSnapshotV2(snapshot)
-        ? resolveFrameView(snapshot, view)
-        : resolveDatasetView(snapshot, view)
+        ? resolveFrameView(snapshot, view, filterContext)
+        : resolveDatasetView(snapshot, view, filterContext)
       : undefined
   const valid =
     snapshot &&
@@ -166,6 +177,7 @@ export function AnalysisDataView({
           view,
           display,
           component,
+          filterContext,
           filterSummary: filterState.summary,
           filterSelectionKey: filterState.selectionKey,
           visibleRowIndices: filterState.visibleRows(resource.snapshot.data.rows.length),
@@ -196,6 +208,7 @@ export function AnalysisDataView({
     )
   }
   const filterProps = {
+    filterContext: visible.filterContext,
     filterSummary: <SnapshotFilterSummary filters={visible.filterSummary} />,
     filterSelectionKey: visible.filterSelectionKey,
     visibleRowIndices: visible.visibleRowIndices,
@@ -236,6 +249,7 @@ function DatasetDataView({
   visibleRowIndices,
   filterSelectionKey,
   filterSummary,
+  filterContext,
 }: {
   resourceName?: string
   component?: ComponentIdentity
@@ -250,6 +264,7 @@ function DatasetDataView({
   visibleRowIndices?: readonly number[]
   filterSelectionKey?: string
   filterSummary?: ReactNode
+  filterContext?: ViewFilterContext
 }) {
   const t = useCopy()
   const [dataOpen, setDataOpen] = useState(false)
@@ -421,7 +436,10 @@ function DatasetDataView({
       })
     return () => controller.abort()
   }, [sourceOpen, codeRef, codeKey, readCode])
-  const resolution = useMemo(() => resolveDatasetView(snapshot, view), [snapshot, view])
+  const resolution = useMemo(
+    () => resolveDatasetView(snapshot, view, filterContext),
+    [snapshot, view, filterContext],
+  )
   const resolved = resolution.ok ? resolution.view : undefined
   const chart =
     resolved && resolved.chart !== 'table' && resolved.chart !== 'metric' ? resolved : undefined
@@ -453,7 +471,12 @@ function DatasetDataView({
     (resolved?.chart === 'table' ? resolved.columns : undefined) ?? data.columns.map((c) => c.id)
   const metricColumn =
     resolved?.chart === 'metric' ? data.columns.find((c) => c.id === resolved.values[0]) : undefined
-  const metric = metricColumn && snapshot.coverage.complete && data.rowCount === 1
+  const metricRow = visibleRowIndices ? visibleRowIndices[0] : 0
+  const metric =
+    metricColumn &&
+    snapshot.coverage.complete &&
+    metricRow !== undefined &&
+    (visibleRowIndices ? visibleRowIndices.length === 1 : data.rowCount === 1)
   const titleFields =
     resolved?.chart === 'metric'
       ? resolved.values
@@ -693,21 +716,25 @@ function DatasetDataView({
                 {
                   key: metricColumn.id,
                   value:
-                    selectable && data.rows[0]![data.columns.indexOf(metricColumn)] != null ? (
+                    selectable &&
+                    data.rows[metricRow!]![data.columns.indexOf(metricColumn)] != null ? (
                       <button
                         type="button"
                         className="pr-cell-select"
-                        data-frame-point={`0:${metricColumn.id}`}
-                        aria-label={`${t('marivo.presentation.ui-frame-select-point')}: ${metricColumn.label}, ${formatValue(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn)}`}
-                        onClick={() => selectable.select(0, metricColumn.id)}
+                        data-frame-point={`${metricRow}:${metricColumn.id}`}
+                        aria-label={`${t('marivo.presentation.ui-frame-select-point')}: ${metricColumn.label}, ${formatValue(data.rows[metricRow!]![data.columns.indexOf(metricColumn)]!, metricColumn)}`}
+                        onClick={() => selectable.select(metricRow!, metricColumn.id)}
                       >
                         {formatValue(
-                          data.rows[0]![data.columns.indexOf(metricColumn)]!,
+                          data.rows[metricRow!]![data.columns.indexOf(metricColumn)]!,
                           metricColumn,
                         )}
                       </button>
                     ) : (
-                      formatValue(data.rows[0]![data.columns.indexOf(metricColumn)]!, metricColumn)
+                      formatValue(
+                        data.rows[metricRow!]![data.columns.indexOf(metricColumn)]!,
+                        metricColumn,
+                      )
                     ),
                   unit: display?.formats?.some((item) => item.value === metricColumn.id)
                     ? undefined
@@ -715,7 +742,7 @@ function DatasetDataView({
                 },
               ]}
             />
-          ) : (
+          ) : resolved?.chart === 'metric' ? null : (
             <DatasetDisplayTable
               data={data}
               columns={columns}

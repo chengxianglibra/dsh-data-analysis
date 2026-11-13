@@ -33,10 +33,10 @@ business 固定 unknown。
 - `null` 只出现在 nullable 列，不替换成零或空字符串；来源原值不变，Frame 按统一格式显示数值并引用保存值，DatasetView 默认精确显示，显式格式仅改变主视图的展示，详细数据仍保留精确值，图形位置可使用数值近似。
 
 `rows.length` 必须等于 `min(rowCount, limit)`，`truncated` 必须等于 `rowCount > rows.length`。
-空结果保留列定义；截断数据不能用于推导全量总计、KPI 或排名，metric 视图要求 complete 的单行快照。
+空结果保留列定义；截断数据不能用于推导全量总计、KPI 或排名。metric 视图要求完整快照；未绑定筛选时要求单行，绑定筛选时遵循必选单选的唯一行准入。
 插件无法恢复上游已经丢失的精度。
 
-固定快照筛选读取 Dataset 列或 Frame ordinary 单键轴的保存值，支持 string、boolean、精确 int64 和允许的 null。匹配产生原始行索引，不改写行、coverage 或 Frame 元数据；捕获范围仍按原快照解释，匹配行数不代表重新计算的业务指标。
+固定快照的 single/multiple 筛选读取 Dataset 列或 Frame ordinary 单键轴的保存原值，支持 string、boolean、精确 int64、date 和允许的 null；不按字段名推导日期或转换成员。date-range 对严格日期字符串、date、保存的 datetime 和受支持的 Frame calendar 单键轴取得行日期；datetime 使用其保存表示的日期，calendar 按轴的业务时区解释原始键，仅支持 builtin hour/day、step=1。跨资源绑定显式指定目标字段，普通模式要求类型相同；同一筛选器的 calendar 绑定时区须一致。匹配返回原始行索引，不改写行、coverage 或 Frame 元数据；捕获范围仍按原快照解释，匹配行数不代表重新计算的业务指标。
 
 ### 预算与错误
 

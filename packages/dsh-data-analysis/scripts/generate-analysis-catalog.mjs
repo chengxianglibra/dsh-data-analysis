@@ -90,7 +90,7 @@ export async function buildAnalysisCatalog(mode = 'build') {
           return `## ${name}\n\n\`\`\`text\n${c.signature}\n\`\`\`\n${guidance}`
         })
         .join('\n') +
-      '\nImage.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 必须为完整单行结果，Dataset 图表要求完整快照。Dataset 的 display 可声明 title、subtitle 与数值列 formats；格式只改变主视图，详细数据保留精确值。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。\n'
+      '\nImage.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 使用完整单行结果，或由必选单选筛选器唯一定位完整快照中的保存行；Dataset 图表要求完整快照。Dataset 的 display 可声明 title、subtitle 与数值列 formats；格式只改变主视图，详细数据保留精确值。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。\n'
     if (mode === 'update') await writeFile(signaturesPath, signatures)
     else if ((await readFile(signaturesPath, 'utf8')) !== signatures)
       throw new Error('Analysis signatures are stale')

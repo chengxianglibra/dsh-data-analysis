@@ -59,7 +59,7 @@ AccordionItem(value: string, trigger: string, content: (Stack | TextContent | Ca
 ## AnalysisFrameView
 
 ```text
-AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", style?: "stacked", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, title?: string, subtitle?: string, time?: {tickFormat?: "auto" | "date" | "date-time" | "time", showTimezone?: boolean}, seriesLayout?: "auto" | "overlay" | "facet", formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[], timeContext?: "auto" | "hidden", density?: "full" | "compact", dataTable?: "collapsed" | "visible", rowLimit?: number, comparisonLabels?: {alias?: string, current: string, baseline: string}[], highlight?: {axis: string, key: (string | number | boolean)[]}, decompositionTotals?: {current: string, baseline: string, currentLabel: string, baselineLabel: string}, recordPreview?: {coordinates: string[], values: string[], limit: number, label: string}}, filters?: string[])
+AnalysisFrameView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding?: {value: string}} | {chart: "line" | "area" | "bar", encoding?: {values?: string[], axis?: string, series?: string}} | {chart: "pie", style?: "stacked", encoding?: {axis?: string, value?: string}} | {chart: "heatmap", encoding?: {x: string, y: string, value: string}} | {chart: "comparison", encoding?: {value: string}, style?: "auto" | "delta"} | {chart: "decomposition", encoding?: {value: string}, style?: "auto" | "share"}, display?: {height?: number, title?: string, subtitle?: string, time?: {tickFormat?: "auto" | "date" | "date-time" | "time", showTimezone?: boolean}, seriesLayout?: "auto" | "overlay" | "facet", formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[], timeContext?: "auto" | "hidden", density?: "full" | "compact", dataTable?: "collapsed" | "visible", rowLimit?: number, comparisonLabels?: {alias?: string, current: string, baseline: string}[], highlight?: {axis: string, key: (string | number | boolean)[]}, decompositionTotals?: {current: string, baseline: string, currentLabel: string, baselineLabel: string}, recordPreview?: {coordinates: string[], values: string[], limit: number, label: string}}, filters?: (string | {filter: string, field: {kind: "column", name: string} | {kind: "axis", name: string}})[])
 ```
 
 Frame 字段取自结果 metadata 的 `viewCandidates`：表格 `columns` 和 metric `encoding.value` 使用 `columns` 列 ID；line/area 的 `encoding.axis` 使用 `timeAxis` 公开轴名（仅 calendar/interval），bar 的 axis 及图表的 series 使用 `axis` 公开轴名；图表 values 使用 `values` 中的公开值名，绘图使用 `numericValues`。`axis.0` 等 token 用于 `coordinateColumns` 与轴关联，不直接填入 encoding。候选是字段级提示，仍需通过图表数据约束。auto 在时间与类别组合中以 8 个系列为选图阈值；显式 line/area/bar 不设此系列上限。
@@ -67,13 +67,13 @@ Frame 字段取自结果 metadata 的 `viewCandidates`：表格 `columns` 和 me
 ## DatasetView
 
 ```text
-DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number, title?: string, subtitle?: string, time?: {tickFormat?: "auto" | "date" | "date-time" | "time", showTimezone?: boolean}, seriesLayout?: "auto" | "overlay" | "facet", formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[]}, filters?: string[])
+DatasetView(ref: string, view?: {chart: "auto"} | {chart: "table", columns?: string[]} | {chart: "metric", encoding: {value: string}} | {chart: "line" | "area" | "bar", encoding: {axis: string, values: string[], series?: string}} | {chart: "heatmap", encoding: {x: string, y: string, value: string}}, display?: {height?: number, title?: string, subtitle?: string, time?: {tickFormat?: "auto" | "date" | "date-time" | "time", showTimezone?: boolean}, seriesLayout?: "auto" | "overlay" | "facet", formats?: {value: string, format: "percent" | "number" | "currency", decimals?: number}[]}, filters?: (string | {filter: string, field: {kind: "column", name: string} | {kind: "axis", name: string}})[])
 ```
 
 ## SnapshotFilter
 
 ```text
-SnapshotFilter(filterId: string, ref: string, field: {kind: "column", name: string} | {kind: "axis", name: string}, label: string, mode?: "single" | "multiple", defaultValues?: (string | boolean | null)[])
+SnapshotFilter(filterId: string, ref: string, field: {kind: "column", name: string} | {kind: "axis", name: string}, label: string, mode?: "single" | "multiple" | "date-range", defaultValues?: (string | boolean | null)[], options?: {allowAll?: boolean, defaultPolicy?: "latest"})
 ```
 
 ## DashboardGrid
@@ -88,4 +88,4 @@ DashboardGrid(items: DashboardGridItem[], columns?: 1 | 2 | 3 | 4, gap?: "s" | "
 DashboardGridItem(content: (Card | TextContent | TextCallout | Image | Stack | Tabs | Accordion | AnalysisFrameView | DatasetView | SnapshotFilter | DashboardGrid)[], span?: 1 | 2 | 3 | 4)
 ```
 
-Image.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 必须为完整单行结果，Dataset 图表要求完整快照。Dataset 的 display 可声明 title、subtitle 与数值列 formats；格式只改变主视图，详细数据保留精确值。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。
+Image.src 是已准入的 image-file 资源名。DatasetView 支持 auto/table/metric/line/area/bar/heatmap；图表 encoding 显式引用列 ID，按保存行首次出现的顺序展示，不聚合、不推断分析语义。metric 使用完整单行结果，或由必选单选筛选器唯一定位完整快照中的保存行；Dataset 图表要求完整快照。Dataset 的 display 可声明 title、subtitle 与数值列 formats；格式只改变主视图，详细数据保留精确值。AnalysisFrameView 按已捕获的 Frame 结构与语义解析视图。

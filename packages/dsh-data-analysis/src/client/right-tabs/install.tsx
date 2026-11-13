@@ -235,6 +235,9 @@ export function installRightTabs(ctx, { diagnostics = false } = {}) {
       reportViews.openingFailed(view.id, false)
       return
     }
+    // The chat entry outlives a closed sidebar tab. A new explicit opening is
+    // a new reading instance, even though it targets the same saved Build.
+    if (!automatic) view.reading.filters = undefined
     const params = { reportViewId: view.id, workspaceId: view.workspaceId, turn: view.turn }
     const address = liveReportAddress(view.workspaceId, view.id)
     ctx.sidebarRight.openResource(address, { params })

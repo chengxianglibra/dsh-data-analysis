@@ -70,7 +70,7 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:$
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
       ['0', '1', '2', '3', '4', '5'],
     )
-    await page.getByRole('radio', { name: 'south' }).check()
+    await page.getByRole('combobox', { name: 'Region' }).selectOption({ label: '"south"' })
     await page.waitForFunction(
       () => document.querySelectorAll('[data-frame-view="table"] tbody tr').length === 3,
     )

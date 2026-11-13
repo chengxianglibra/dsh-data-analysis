@@ -123,6 +123,12 @@ window.renderFilter(undefined);`,
       { row: 2, field: 'value' },
     ])
     assert.equal(await page.locator('[data-frame-point="1:value"]').count(), 0)
+    assert.deepEqual(
+      await page
+        .locator('[data-tick]')
+        .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-tick'))),
+      ['A', 'C'],
+    )
     const pathData = await page.locator('.recharts-line-curve').first().getAttribute('d')
     assert.ok(
       pathData && (pathData.match(/M/g) ?? []).length >= 2,

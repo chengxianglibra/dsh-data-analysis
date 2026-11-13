@@ -753,6 +753,52 @@ test('explicit table, metric and time charts validate names, dtypes and axes', (
   assert.deepEqual(over.chart === 'line' && over.broadcast, ['mean_revenue'])
 })
 
+test('filtered Frame metrics and chart coordinates respect required single keys', () => {
+  const snapshot = f.frame({
+    axes: [
+      { name: 'day', keys: ['d1', 'd2', 'd2'] },
+      { name: 'hour', keys: ['09', '09', '09'] },
+      { name: 'cluster', keys: ['A', 'A', 'B'] },
+    ],
+    values: [f.value('v', 3)],
+  })
+  const chart = { chart: 'bar', encoding: { axis: 'hour', series: 'cluster' } } as const
+  assert.equal(
+    resolveFrameView(snapshot, chart, {
+      requiredSingles: [['d1', 'd2', 'd2']],
+      metricEligible: false,
+    }).ok,
+    true,
+  )
+  assert.equal(
+    resolveFrameView(snapshot, chart, { requiredSingles: [], metricEligible: false }).ok,
+    false,
+  )
+  const metric = { chart: 'metric', encoding: { value: 'v' } } as const
+  assert.equal(
+    resolveFrameView(snapshot, metric, {
+      requiredSingles: [
+        ['d1', 'd2', 'd2'],
+        ['A', 'A', 'B'],
+      ],
+      metricEligible: true,
+    }).ok,
+    true,
+  )
+  assert.equal(
+    resolveFrameView(snapshot, metric, {
+      requiredSingles: [['d1', 'd2', 'd2']],
+      metricEligible: false,
+    }).ok,
+    false,
+  )
+  const one = f.observeScalar()
+  assert.equal(
+    resolveFrameView(one, { chart: 'metric' }, { requiredSingles: [], metricEligible: false }).ok,
+    false,
+  )
+})
+
 test('explicit heatmap validates both axes and the value', () => {
   const matrix = f.observeMatrix()
   assert.deepEqual(

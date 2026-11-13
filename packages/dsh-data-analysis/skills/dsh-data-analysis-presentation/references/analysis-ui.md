@@ -26,15 +26,20 @@
 
 ## DataFrame
 
-`DatasetView` 按保存的列 ID 映射字段。表格可用 `{chart:"table", columns:["category", "amount"]}` 选择读者需要核对的列。指标卡使用完整单行结果中的一个标量，支持文本；图表的数值映射仍须符合对应类型约束。折线图、面积图和柱图用 `{axis, values, series?}`，热力图用 `{x, y, value}`。这些图要求完整快照、数值列和唯一坐标组合，按快照中首次出现的顺序展示。趋势图应使用原分析已经按时间排好的数据。
+`DatasetView` 按保存的列 ID 映射字段。表格可用 `{chart:"table", columns:["category", "amount"]}` 选择读者需要核对的列。指标卡使用完整单行结果中的一个标量，或按必选单选唯一定位完整快照中的保存行，支持文本；图表的数值映射仍须符合对应类型约束。折线图、面积图和柱图用 `{axis, values, series?}`，热力图用 `{x, y, value}`。这些图要求完整快照、数值列和唯一坐标组合，按快照中首次出现的顺序展示。趋势图应使用原分析已经按时间排好的数据。
 
 `display.title` 和 `display.subtitle` 可说明表格、指标卡或图表；`display.formats` 按已保存的数值列 ID 声明，例如 `formats:[{value:"share",format:"percent",decimals:1}]`。格式支持 `percent`、`number`、`currency`，小数位为 0–6，百分比把保存的比例乘以 100；货币单位来自列的 `unit`，不得猜测币种或将已是百分数的数值再次标成比例。格式仅改变主视图显示，排序、筛选、点选与数据详情仍使用保存值；没有显式格式的列保持精确显示。不要仅依赖 Tab 标签说明表格内容。
 
 ## 固定快照筛选
 
-需要读者按类别查看已保存行时，使用具名 `SnapshotFilter`，并在同一资源的数据视图 `filters` 中引用其 `filterId`。Dataset 字段用保存列 ID（`{kind:"column",name:"..."}`），Frame 字段用只有一个 key 的 ordinary 公开轴名（`{kind:"axis",name:"..."}`）；仅 string、boolean、int64 和允许的 null 可用。int64 使用精确十进制字符串。默认值必须存在于该快照，空数组表示全部，`[null]` 选择空值。多选在同一控件内为 OR，多个控件之间为 AND。
+需要读者查看已保存行时，使用具名 `SnapshotFilter`。声明的 `ref` 和 `field` 提供候选或日期范围来源。视图的 `filters` 可使用字符串绑定同资源同字段，或用 `{filter:"筛选器 ID",field:{kind:"column"|"axis",name:"目标字段"}}` 显式绑定消费资源中的字段；普通模式两端类型须相同。Dataset 字段使用保存列 ID，Frame 字段使用公开轴名。普通 single/multiple 使用保存的 string、boolean、int64 或 date 原值匹配，`null`、空字符串和精确 int64 保持各自身份。空数组表示全部，多选内部为 OR，多个筛选器之间为 AND。
 
-仅普通表格和 line/area/bar 观察视图支持筛选；metric、饼图、热力图及比较、分解等领域视图不可绑定。auto 先按原始快照解析，解析结果必须受支持。控件只投影固定快照中的行，不计算汇总、比例或新指标；静态结论和未绑定 KPI 不随选择变化。截断范围仍按原快照披露，导出 HTML 包含全部已保存数据，且从默认值开始。刷新数据时保留筛选定义和默认值；新快照不再包含默认成员时须修复输入或明确说明阻塞，不静默改成全部。
+`single` 可用 `options:{allowAll:false,defaultPolicy:"latest"}` 选择最新保存日期：来源须为 date 或全部非 null 值均为严格有效日期字符串的字段。它仍按普通原值匹配；小时等资源必须已有同类型的普通 day 字段。来源没有这样的字段时，不要声称单选能从 datetime 或 calendar 自动派生日，也不要为控件强制把 Frame 转成 DataFrame。
+
+`date-range` 以两个 `YYYY-MM-DD` 边界包含两端，能绑定严格日期字符串、date、已保存 datetime，或 builtin hour/day 且 step=1 的 Frame calendar 轴；Frame calendar 按轴的业务时区解释日期。可指定同日范围、超出捕获范围的边界或 `defaultPolicy:"latest"`；读者选择只投影已保存数据。`allowAll:false` 要求有效非空默认值。刷新时 latest 按新 Build 已捕获数据解析；显式普通默认成员失效则拒绝新版本。
+
+普通表格和支持的 line/area/bar 观察视图可绑定筛选。显式 metric 仅在完整快照上的所有绑定均为必选 single 且绑定字段元组唯一时可用，显示唯一保存行；零匹配显示无数据。multiple 和 date-range 不能绑定 metric 或让浏览器重算范围指标。auto 根据原始快照确定视图，饼图、热力图、比较和分解等不因筛选放宽限制。静态结论和未绑定视图不随选择变化；覆盖范围仍按原快照披露，离线 HTML 包含完整已保存数据并从默认值开始。
+
 
 ## OpenUI Lang 布局
 

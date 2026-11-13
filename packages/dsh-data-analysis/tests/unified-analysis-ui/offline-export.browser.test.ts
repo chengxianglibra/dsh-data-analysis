@@ -352,3 +352,99 @@ test('offline datetime lines honor presentation options while retaining exact sa
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('exported filters combine single, multiple and date range selections without a network', async () => {
+  const snapshot = datasetSnapshot(
+    [
+      ['2026-11-12', '2026-11-12T00:30:00+08:00', 'East', 'A', 10],
+      ['2026-11-12', '2026-11-12T01:30:00+08:00', 'East', 'B', 20],
+      ['2026-11-12', '2026-11-12T02:30:00+08:00', 'South', 'C', 30],
+      ['2026-11-13', '2026-11-13T00:30:00+08:00', 'East', 'A', 40],
+      ['2026-11-13', '2026-11-13T01:30:00+08:00', 'East', 'B', 50],
+      ['2026-11-13', '2026-11-13T02:30:00+08:00', 'South', 'C', 60],
+    ],
+    [
+      { id: 'day', label: 'Day', type: 'string', nullable: false },
+      { id: 'time', label: 'Time', type: 'datetime', nullable: false },
+      { id: 'region', label: 'Region', type: 'string', nullable: false },
+      { id: 'cluster', label: 'Cluster', type: 'string', nullable: false },
+      { id: 'value', label: 'Value', type: 'float64', nullable: false },
+    ],
+  )
+  const document = parseAnalysisDocument({
+    schemaVersion: ANALYSIS_UI_FORMAT,
+    workspaceId: 'workspace',
+    reportId: 'report',
+    buildId: 'build',
+    recordId: analysisRecordId('report', 'build'),
+    title: 'Combined offline filters',
+    locale: 'en-US',
+    generatedAt: '2026-11-13T00:00:00Z',
+    catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+    program: [
+      'root = Stack([region, cluster, period, view]);',
+      'region = SnapshotFilter("region", "result", {kind:"column",name:"region"}, "Region", "single", ["East"]);',
+      'cluster = SnapshotFilter("cluster", "result", {kind:"column",name:"cluster"}, "Cluster", "multiple", ["A","B"]);',
+      'period = SnapshotFilter("period", "result", {kind:"column",name:"day"}, "Period", "date-range", [], {defaultPolicy:"latest"});',
+      'view = DatasetView("result", {chart:"table"}, {}, ["region", "cluster", {filter:"period",field:{kind:"column",name:"time"}}]);',
+    ].join('\n'),
+    resources: {
+      result: {
+        kind: 'snapshot',
+        declaration: { kind: 'dataset-snapshot', snapshotRef: 'ref' },
+        snapshot,
+        binding: {
+          workspaceId: 'workspace',
+          sessionId: 'session',
+          callId: 'call',
+          codeRef: {
+            executionId: '12345678-1234-4123-8123-123456789abc',
+            sha256: 'a'.repeat(64),
+          },
+        },
+      },
+    },
+  })
+  const directory = await mkdtemp(path.join(tmpdir(), 'dsh-offline-combined-'))
+  const browser = await chromium.launch()
+  try {
+    const reportPath = path.join(directory, 'report.html')
+    await writeFile(reportPath, exportAnalysisHtml(document))
+    const context = await browser.newContext({ offline: true, timezoneId: 'America/Los_Angeles' })
+    const page = await context.newPage()
+    const requests: string[] = []
+    const errors: string[] = []
+    page.on('request', (request) => {
+      if (/^https?:/i.test(request.url())) requests.push(request.url())
+    })
+    page.on('pageerror', (error) => errors.push(error.message))
+    const visibleRows = () =>
+      page
+        .locator('tbody tr')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index')))
+    await page.goto(pathToFileURL(reportPath).href)
+    await page.getByRole('combobox', { name: 'Region' }).waitFor()
+    assert.deepEqual(await visibleRows(), ['3', '4'])
+    const period = page.locator('[data-snapshot-filter="period"]')
+    assert.equal(await period.getByLabel('Start date').inputValue(), '2026-11-13')
+    assert.equal(await period.getByLabel('End date').inputValue(), '2026-11-13')
+    await period.getByLabel('Start date').fill('2026-11-12')
+    assert.deepEqual(await visibleRows(), ['3', '4'])
+    await period.getByRole('button', { name: 'Apply' }).click()
+    assert.deepEqual(await visibleRows(), ['0', '1', '3', '4'])
+    await page.getByRole('combobox', { name: 'Region' }).selectOption({ label: '"South"' })
+    assert.deepEqual(await visibleRows(), [])
+    await page.getByRole('checkbox', { name: 'C' }).check()
+    assert.deepEqual(await visibleRows(), ['2', '5'])
+    await page.reload()
+    await page.getByRole('combobox', { name: 'Region' }).waitFor()
+    assert.deepEqual(await visibleRows(), ['3', '4'])
+    assert.equal(await page.getByRole('checkbox', { name: 'C' }).isChecked(), false)
+    assert.deepEqual(requests, [])
+    assert.deepEqual(errors, [])
+    await context.close()
+  } finally {
+    await browser.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})

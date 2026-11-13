@@ -8,6 +8,7 @@ import {
   resolveFrameView,
 } from '../../../presentation/contracts/frame-view.ts'
 import type { TypedDataset } from '../../../presentation/contracts/types.ts'
+import type { ViewFilterContext } from '../../../presentation/contracts/view-filter-context.ts'
 import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
@@ -79,6 +80,7 @@ export interface FrameShellProps {
   visibleRowIndices?: readonly number[]
   filterSelectionKey?: string
   filterSummary?: ReactNode
+  filterContext?: ViewFilterContext
 }
 
 /** Saved v2 Frame: resolution is the only source of class, shape and chosen view. */
@@ -86,10 +88,14 @@ export function AnalysisFrame({
   snapshot,
   view,
   display,
+  filterContext,
   ...rest
 }: Omit<FrameShellProps, 'classification' | 'view'> & { view?: FrameViewSpec }) {
   const t = useCopy()
-  const resolution = useMemo(() => resolveFrameView(snapshot, view), [snapshot, view])
+  const resolution = useMemo(
+    () => resolveFrameView(snapshot, view, filterContext),
+    [snapshot, view, filterContext],
+  )
   if (!resolution.ok || validateFrameDisplay(snapshot, resolution.view, display))
     return <p role="alert">{t('marivo.presentation.ui-resource-unavailable')}</p>
   return (
@@ -242,18 +248,20 @@ export function MainView({
       )
     case 'members':
       return <MembersPreview snapshot={snapshot} height={height} />
-    case 'metric':
+    case 'metric': {
+      const row = visibleRowIndices ? visibleRowIndices[0] : 0
+      if (row === undefined) return null
       return (
         <MetricGroup
           items={view.values.map((name) => {
             const column = columnOf(snapshot, name)?.column
-            const value = cellOf(snapshot, 0, name)
+            const value = cellOf(snapshot, row, name)
             return {
               key: name,
               value: (
                 <SelectableFrameValue
                   snapshot={snapshot}
-                  row={0}
+                  row={row}
                   field={name}
                   label={`${valueName(snapshot, classification, name)}: ${column ? displayFrameCell(snapshot, t.locale, value, column) : String(value)}`}
                 >
@@ -265,6 +273,7 @@ export function MainView({
           })}
         />
       )
+    }
     case 'line':
     case 'area':
     case 'bar':

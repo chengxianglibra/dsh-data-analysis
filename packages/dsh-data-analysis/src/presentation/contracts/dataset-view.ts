@@ -4,6 +4,7 @@ import type { FrameView, FrameViewFailure, ResolvedFrameView } from './frame-vie
 import type { DatasetSnapshot } from './snapshot.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
 import { availableNames, numericViewType } from './view-fields.ts'
+import { uniqueRowKeys, type ViewFilterContext } from './view-filter-context.ts'
 
 const name = z.string().min(1).max(256)
 export const datasetViewSchema = z.union([
@@ -89,6 +90,7 @@ const fail = (
 export function resolveDatasetView(
   snapshot: DatasetSnapshot,
   view?: FrameView,
+  filters?: ViewFilterContext,
 ): DatasetViewResolution {
   const { columns, rows } = snapshot.data
   const ids = columns.map((c) => c.id)
@@ -114,7 +116,7 @@ export function resolveDatasetView(
     const value = view.encoding?.value ?? (ids.length === 1 ? ids[0] : undefined)
     if (!value || !ids.includes(value))
       return fail('view-name-unknown', '/view/encoding/value', ids)
-    return single
+    return (filters ? snapshot.coverage.complete && filters.metricEligible : single)
       ? ok({ chart: 'metric', values: [value] })
       : fail('view-metric-requires-complete-single-row', '/view')
   }
@@ -139,8 +141,13 @@ export function resolveDatasetView(
   // Keys use original typed cells, never formatted labels or floating plot coordinates.
   const unique = (names: string[]) => {
     const indices = names.map((name) => ids.indexOf(name))
-    const keys = rows.map((row) => JSON.stringify(indices.map((i) => row[i])))
-    return new Set(keys).size === rows.length
+    return uniqueRowKeys(
+      [
+        ...(view.chart === 'heatmap' ? [] : (filters?.requiredSingles ?? [])),
+        ...indices.map((i) => rows.map((row) => row[i])),
+      ],
+      rows.length,
+    )
   }
   const cardinality = (name: string) =>
     new Set(rows.map((row) => JSON.stringify(row[ids.indexOf(name)]))).size

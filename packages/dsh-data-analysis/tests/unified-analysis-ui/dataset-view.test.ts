@@ -301,6 +301,106 @@ test('Dataset charts accept more than eight series while heatmap grids remain bo
   assert.equal(result.code, 'view-budget')
 })
 
+test('required single bindings admit only uniquely identified metric rows and chart coordinates', () => {
+  const snapshot = datasetSnapshot(
+    [
+      ['day-1', 'A', '09', 10],
+      ['day-2', 'A', '09', 20],
+      ['day-2', 'B', '09', 30],
+    ],
+    [
+      { id: 'day', label: 'Day', type: 'string', nullable: false },
+      { id: 'cluster', label: 'Cluster', type: 'string', nullable: false },
+      { id: 'hour', label: 'Hour', type: 'string', nullable: false },
+      { id: 'value', label: 'Value', type: 'float64', nullable: false },
+    ],
+  )
+  const metric = { chart: 'metric' as const, encoding: { value: 'value' } }
+  const chart = { chart: 'line' as const, encoding: { axis: 'hour', values: ['value'] } }
+  const days = ['day-1', 'day-2', 'day-2']
+  const clusters = ['A', 'A', 'B']
+  assert.equal(
+    resolveDatasetView(snapshot, metric, {
+      requiredSingles: [days, clusters],
+      metricEligible: true,
+    }).ok,
+    true,
+  )
+  assert.equal(
+    resolveDatasetView(snapshot, metric, { requiredSingles: [days], metricEligible: false }).ok,
+    false,
+  )
+  assert.equal(
+    resolveDatasetView(snapshot, chart, { requiredSingles: [days, clusters], metricEligible: true })
+      .ok,
+    true,
+  )
+  // A valid default day does not excuse duplicate coordinates in another selectable day.
+  assert.equal(
+    resolveDatasetView(snapshot, chart, { requiredSingles: [days], metricEligible: false }).ok,
+    false,
+  )
+  // Allow-all and range bindings do not divide the coordinate admission set.
+  assert.equal(
+    resolveDatasetView(snapshot, chart, { requiredSingles: [], metricEligible: false }).ok,
+    false,
+  )
+  snapshot.coverage.complete = false
+  assert.equal(
+    resolveDatasetView(snapshot, metric, {
+      requiredSingles: [days, clusters],
+      metricEligible: true,
+    }).ok,
+    false,
+  )
+  const one = datasetSnapshot([['d1', 'A', '09', 10]], snapshot.data.columns)
+  assert.equal(
+    resolveDatasetView(one, metric, { requiredSingles: [], metricEligible: false }).ok,
+    false,
+  )
+  assert.equal(
+    resolveDatasetView(one, metric, { requiredSingles: [['d1']], metricEligible: true }).ok,
+    true,
+  )
+})
+
+test('report admission checks every selectable filter tuple before accepting a metric', () => {
+  const snapshot = datasetSnapshot(
+    [
+      ['d1', 'A', 10],
+      ['d2', 'A', 20],
+      ['d2', 'B', 30],
+    ],
+    [
+      { id: 'day', label: 'Day', type: 'string', nullable: false },
+      { id: 'cluster', label: 'Cluster', type: 'string', nullable: false },
+      { id: 'value', label: 'Value', type: 'float64', nullable: false },
+    ],
+  )
+  const resources = {
+    data: {
+      kind: 'snapshot' as const,
+      declaration: { kind: 'dataset-snapshot' as const, snapshotRef: 'data' },
+      snapshot,
+      binding: { workspaceId: 'workspace' },
+    },
+  }
+  const program = `root = Stack([day, cluster, v]);
+day = SnapshotFilter("day", "data", {kind: "column", name: "day"}, "Day", "single", ["d1"], {allowAll: false});
+cluster = SnapshotFilter("cluster", "data", {kind: "column", name: "cluster"}, "Cluster", "single", ["A"], {allowAll: false});
+v = DatasetView("data", {chart: "metric", encoding: {value: "value"}}, {}, ["day", "cluster"]);`
+  assert.doesNotThrow(() => validateAnalysisResources(program, resources))
+  assert.throws(() =>
+    validateAnalysisResources(program.replace('{allowAll: false}', '{allowAll: true}'), resources),
+  )
+  assert.throws(() =>
+    validateAnalysisResources(program.replace('"cluster"]);', '"day"]);'), resources),
+  )
+  // The default tuple d1/A stays unique; another selectable tuple becomes ambiguous.
+  snapshot.data.rows[2]![1] = 'A'
+  assert.throws(() => validateAnalysisResources(program, resources))
+})
+
 test('shared chart lookup retains Frame token precedence over an earlier matching display name', () => {
   const model = datasetChartModel(datasetSnapshot().data, ['category', 'value'])
   model.axes[0]!.name = 'value'

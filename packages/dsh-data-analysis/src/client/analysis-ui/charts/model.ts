@@ -116,22 +116,61 @@ export function groupRows(s: ChartModel, axes: ChartAxis[], rows: readonly numbe
   return [...groups.values()]
 }
 export function ticksOf(s: ChartModel, axis: ChartAxis) {
-  if (axis.ticks) {
-    const { ticks, indices } = axis.ticks
-    return { ticks, tickOf: (row: number) => indices[row] ?? -1 }
-  }
-  const groups = groupRows(
-    s,
-    [axis],
-    s.data.rows.map((_, i) => i),
+  const groups = axis.ticks
+    ? undefined
+    : groupRows(
+        s,
+        [axis],
+        s.data.rows.map((_, i) => i),
+      )
+  const indices =
+    axis.ticks?.indices ??
+    (() => {
+      const byRow = new Map<number, number>()
+      groups?.forEach((group, index) => {
+        for (const row of group.rows) byRow.set(row, index)
+      })
+      return s.data.rows.map((_, row) => byRow.get(row) ?? -1)
+    })()
+  const ticks =
+    axis.ticks?.ticks ??
+    groups!.map((group) => ({
+      key: group.key,
+      label: group.label,
+      title: group.label,
+      incomplete: false,
+    }))
+  if (!s.visibleRowIndices)
+    return { ticks, tickOf: (row: number) => indices[row] ?? -1, gapBefore: new Set<number>() }
+  const selected = new Set(
+    s.visibleRowIndices
+      .map((row) => indices[row])
+      .filter((i): i is number => i !== undefined && i >= 0),
   )
-  const indices = new Map<number, number>()
-  groups.forEach((g, i) => {
-    for (const row of g.rows) indices.set(row, i)
-  })
+  const columnType = columnOf(s, axis.id)?.column.type
+  // Time axes retain existing gaps between the first and last visible period.
+  const timeAxis =
+    !!axis.ticks ||
+    columnType === 'date' ||
+    columnType === 'datetime' ||
+    (columnType === 'string' &&
+      axis.labels.length > 0 &&
+      axis.labels.every((label) => /^\d{4}-\d{2}-\d{2}$/.test(label)))
+  const positions = [...selected]
+  const min = Math.min(...positions)
+  const max = Math.max(...positions)
+  const kept = ticks
+    .map((_, index) => index)
+    .filter((index) => (timeAxis ? index >= min && index <= max : selected.has(index)))
+  const remapped = new Map(kept.map((original, index) => [original, index]))
   return {
-    ticks: groups.map((g) => ({ key: g.key, label: g.label, title: g.label, incomplete: false })),
-    tickOf: (row: number) => indices.get(row) ?? -1,
+    ticks: kept.map((index) => ticks[index]!),
+    gapBefore: new Set(
+      kept.flatMap((original, index) =>
+        !timeAxis && index > 0 && original > kept[index - 1]! + 1 ? [index] : [],
+      ),
+    ),
+    tickOf: (row: number) => remapped.get(indices[row] ?? -1) ?? -1,
   }
 }
 export const partitions = (s: ChartModel, name: string) => s.references[name] ?? []

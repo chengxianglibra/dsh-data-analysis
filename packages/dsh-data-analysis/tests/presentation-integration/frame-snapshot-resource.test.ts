@@ -148,6 +148,8 @@ test('Frame receipts distinguish exported columns from chart axes and guide fixe
   const metadata = first.resultMetadata.resources.frame!
   assert.deepEqual(metadata.viewCandidates.columns, ['region', 'amount'])
   assert.deepEqual(metadata.viewCandidates.axis, ['warehouse.query.region'])
+  assert.deepEqual(metadata.axes?.[0]?.variant, { kind: 'ordinary' })
+  assert.deepEqual(metadata.axes?.[0]?.keyTypes, ['string'])
   assert.equal(metadata.viewCandidateUsage.columns.nameKind, 'column-id')
   assert.equal(metadata.viewCandidateUsage.axis.nameKind, 'public-axis-name')
   assert(metadata.viewCandidateUsage.axis.parameters.includes('bar.encoding.axis'))

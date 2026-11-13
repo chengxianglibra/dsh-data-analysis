@@ -1,0 +1,97 @@
+{
+  "snapshotFilter": {
+    "type": "object",
+    "properties": {
+      "filterId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80,
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$"
+      },
+      "ref": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80,
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$"
+      },
+      "field": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "column"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              }
+            },
+            "required": ["kind", "name"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "axis"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "required": ["kind", "name"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "label": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["single", "multiple"]
+      },
+      "defaultValues": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 32768
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null",
+              "const": null
+            }
+          ]
+        }
+      }
+    },
+    "required": ["filterId", "ref", "field", "label"],
+    "additionalProperties": false,
+    "description": "Select saved category values for explicitly bound views of the same snapshot; no recalculation."
+  },
+  "datasetFilters": {
+    "type": "array",
+    "items": {
+      "type": "string"
+    }
+  },
+  "frameFilters": {
+    "type": "array",
+    "items": {
+      "type": "string"
+    }
+  }
+}

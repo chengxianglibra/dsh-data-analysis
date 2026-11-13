@@ -11,10 +11,13 @@ import { analysisResourceDeclaration, pythonCodeRef } from './resource-declarati
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
 import {
   resolveSnapshotFilter,
+  resolveSnapshotFilterBinding,
+  snapshotFilterBindingSchema,
   snapshotFilterFieldNames,
   snapshotFilterSchema,
   snapshotFilterViewIssue,
 } from './snapshot-filter.ts'
+import { type ViewFilterContext, viewFilterContext } from './view-filter-context.ts'
 
 export type { AnalysisResourceDeclaration } from './resource-declaration.ts'
 export { analysisResourceDeclaration } from './resource-declaration.ts'
@@ -230,6 +233,17 @@ export function validateAnalysisResources(
   resources: AnalysisDocument['resources'],
 ) {
   const nodes = analysisElements(parseAnalysisProgram(program))
+  // Establish resource identity before resolving filters and view shapes.
+  for (const node of nodes) {
+    if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
+    const source = resources[String(node.props.ref)]
+    if (
+      source?.kind !== 'snapshot' ||
+      source.snapshot.kind !== (node.typeName === 'AnalysisFrameView' ? 'frame' : 'dataset')
+    )
+      throw new Error('analysis-data-resource-invalid')
+  }
+  const filterContexts = validateSnapshotFilters(program, nodes, resources)
   for (const node of nodes) {
     if (node.typeName === 'Image') {
       if (typeof node.props.src !== 'string' || resources[node.props.src]?.kind !== 'image')
@@ -253,8 +267,8 @@ export function validateAnalysisResources(
       throw viewError('analysis-view-invalid', node, '/display')
     const resolved =
       source.snapshot.kind === 'dataset'
-        ? resolveDatasetView(source.snapshot, view.data)
-        : resolveFrameView(source.snapshot, view.data)
+        ? resolveDatasetView(source.snapshot, view.data, filterContexts.get(node))
+        : resolveFrameView(source.snapshot, view.data, filterContexts.get(node))
     if (resolved.ok) {
       if (source.snapshot.kind === 'dataset') {
         const issue = datasetDisplayIssue(source.snapshot, display.data, resolved.view)
@@ -333,15 +347,24 @@ export function validateAnalysisResources(
         : undefined,
     )
   }
-  validateSnapshotFilters(program, nodes, resources)
 }
 
-function validateSnapshotFilters(
+export function validateSnapshotFilters(
   program: string,
   nodes: ElementNode[],
   resources: AnalysisDocument['resources'],
-): void {
-  const declarations = new Map<string, { node: ElementNode; statement: string; ref: string }>()
+): Map<ElementNode, ViewFilterContext> {
+  const contexts = new Map<ElementNode, ViewFilterContext>()
+  const declarations = new Map<
+    string,
+    {
+      node: ElementNode
+      statement: string
+      ref: string
+      definition: ReturnType<typeof resolveSnapshotFilter>
+    }
+  >()
+  const timezones = new Map<string, string>()
   const reachable = new Set<string>()
   function fail(node: ElementNode, code: string, path: string, hint: string): never {
     throw new AnalysisViewError(
@@ -386,8 +409,9 @@ function validateSnapshotFilters(
           candidates: [fieldKind],
         },
       )
+    let definition: ReturnType<typeof resolveSnapshotFilter>
     try {
-      resolveSnapshotFilter(resource.snapshot, declaration)
+      definition = resolveSnapshotFilter(resource.snapshot, declaration)
     } catch (error) {
       const code = error instanceof Error ? error.message : 'analysis-filter-invalid'
       if (code === 'analysis-filter-field-invalid')
@@ -409,7 +433,14 @@ function validateSnapshotFilters(
         'Use a supported field and existing exact default values.',
       )
     }
-    declarations.set(declaration.filterId, { node, statement, ref: declaration.ref })
+    declarations.set(declaration.filterId, {
+      node,
+      statement,
+      ref: declaration.ref,
+      definition: definition!,
+    })
+    if (definition!.calendarTimezone)
+      timezones.set(declaration.filterId, definition!.calendarTimezone)
   }
   const statements = split(tokenize(analysisStatements(program)))
   const statementCounts = new Map<string, number>()
@@ -445,14 +476,20 @@ function validateSnapshotFilters(
     if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
     const filters = node.props.filters
     if (filters === undefined) continue
-    if (
-      !Array.isArray(filters) ||
-      filters.some((id) => typeof id !== 'string') ||
-      new Set(filters).size !== filters.length
-    )
+    const parsed = z.array(snapshotFilterBindingSchema).safeParse(filters)
+    if (!parsed.success)
       fail(node, 'analysis-filter-reference-invalid', 'filters', 'Use distinct filter IDs.')
-    if (!filters.length) continue
-    for (const id of filters) {
+    const bindings = parsed.data!
+    const ids = bindings.map((binding) => (typeof binding === 'string' ? binding : binding.filter))
+    if (new Set(ids).size !== ids.length)
+      fail(node, 'analysis-filter-reference-invalid', 'filters', 'Use distinct filter IDs.')
+    if (!bindings.length) continue
+    const resource = resources[String(node.props.ref)]
+    if (resource?.kind !== 'snapshot')
+      fail(node, 'analysis-filter-resource-invalid', 'filters', 'Use a saved snapshot resource.')
+    const resolvedBindings: Parameters<typeof viewFilterContext>[0][number][] = []
+    for (const [index, binding] of bindings.entries()) {
+      const id = typeof binding === 'string' ? binding : binding.filter
       const filter = declarations.get(id)
       if (!filter)
         fail(
@@ -461,25 +498,66 @@ function validateSnapshotFilters(
           'filters',
           'Reference a reachable filter declaration.',
         )
-      if (filter.ref !== node.props.ref)
+      if (typeof binding === 'string' && filter.ref !== node.props.ref)
         fail(
           node,
           'analysis-filter-resource-mismatch',
           'filters',
           'Filter and view must use the same resource.',
         )
+      try {
+        const target = resolveSnapshotFilterBinding(
+          resource.snapshot,
+          filter.definition,
+          typeof binding === 'string' ? filter.definition.declaration.field : binding.field,
+        )
+        if (target.calendarTimezone) {
+          const existing = timezones.get(id)
+          if (existing && existing !== target.calendarTimezone)
+            fail(
+              node,
+              'analysis-filter-calendar-invalid',
+              `filters/${index}`,
+              'Use the same timezone on bound calendar axes.',
+            )
+          timezones.set(id, target.calendarTimezone)
+        }
+        resolvedBindings.push({ definition: filter.definition, values: target.values })
+      } catch (error) {
+        if (error instanceof AnalysisViewError) throw error
+        fail(
+          node,
+          error instanceof Error ? error.message : 'analysis-filter-field-invalid',
+          `filters/${index}`,
+          'Use a compatible saved field for this filter.',
+        )
+      }
       consumed.add(id)
     }
-    const resource = resources[String(node.props.ref)]
-    if (resource?.kind !== 'snapshot')
-      fail(node, 'analysis-filter-resource-invalid', 'filters', 'Use a saved snapshot resource.')
-    const view = frameViewSchema.optional().parse(node.props.view ?? undefined)
+    const parsedView = frameViewSchema.optional().safeParse(node.props.view ?? undefined)
+    if (!parsedView.success) throw viewError('analysis-view-invalid', node, '/view')
+    const view = parsedView.data
     const { snapshot } = resource
+    const context = viewFilterContext(resolvedBindings, snapshot.data.rows.length)
+    contexts.set(node, context)
     const resolution =
       snapshot.kind === 'dataset'
-        ? resolveDatasetView(snapshot, view)
-        : resolveFrameView(snapshot, view)
-    const issue = snapshotFilterViewIssue(snapshot, resolution)
+        ? resolveDatasetView(snapshot, view, context)
+        : resolveFrameView(snapshot, view, context)
+    if (
+      resolution.ok &&
+      resolution.view.chart === 'metric' &&
+      (view?.chart !== 'metric' || !context.metricEligible)
+    )
+      fail(
+        node,
+        'analysis-filter-view-unsupported',
+        'filters',
+        'Use an explicit metric with only required single filters whose combined values identify each row.',
+      )
+    // Preserve the view's own structured error and repair candidates when its
+    // shape is invalid; filter compatibility only applies to resolved views.
+    const issue = resolution.ok ? snapshotFilterViewIssue(snapshot, resolution) : undefined
     if (issue) fail(node, 'analysis-filter-view-unsupported', 'filters', issue)
   }
   for (const [id, filter] of declarations)
@@ -490,6 +568,7 @@ function validateSnapshotFilters(
         'filterId',
         'Bind this filter to a supported view.',
       )
+  return contexts
 }
 export function parseAnalysisDocument(value: unknown): AnalysisDocument {
   if (new TextEncoder().encode(JSON.stringify(value)).length > PRESENTATION_BUDGETS.documentBytes)

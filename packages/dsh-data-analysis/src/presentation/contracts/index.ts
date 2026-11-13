@@ -82,7 +82,7 @@ export function parsePresentationBuildId(value: unknown, path = '/buildId'): str
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(result)) fail(path, 'Expected a safe build identifier.')
   return result
 }
-function date(value: unknown, path: string, datetime: boolean) {
+export function validatePresentationDate(value: unknown, path: string, datetime: boolean) {
   const text = string(value, path, 64)
   const expression = datetime
     ? /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/
@@ -178,7 +178,7 @@ function validateCell(value: unknown, column: DatasetColumn, path: string) {
     }
     case 'date':
     case 'datetime':
-      date(value, path, column.type === 'datetime')
+      validatePresentationDate(value, path, column.type === 'datetime')
       break
     case 'string':
       if (

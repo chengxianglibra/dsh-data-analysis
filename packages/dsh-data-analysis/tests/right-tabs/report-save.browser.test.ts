@@ -8,12 +8,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { build } from 'esbuild'
 import { chromium } from 'playwright'
 import { createAnalysisDocument } from '../../src/presentation/analysis.ts'
+import { parseAnalysisDocument } from '../../src/presentation/contracts/analysis-document.ts'
+import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
 
 test('native report save keeps the visible document, selected tab and scroll without replacing the tab', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-report-save-'))
   const browser = await chromium.launch()
   try {
-    const document = await createAnalysisDocument(
+    const baseDocument = await createAnalysisDocument(
       {
         surface: 'tool',
         locale: 'en-US',
@@ -27,7 +29,36 @@ test('native report save keeps the visible document, selected tab and scroll wit
       { workspaceId: 'w', reportId: 'r', buildId: 'b' },
       new AbortController().signal,
     )
-    const bytes = Buffer.from(JSON.stringify(document))
+    const reportDocument = parseAnalysisDocument({
+      ...baseDocument,
+      program:
+        baseDocument.program.replace(
+          'root=Stack([intro, sections, tail])',
+          'root=Stack([intro, sections, tail, filter, filtered])',
+        ) +
+        '\nfilter=SnapshotFilter("category", "data", {kind:"column",name:"category"}, "Category", "single", ["A"], {allowAll:false});' +
+        '\nfiltered=DatasetView("data", {chart:"table"}, {}, ["category"]);',
+      resources: {
+        data: {
+          kind: 'snapshot',
+          declaration: { kind: 'dataset-snapshot', snapshotRef: 'ref' },
+          snapshot: datasetSnapshot([
+            ['A', '1'],
+            ['B', '2'],
+          ]),
+          binding: {
+            workspaceId: 'w',
+            sessionId: 's',
+            callId: 'call',
+            codeRef: {
+              executionId: '12345678-1234-4123-8123-123456789abc',
+              sha256: 'a'.repeat(64),
+            },
+          },
+        },
+      },
+    })
+    const bytes = Buffer.from(JSON.stringify(reportDocument))
     const sha256 = createHash('sha256').update(bytes).digest('hex')
     const receipt = {
       schemaVersion: 2,
@@ -35,7 +66,7 @@ test('native report save keeps the visible document, selected tab and scroll wit
       workspaceId: 'w',
       reportId: 'r',
       buildId: 'b',
-      title: document.title,
+      title: reportDocument.title,
       summary: 'Saved',
       files: {
         document: {
@@ -56,9 +87,9 @@ import {PartialArguments} from '@deepseek-ai/dsh-util-values';
 import {installRightTabs} from './src/client/right-tabs/install.tsx';
 import {en} from './src/client/i18n/copy.ts';
 const observable=value=>{const listeners=new Set();return {getSnapshot:()=>value,subscribe:fn=>{listeners.add(fn);return()=>listeners.delete(fn)},set:next=>{value=next;for(const fn of listeners)fn()}}};
-const doc=${JSON.stringify(document)}, receipt=${JSON.stringify(receipt)};
+const doc=${JSON.stringify(reportDocument)}, receipt=${JSON.stringify(receipt)};
 const file={workspaceId:'w',reportId:'r',buildId:'b',asset:'presentation.json',mimeType:'application/json',bytes:${bytes.length},sha256:${JSON.stringify(sha256)},bodyBase64:${JSON.stringify(bytes.toString('base64'))}};
-const slots=new Map(),definitions=[],tabState=observable(undefined),chat=observable({nodes:new Map()}),events=observable({revision:0,entries:[],change:{kind:'replace',entries:[]}});
+const slots=new Map(),definitions=[],tabState=observable(undefined),chat=observable({nodes:new Map()}),events=observable({revision:0,entries:[],change:{kind:'replace',entries:[]}}),showEntry=observable(false);
 const session=observable({openState:'open',running:true,removed:false,pendingSubmissions:[]}),generation=observable({}),workspaces=observable({phase:'ready',state:'idle',items:[{workspaceId:'w',path:'/w',sessionIds:['s']}]}),sessions=observable({ids:['s'],byId:{s:{retainedBy:{mainView:true}}}}),locale=observable({active:'en'}),openTabs=observable([]);
 let gate,release,reading=false,serial=0,controller;
 // Harness replaceTab opens a new occurrence and aborts the previous one.
@@ -78,9 +109,9 @@ const ctx={effect:fn=>fn(),on:()=>()=>{},
 installRightTabs(ctx);
 const restored=sessionStorage.getItem('report-save-fixture-address');if(restored)openResource(restored);
 const props={sessionId:'s',useTabInfo:()=>({tab:useSyncExternalStore(tabState.subscribe,tabState.getSnapshot),panel:{id:'panel'}}),useWorkspaces:selector=>selector(useSyncExternalStore(workspaces.subscribe,workspaces.getSnapshot)),useSessions:selector=>selector(useSyncExternalStore(sessions.subscribe,sessions.getSnapshot))};
-function App(){const tab=useSyncExternalStore(tabState.subscribe,tabState.getSnapshot);if(!tab)return null;const def=definitions.find(d=>d.kind===tab.kind);return h(slots.get('sidebar.right.pane.tab:'+def.id),{...props,key:tab.id});}
+function App(){const tab=useSyncExternalStore(tabState.subscribe,tabState.getSnapshot);const show=useSyncExternalStore(showEntry.subscribe,showEntry.getSnapshot);const def=tab&&definitions.find(d=>d.kind===tab.kind);const saved={kind:'marivo.presentation.delivery',schemaVersion:2,dshSessionId:'s',turn:1,surface:'tool',receipt};const node={kind:'marivo-analysis-surface',target:'chat',id:'1',location:{kind:'turn',turn:{turn:1}},data:{turn:1,boundary:null,deliveries:[{seq:4,delivery:saved,callId:'call'}],drafts:[]}};return h('div',{style:{height:'100%'}},show&&h(slots.get('conversation.chat.node:marivo-analysis-surface'),{node,sessionId:'s'}),tab&&h(slots.get('sidebar.right.pane.tab:'+def.id),{...props,key:tab.id}));}
 createRoot(document.getElementById('root')).render(h(App));
-window.fixture={start(){const block={phase:'preparing',args:PartialArguments.fromObject({stage:'preview',surface:'tool',title:doc.title,locale:'en-US',program:doc.program}),callId:'call',name:'marivo_report_write',turn:1,step:1,time:1,subCalls:[]};chat.set({nodes:new Map([['call',{kind:'tool-call',location:{kind:'turn',turn:{turn:1}},data:{root:block}}]])});},save(){gate=new Promise(resolve=>release=resolve);const entries=[{type:'tool/call',seq:1,data:{turn:1,callId:'call',name:'marivo_report_write'}},{type:'tool/result',seq:2,surfaceOp:'append',data:{turn:1,meta:{kind:'marivo.presentation.delivery',schemaVersion:2,surface:'tool',dshSessionId:'s',turn:1,receipt},message:{role:'tool',toolCallId:'call',source:{kind:'tool',callId:'call'},content:[{type:'text',text:'saved'}]}}}].map(event=>({type:'event',event}));events.set({revision:1,entries,change:{kind:'append',entries}});},release(){release();gate=undefined},remember(){sessionStorage.setItem('report-save-fixture-address',tabState.getSnapshot().navigation.address)},rememberFixed(){const view=decodeURIComponent(tabState.getSnapshot().navigation.address.split('/').at(-1));const suffix=encodeURIComponent(view);localStorage.setItem('dsh-data-analysis:report-view:'+JSON.stringify(['s','w',view,'/w']),JSON.stringify({workspacePath:'/w',address:'dsh-resource://marivo-report/w/r/build/c?view='+suffix}));sessionStorage.setItem('report-save-fixture-address','dsh-resource://marivo-report/w/r/build/b?view='+suffix)},reading:()=>reading,address:()=>tabState.getSnapshot().navigation.address};
+window.fixture={showEntry(){showEntry.set(true)},close(){controller.abort();openTabs.set([]);tabState.set(undefined)},start(){const block={phase:'preparing',args:PartialArguments.fromObject({stage:'preview',surface:'tool',title:doc.title,locale:'en-US',program:doc.program}),callId:'call',name:'marivo_report_write',turn:1,step:1,time:1,subCalls:[]};chat.set({nodes:new Map([['call',{kind:'tool-call',location:{kind:'turn',turn:{turn:1}},data:{root:block}}]])});},save(){gate=new Promise(resolve=>release=resolve);const entries=[{type:'tool/call',seq:1,data:{turn:1,callId:'call',name:'marivo_report_write'}},{type:'tool/result',seq:2,surfaceOp:'append',data:{turn:1,meta:{kind:'marivo.presentation.delivery',schemaVersion:2,surface:'tool',dshSessionId:'s',turn:1,receipt},message:{role:'tool',toolCallId:'call',source:{kind:'tool',callId:'call'},content:[{type:'text',text:'saved'}]}}}].map(event=>({type:'event',event}));events.set({revision:1,entries,change:{kind:'append',entries}});},release(){release();gate=undefined},remember(){sessionStorage.setItem('report-save-fixture-address',tabState.getSnapshot().navigation.address)},rememberFixed(){const view=decodeURIComponent(tabState.getSnapshot().navigation.address.split('/').at(-1));const suffix=encodeURIComponent(view);localStorage.setItem('dsh-data-analysis:report-view:'+JSON.stringify(['s','w',view,'/w']),JSON.stringify({workspacePath:'/w',address:'dsh-resource://marivo-report/w/r/build/c?view='+suffix}));sessionStorage.setItem('report-save-fixture-address','dsh-resource://marivo-report/w/r/build/b?view='+suffix)},reading:()=>reading,address:()=>tabState.getSnapshot().navigation.address};
 `,
       },
       outfile: path.join(directory, 'page.js'),
@@ -156,6 +187,26 @@ window.fixture={start(){const block={phase:'preparing',args:PartialArguments.fro
     await page.locator('.au-report-motion').waitFor({ state: 'hidden' })
     assert.equal(await body!.evaluate((node) => node.isConnected && node.scrollTop === 180), true)
     assert.equal(await heading!.evaluate((node) => node.isConnected), true)
+    await page.getByRole('combobox', { name: 'Category' }).selectOption({ label: '"B"' })
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-resource="data"] tbody tr')
+          ?.getAttribute('data-row-index') === '1',
+    )
+    await page.evaluate(() => Reflect.get(window, 'fixture').showEntry())
+    const entry = page.getByRole('button', { name: 'Open analysis view in sidebar' })
+    await entry.click()
+    assert.equal(await page.getByRole('combobox', { name: 'Category' }).inputValue(), '1')
+    await page.evaluate(() => Reflect.get(window, 'fixture').close())
+    await entry.click()
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[data-resource="data"] tbody tr')
+          ?.getAttribute('data-row-index') === '0',
+    )
+    assert.equal(await page.getByRole('combobox', { name: 'Category' }).inputValue(), '0')
     await page.waitForFunction(() =>
       Object.keys(localStorage).some((key) => key.startsWith('dsh-data-analysis:report-view:')),
     )

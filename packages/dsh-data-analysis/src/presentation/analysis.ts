@@ -15,6 +15,7 @@ import {
   parseAnalysisDocument,
   parseAnalysisResource,
   sameAnalysisDeclaration,
+  validateSnapshotFilters,
 } from './contracts/analysis-document.ts'
 import {
   analysisStatements,
@@ -381,7 +382,10 @@ export async function createAnalysisDocument(
 
 /** Compare resolved chart identity; data-dependent geometry and row layout can still vary. */
 export function validateRefreshShape(base: AnalysisDocument, next: AnalysisDocument): void {
-  for (const node of analysisElements(parseAnalysisProgram(base.program))) {
+  const nodes = analysisElements(parseAnalysisProgram(base.program))
+  const previousContexts = validateSnapshotFilters(base.program, nodes, base.resources)
+  const nextContexts = validateSnapshotFilters(base.program, nodes, next.resources)
+  for (const node of nodes) {
     if (node.typeName !== 'AnalysisFrameView' && node.typeName !== 'DatasetView') continue
     const name = String(node.props.ref)
     const before = base.resources[name],
@@ -393,12 +397,12 @@ export function validateRefreshShape(base: AnalysisDocument, next: AnalysisDocum
     )
       throw new Error(`report-refresh-resource-kind-changed: ${name}`)
     const view = frameViewSchema.optional().parse(node.props.view ?? undefined)
-    const resolve = (resource: typeof before) =>
+    const resolve = (resource: typeof before, context: ReturnType<typeof previousContexts.get>) =>
       resource.snapshot.kind === 'dataset'
-        ? resolveDatasetView(resource.snapshot, view)
-        : resolveFrameView(resource.snapshot, view)
-    const previous = resolve(before),
-      current = resolve(after)
+        ? resolveDatasetView(resource.snapshot, view, context)
+        : resolveFrameView(resource.snapshot, view, context)
+    const previous = resolve(before, previousContexts.get(node)),
+      current = resolve(after, nextContexts.get(node))
     if (!previous.ok || !current.ok) throw new Error(`report-refresh-view-invalid: ${name}`)
     if (previous.view.chart !== current.view.chart)
       throw new AnalysisViewError(

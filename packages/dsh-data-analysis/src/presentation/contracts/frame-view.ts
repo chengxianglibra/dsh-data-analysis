@@ -8,6 +8,7 @@ import type {
 } from './snapshot.ts'
 import type { ColumnType } from './types.ts'
 import { availableNames, numericViewType, timeAxisRole } from './view-fields.ts'
+import { uniqueRowKeys, type ViewFilterContext } from './view-filter-context.ts'
 
 /** Chart encodings use public axes/values; tables and explicit metrics use column IDs. */
 const names = z.array(z.string().min(1).max(512)).min(1).max(64)
@@ -336,8 +337,12 @@ export function classifyFrame(snapshot: FrameSnapshotV2): FrameClassification {
 }
 
 /** Resolve a saved Frame using only its captured structure and analysis facts. */
-export function resolveFrameView(snapshot: FrameSnapshotV2, view?: FrameView): FrameViewResolution {
-  return resolveV2(snapshot, view)
+export function resolveFrameView(
+  snapshot: FrameSnapshotV2,
+  view?: FrameView,
+  filters?: ViewFilterContext,
+): FrameViewResolution {
+  return resolveV2(snapshot, view, filters)
 }
 
 function tableColumns(snapshot: AnalysisSnapshot, columns: string[] | undefined): string[] | Fail {
@@ -358,6 +363,7 @@ interface Context {
   types: Map<string, ColumnType>
   values: Set<string>
   complete: boolean
+  filters?: ViewFilterContext
 }
 interface ComparisonTarget {
   comparison: number
@@ -369,7 +375,11 @@ interface DecompositionTarget {
   roles: Map<string, string>
 }
 
-function resolveV2(snapshot: FrameSnapshotV2, view?: FrameView): FrameViewResolution {
+function resolveV2(
+  snapshot: FrameSnapshotV2,
+  view?: FrameView,
+  filters?: ViewFilterContext,
+): FrameViewResolution {
   const classification = classifyFrame(snapshot)
   const context: Context = {
     snapshot,
@@ -378,8 +388,28 @@ function resolveV2(snapshot: FrameSnapshotV2, view?: FrameView): FrameViewResolu
     types: new Map(snapshot.data.columns.map((c) => [c.id, c.type])),
     values: new Set(valueNames(snapshot)),
     complete: snapshot.coverage.complete,
+    filters,
   }
   const resolved = !view || view.chart === 'auto' ? auto(context) : explicit(context, view)
+  if (
+    !failed(resolved) &&
+    filters &&
+    (resolved.chart === 'line' ||
+      resolved.chart === 'area' ||
+      resolved.chart === 'bar' ||
+      resolved.chart === 'interval-bar' ||
+      resolved.chart === 'hbar')
+  ) {
+    const tokens = [
+      resolved.axis,
+      ...('series' in resolved && resolved.series ? [resolved.series] : []),
+    ]
+    const columns = tokens.flatMap((token) =>
+      axisToken(context, token).keys.map((key) => snapshot.frame.coordinates[key.slotId]!.values),
+    )
+    if (!uniqueRowKeys([...filters.requiredSingles, ...columns], snapshot.data.rows.length))
+      return fail('view-target-ambiguous', '/view')
+  }
   return failed(resolved) ? resolved : { ok: true, classification, view: resolved }
 }
 
@@ -776,7 +806,8 @@ function explicit(
         return fail('view-name-unknown', '/view/encoding/value', [...x.types.keys()])
       const values = value === undefined ? c.primaryValues : [value]
       if (!values.length) return fail('view-target-ambiguous', '/view')
-      if (!singleRow(snapshot)) return fail('view-metric-requires-complete-single-row', '/view')
+      if (!(x.filters ? x.complete && x.filters.metricEligible : singleRow(snapshot)))
+        return fail('view-metric-requires-complete-single-row', '/view')
       return { chart: 'metric', values }
     }
     case 'line':

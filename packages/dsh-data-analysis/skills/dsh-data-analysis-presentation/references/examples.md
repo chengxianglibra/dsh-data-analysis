@@ -168,11 +168,14 @@ bars = DatasetView("by_category", {chart:"bar", encoding:{axis:"category", value
 table = DatasetView("by_category", {chart:"table", columns:["category", "value"]}, {title:"类别汇总", subtitle:"按已保存结果展示", formats:[{value:"value", format:"number", decimals:0}]});
 ```
 
-需要读者在同一快照内选择类别时，可声明筛选并显式绑定两个视图。这里类别和值列以及默认值须来自实际已核验快照；结果正文不会随选择重新计算。
+## 跨资源日期筛选
 
 ```openui
-root = Stack([categoryFilter, bars, table]);
-categoryFilter = SnapshotFilter("category", "by_category", {kind:"column", name:"category"}, "类别", "multiple", []);
-bars = DatasetView("by_category", {chart:"bar", encoding:{axis:"category", values:["value"]}}, {}, ["category"]);
-table = DatasetView("by_category", {chart:"table", columns:["category", "value"]}, {}, ["category"]);
+root = Stack([day, period, dailyKpi, hourlyTrend]);
+day = SnapshotFilter("day", "daily", {kind:"column", name:"day"}, "日期", "single", [], {allowAll:false, defaultPolicy:"latest"});
+period = SnapshotFilter("period", "daily", {kind:"column", name:"day"}, "日期范围", "date-range", [], {defaultPolicy:"latest"});
+dailyKpi = DatasetView("daily", {chart:"metric", encoding:{value:"total"}}, {}, ["day"]);
+hourlyTrend = DatasetView("hourly", {chart:"line", encoding:{axis:"hour", values:["total"]}}, {}, [{filter:"period", field:{kind:"column",name:"hour"}}]);
 ```
+
+示例假定字段与类型均已核验，daily 中每个 day 恰有一行；日期范围仅联动趋势。其他维度需要对应已保存字段并显式绑定。
