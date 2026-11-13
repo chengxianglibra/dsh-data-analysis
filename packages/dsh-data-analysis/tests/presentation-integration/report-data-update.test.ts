@@ -318,7 +318,7 @@ test('documented report examples preview independent components and refresh only
   }
   const created = await example('examples')
   assert.deepEqual(events, ['preview', 'python', 'preview', 'python', 'preview', 'save'])
-  assert.deepEqual(previews, [[], ['by_category'], ['by_category', 'detail']])
+  assert.deepEqual(previews, [[], ['detail'], ['by_category', 'detail']])
   const original = await readReceiptDocument(f.root, created.receipt)
   const definition = await f.read({ recordId: original.recordId, includeCode: true })
   assert.equal(definition.sources.length, 2)

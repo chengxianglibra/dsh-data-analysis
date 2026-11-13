@@ -1,6 +1,6 @@
 # 分析视图编写示例
 
-示例资源名、输入路径、列 ID 和结论须按实际任务替换。各视图使用准确固定结果，可以共享同一结果及生产 codeRef；优先保留适用的类型化分析并使用 AnalysisFrameView，纯文件和外部计算使用 DatasetView。
+示例资源名、输入路径、列 ID 和结论须按实际任务替换。优先保留适用的类型化分析并使用 AnalysisFrameView，纯文件和外部计算使用 DatasetView。
 
 ## AnalysisFrame 从早期草稿到正式保存
 
@@ -52,43 +52,42 @@ regions = AnalysisFrameView("regions", {chart:"decomposition"});
 
 ## 纯文件结果的增量交付
 
-用户要查看 sales.csv 的类别汇总与原始明细。按计算依赖读取准确路径，相同结果可复用。先展示问题和范围，组件就绪后及时 preview。下面适用于 Code Mode 和 Native。当前任意 Python 与草稿写入按 Harness exclusive 调度；按就绪情况增量交付，同批已就绪相关视图可一并 preview，草稿写入使用最新 revision，不等待完整分析。
+用户要先核对 sales.csv 的类别与金额明细，再看按类别汇总。文件解析有成本，两次执行使用同一份固定明细。明细核对就绪后先 preview，再从准确引用派生汇总。下面适用于 Code Mode 和 Native。
 
 ```javascript
 let draft = await tools.marivo_report_write({
   stage: "preview", title: "销售文件分析",
-  program: 'root = Stack([heading, status]);\nheading = TextContent("sales.csv：类别汇总与原始明细");\nstatus = TextContent("正在准备类别汇总，尚未形成结论。");',
+  program: 'root = Stack([heading, status]);\nheading = TextContent("sales.csv：类别明细与汇总");\nstatus = TextContent("正在读取类别与金额明细。");',
 });
 function dataResource(result, name) {
   if (result.execution.reason !== "succeeded" || !result.results?.[name]) {
-    throw new Error("Inspect execution and capture status; do not replay blindly.");
+    throw new Error("Inspect execution and export status before continuing.");
   }
   return result.results[name].resource;
 }
-const categoryResult = await tools.marivo_python({
-  project: "required", datasources: [], resultVariables: { by_category: "result" },
-  code: `import pandas as pd
-path = "/actual/readable/sales.csv"
-source = pd.read_csv(path)
-result = source.groupby("category", dropna=False)["amount"].sum(min_count=1).reset_index()
-result = result.rename(columns={"amount": "value"})`,
-});
-draft = await tools.marivo_report_write({
-  stage: "preview", ref: draft.ref,
-  resourcePatch: { put: { by_category: dataResource(categoryResult, "by_category") } },
-  program: 'root = Stack([heading, categories, status]);\ncategories = DatasetView("by_category", {chart:"table", columns:["category", "value"]});\nstatus = TextContent("类别汇总已准备，正在准备原始明细。");',
-});
 const detailResult = await tools.marivo_python({
   project: "required", datasources: [], resultVariables: { detail: "result" },
   code: `import pandas as pd
 path = "/actual/readable/sales.csv"
-source = pd.read_csv(path)
-result = source[["category", "amount"]].rename(columns={"amount": "value"})`,
+result = pd.read_csv(path, usecols=["category", "amount"]).rename(columns={"amount": "value"})`,
+});
+const detail = dataResource(detailResult, "detail");
+draft = await tools.marivo_report_write({
+  stage: "preview", ref: draft.ref,
+  resourcePatch: { put: { detail } },
+  program: 'root = Stack([heading, detail, status]);\ndetail = DatasetView("detail", {chart:"table", columns:["category", "value"]});\nstatus = TextContent("类别与金额明细已就绪，正在汇总。");',
+});
+const categoryResult = await tools.marivo_python({
+  project: "required", datasources: [], resultVariables: { by_category: "result" },
+  code: `import json
+from marivo import analysis as mv
+source = mv.read_dataframe(json.loads(${JSON.stringify(JSON.stringify(detail.ref))})).to_pandas()
+result = source.groupby("category", dropna=False)["value"].sum(min_count=1).reset_index()`,
 });
 draft = await tools.marivo_report_write({
   stage: "preview", ref: draft.ref,
-  resourcePatch: { put: { detail: dataResource(detailResult, "detail") } },
-  program: 'root = Stack([heading, categories, detail, scope]);\ndetail = DatasetView("detail", {chart:"table", columns:["category", "value"]});\nscope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");\nstatus = null;',
+  resourcePatch: { put: { by_category: dataResource(categoryResult, "by_category") } },
+  program: 'root = Stack([heading, detail, categories, scope]);\ncategories = DatasetView("by_category", {chart:"table", columns:["category", "value"]});\nscope = TextContent("来源为 sales.csv。明细保留原行的类别与金额，汇总按 category 分组。");\nstatus = null;',
 });
 // Inspect the actual results and answer coverage before this final save.
 const saved = await tools.marivo_report_write({
@@ -96,14 +95,14 @@ const saved = await tools.marivo_report_write({
 });
 ```
 
-合并后的页面如下。计算结果需要解释时，在保存前补上已经证实的结论和实质限制；示例不从工具成功推断业务结论。
+合并后的页面如下。后续若只修改汇总方法，可从仍适用的 detail 固定引用重新派生，保留明细。展示快照可能截断，派生使用原固定引用读取完整结果。保存前核对结论和实质限制。
 
 ```openui
-root = Stack([heading, categories, detail, scope]);
-heading = TextContent("sales.csv：类别汇总与原始明细");
+root = Stack([heading, detail, categories, scope]);
+heading = TextContent("sales.csv：类别明细与汇总");
 categories = DatasetView("by_category", {chart:"table", columns:["category", "value"]});
 detail = DatasetView("detail", {chart:"table", columns:["category", "value"]});
-scope = TextContent("来源为 sales.csv；汇总按 category 分组，明细保留文件原行。数值与分组口径以本次输入为准。");
+scope = TextContent("来源为 sales.csv。明细保留原行的类别与金额，汇总按 category 分组。");
 ```
 
 preview 校验并更新内存草稿，返回 draft ref，前端自动读取并展示；不需要浏览器检查或用户确认，回执也不证明浏览器已渲染。save 返回 saved ref；不从 deliveryJson 拼装身份。新分析视图正文在右侧 Tab 连续更新，以图表动效表达生成和修订，保存后停止；前台会话首次出现可展示候选时自动打开，Chat 保留入口供关闭后重开，后续更新不自动抢焦点。分析视图目录与版本链接也在右侧打开。每次显式指定 stage，身份与 patch 完整后候选才可更新；不传 surface。

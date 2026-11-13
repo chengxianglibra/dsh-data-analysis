@@ -62,6 +62,7 @@ business 固定 unknown。
 有效源码记录未登记结构化结果时返回 `python-result-exports-missing`；记录无法核验时返回 `python-execution-source-unavailable`；
 记录已导出其他引用但未导出目标引用时返回 `analysis-resource-code-not-bound`。三者分别说明缺口，并提示使用已导出目标引用的原回执，
 或在无法核验脚本时显式省略 codeRef、继续使用已有固定结果；不能为补来源而重跑已成功分析。Host 不自动删除调用者提供的 codeRef。
+codeRef 记录整次 Python 执行。同一执行中的多个导出结果可以共享 codeRef，组件各自读取绑定资源的记录。
 该关联证明该次执行返回过引用，不推断原始计算或完整依赖；只有读取已有结果的代码不能被称为最初的生成脚本。
 工具外层执行预算为 180 秒，定义见[报告执行预算](../../../packages/dsh-data-analysis/src/presentation/execution-policy.ts)。
 取消或快照读取失败不发布 current，不自动重跑分析。
