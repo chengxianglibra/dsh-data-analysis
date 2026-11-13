@@ -1,137 +1,59 @@
 <p align="center">
-  <img src="packages/dsh-data-analysis/assets/logo-horizontal.svg" alt="DSH Data Analysis" width="520">
+  <img src="packages/dsh-data-analysis/assets/logo-mark.svg" alt="DSH Data Analysis" width="128">
 </p>
 
-# DSH Data Analysis
+<h1 align="center">DSH Data Analysis</h1>
 
-简体中文 | [English](README.en.md)
+<p align="center"><em>在 DeepSeek Harness 中，用自然语言探索数据、复用业务定义并分享分析结果。</em></p>
 
-在 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 中，用自然语言完成数据分析，
-浏览和复用业务指标定义，并将结果整理为可查看图表、核对精确数据的分析视图。
-语义分析能力由 [Marivo](https://github.com/chengxianglibra/marivo) 提供。
+<p align="center"><b>简体中文</b> | <a href="README.en.md"><b>English</b></a></p>
 
-本项目是个人维护的社区插件，并非 DeepSeek 官方发行或维护的软件。
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的社区数据分析插件，分析与语义能力由 [Marivo](https://github.com/chengxianglibra/marivo) 提供。本项目由个人维护，并非 DeepSeek 官方产品。
 
-## 能力与特性
+![分析视图中的销售指标和渠道对比图](assets/analysis-view.png)
 
-| 你想做什么 | 插件提供的能力 |
-| --- | --- |
-| 回答业务问题 | 用自然语言分析指标趋势、比较不同时间或业务分组、探索变化原因 |
-| 分析本地文件 | 上传文件或指定工作区中的文件，直接分析并生成分析视图 |
-| 连接数据 | 配置数据源、管理连接凭证并测试连接；默认支持 DuckDB、Trino、ClickHouse |
-| 统一分析口径 | 与助手一起整理和复用指标、维度等业务定义，浏览对象及其关系 |
-| 明确分析对象 | 在输入框通过 `@` 搜索并引用已有语义对象 |
-| 展示分析结果 | 保存已有 Frame/DataFrame，以精确表格、单值或图表展示 |
-| 继续探索 | 精确排序、本地翻页，并就数据点或整个结果继续提问 |
-| 阅读与回看 | 保存和查看不可变版本及历史版本 |
+## 功能亮点
+
+- **自然语言分析**：针对业务问题探索趋势、比较分组和分析变化，继续追问数据与结论。
+- **连接文件和数据源**：分析工作区文件或上传的 CSV、JSON、Parquet、Excel `.xlsx`；支持 DuckDB、Trino 和 ClickHouse，并通过凭证表单安全输入密码和令牌。
+- **复用业务口径**：与助手整理指标和维度，在语义层浏览定义与关系，通过输入 `@` 引用对象。
+- **交互式分析视图**：用图表、单值和表格展示结果，检查精确数据、选择数据点继续提问，并回看已保存的版本。
+- **分享结果**：导出可离线查看的 HTML；配置对象存储发布后，也可获取已保存视图的访问链接。
 
 ## 安装
 
-### 环境准备
+### 环境要求
 
-- Node.js `^22.19.0 || >=24.0.0`：22.x 需至少 22.19.0，或使用 24.0.0 及以上版本；不支持 23.x。
-- 已通过 `npx @deepseek-ai/dsh web` 启动并配置好 DeepSeek Harness `>=0.2.1-rc.2`。
-- 命令行中可使用 `pnpm`，供 Harness 安装插件。
-- Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），且支持 `venv`/`ensurepip`；部分 Linux 发行版需额外安装 `python3-venv`。
+- Node.js `^22.19.0 || >=24.0.0`。
+- 已启动并配置的 DeepSeek Harness `>=0.2.1-rc.2`，以及命令行可用的 `pnpm`。
+- Python 3.10+，命令行可运行 `python3`（Windows 为 `python`），并支持 `venv` 和 `ensurepip`；部分 Linux 发行版需要安装 `python3-venv`。
 
-无需预装 Marivo。首次启动会通过 pip 安装 Marivo `0.6.6` 正式版并自动准备分析环境，需要联网下载依赖，请等待准备完成。首次 Marivo 项目分析或结果持久化时，插件根据 `project:"required"` 准备当前工作区根项目；已有项目保留，普通文件预览无需初始化。
+无需预装 Marivo。首次启动会联网安装 Marivo `0.6.6` 并准备分析环境，请等待完成。
 
 ### 安装并启动
 
-以下命令均通过 `npx` 运行 Harness，无需全局安装或将 `dsh` 添加到 PATH。
-
-将插件安装到 Web Profile：
+将插件安装到 Harness 的 Web Profile：
 
 ```bash
 npx @deepseek-ai/dsh plugin --profile web add @chengxianglibra/dsh-data-analysis
 ```
 
-若 pnpm 报 `ERR_PNPM_IGNORED_BUILDS`，可在 `$DSH_HOME/profiles/web/pnpm-workspace.yaml`
-（默认位于 `~/.dsh/` 下）的 `allowBuilds` 中将 `@openuidev/lang-core` 设为 `false`，然后重试安装。
-该包的 postinstall 用于安装遥测，插件不依赖它。pnpm 可能报告 Harness peer 缺失；这些依赖由 Host
-运行时提供，不要为消除警告另装一份 Harness 或 React。
-
-安装后启动 Web Profile；如果已在运行，请先退出再重新启动：
+启动 Web 界面；如果 Harness 已在运行，请先退出并重新启动：
 
 ```bash
 npx @deepseek-ai/dsh web
 ```
 
-在 Web 界面选择分析使用的工作区（Workspace），新建会话并发送一条消息。
-会话标题旁会显示“数据源”“语义层”“分析视图”三个入口，相关页面在右侧标签页打开。以下以 Web 界面为例。
+选择工作区，新建会话并发送消息，即可使用“数据源与凭证”“语义层”和“分析视图”入口。例如：
 
-## 如何使用
+> 使用订单数据分析本月销售额，与上月比较并按渠道拆分，展示趋势和数据来源。
 
-### 1. 准备数据
+密码和令牌请填写在凭证表单中，不要发送到聊天中。首次读取 `.xlsx` 需要联网下载扩展；旧版 `.xls` 请先转换为 `.xlsx`、CSV 或 Parquet。
 
-**本地文件**：上传文件后直接提问，或指定工作区中已有文件，无需先配置数据源或建立业务定义。
-支持 CSV、JSON、Parquet 和 Excel `.xlsx`；首次读取 `.xlsx` 需要联网下载扩展。
-旧版 `.xls` 请先转换为 `.xlsx`、CSV 或 Parquet。
-需要查看或交付 CSV、TSV、XLSX 文件时，可让助手通过原生 `present` 交付，随后在右侧打开 DSH 的只读表格预览；也可让助手在分析视图中整理和展示数据。插件不提供 XLSX 写入或旧 `.xls` 分析。
+如果安装时 pnpm 报 `ERR_PNPM_IGNORED_BUILDS`，在 `$DSH_HOME/profiles/web/pnpm-workspace.yaml`（默认在 `~/.dsh/` 下）的 `allowBuilds` 中将 `@openuidev/lang-core` 设为 `false`，然后重试。Harness peer 依赖由 Host 在运行时提供，无需为消除警告另装 Harness 或 React。
 
-**数据库**：通过对话让助手新增、修改、删除数据源或测试连接。提供连接地址等非秘密信息，密码和令牌请在凭证表单中填写，不要发送到聊天中。
+## 更多信息
 
-在会话标题旁打开“数据源”，可查看当前工作区的数据源、连接属性及凭证配置状态，并新增、更换或删除已保存凭证。已保存的值不会回显；凭证可能由多个数据源或工作区共享。
-
-分析或测试缺少凭证时，助手会等待你填写。保存并继续后，原调用继续执行；保存凭证本身不代表连接测试成功。
-
-### 2. 用自然语言提出分析问题
-
-说明使用哪些数据、时间范围、指标口径和希望得到的结果。例如：
-
-> 使用订单数据，分析 2026 年 8 月的销售额和订单量，与 7 月比较，按渠道拆分，并说明数据来源和口径。
-
-> 检查最近七天的查询耗时，找出耗时最高的查询类型，给出按日趋势和明细表。
-
-如果还没有整理业务定义，可以先让助手帮助梳理：
-
-> 先查看当前数据源中有哪些订单相关表，和我确认销售额、支付订单数的统计口径，再保存为可复用的业务定义。
-
-需要报告时，直接说明希望的内容：
-
-> 将这次分析整理为一份报告，包含结果说明、关键单值和可排序的精确数据表。
-
-### 3. 浏览和引用业务定义
-
-点击“语义层”，按分类或关键词查找指标、维度等对象，查看业务定义和对象关系。
-支持独立打开对象，方便对照阅读。
-
-在聊天输入框输入 `@`，搜索并选择当前工作区的对象；多词搜索可输入 `@"monthly revenue"`。
-选中后即可围绕指定对象提问，让助手使用一致的业务口径开展分析。
-
-### 4. 阅读分析视图
-
-图表或交互有助于看清趋势、比较差异或核对数据时，助手会生成分析视图。视图在右侧标签页展示，Chat 保留打开入口。通过“分析视图”目录可重开已保存的视图和历史版本。
-
-单个已有 Frame 或捕获的 DataFrame 可直接展示。`DatasetView` 支持表格、单值，以及通过显式列映射选择 line、area、bar、heatmap。图表要求完整快照，聚合与口径由分析过程决定。Frame 数据优先使用 `AnalysisFrameView`。
-
-分析视图通过 `marivo_report_write` 呈现结论、图表、精确数据和限制。你可以指定报告或看板的组织方式，也可以指定只要文字或文件。视图保存后，Chat 通常只简述关键发现和影响解读的限制。
-
-通过 `marivo_python.resultVariables` 声明已计算的 AnalysisFrame、DataFrame 或已有固定引用。插件保存声明的内存输出，并返回可直接交给 `marivo_report_write` 的 `results[name].resource`。后续图表和报告可复用当前 Workspace 的固定结果。
-
-插件根据引用确定 kind，在成功保存来源时关联 codeRef。stdout 用于日志。codeRef 仅证明该次执行导出过此引用，不保证是最初生成脚本或可用于重算。更新数据时，助手先审阅绑定脚本、数据源和输出声明，再显式生成新结果并替换同名资源，通过 `mode:"refresh-data"` 保留原布局、正文和显示标签，逐批原子校验；正文中的静态数字不会自动改写。
-
-- **检查数据**：精确排序、本地翻页，并就数据点或整个结果继续提问。截断预览注明范围，不作为完整单值展示。
-- **查看依据**：Frame 显示结构与来源身份；DataFrame 集中展示捕获范围、执行脚本和已声明的数据源。
-- **继续提问**：在 DataFrame 或 Frame 中选择图点或支持的单元格后，将选中数据加入提问草稿。
-- **阅读视图**：前台会话首次展示视图时自动打开并选中右侧标签页。关闭后可从 Chat 入口重开；后续更新不会反复打开标签页。分析视图目录及历史入口也在右侧打开。
-- **下一步推荐**：分析完成后，Chat 中提供一排临时推荐按钮。点击会使用 Harness 原生输入框直接提交对应问题；已有草稿时不会覆盖。推荐保留在 Chat，刷新、重连或切换会话后清除。
-- **离线导出**：关闭对象存储发布时，可通过三点菜单下载当前显示版本的单个 HTML，文件包含已保存快照，可离线查看并使用本地交互；分享前请确认其中的数据。
-- **发布到对象存储**：在 Harness 插件配置中开启 `reportPublishing` 后，三点菜单显示「发布到对象存储」，可上传当前显示的已保存版本并获取访问链接。缺凭据时可直接前往「凭证管理」。也可让助手通过 `marivo_publish_report` 发布指定版本。
-- **删除视图**：在分析视图标签页的操作菜单中确认删除，永久移除该视图及其历史版本；也可让助手删除已保存的视图。已导出的 HTML 和 Marivo 结果不随视图删除。
-
-首次预览、后续修订和正式保存始终更新同一个分析视图，用轻量图表动效显示生成与更新进度，保存后停止；开启“减少动态效果”时静态显示。需要持续计算时，助手会尽早展示草稿，并在结果就绪时更新同一草稿，完成后统一保存一个正式版本。Native 生成期间还会展示程序候选；生成失败或取消保留最后成功内容。刷新已保存视图的数据时，助手保留布局、组件和正文，逐组件替换数据源；静态正文保留原文，auto 图形内部布局可随数据变化。刷新会拒绝图表类型变化。
-
-分析视图支持表格、完整单值、Native 生成期预览和按准确版本的增量更新。更新复用已保存快照，
-失败或取消保留上一成功版本。Frame 视图支持按结构选择图表；分析视图不提供全局筛选或页面编辑。视图历史要求 current v4 指针，但不要求保存的 Catalog build 与当前版本相同；当前 reader 会校验报告内容，无法支持时明确报错。可读取不保证组件的默认值或渲染语义与保存时完全一致。current v2/v3（包括此前保存的新格式视图）和 Frame v1 不再读取或更新。文件保留在磁盘，需要继续使用时捕获当前快照并另建分析视图。
-
-## 分析超时设置
-
-在“设置 → 插件 → 插件配置 → 数据分析”中可调整 Python 分析的默认超时时间，默认为 600 秒，
-保存后对下一次分析调用生效。实际执行时限仍受 Harness 执行策略约束。
-
-## 许可证
-
-本项目采用 [MIT License](packages/dsh-data-analysis/LICENSE)。
-
-本轮为破坏性协议更新：分析视图工具使用 `marivo_report_read` / `marivo_report_write` 和单一版本 `ref`，所有写入显式指定 stage；旧名称和参数不再接受。包根仅提供安装入口与配置类型，扩展通过版本化 integration 入口接入。
+- [架构与模块文档](docs/architecture/README.md)
+- [分析视图与旧格式兼容性](docs/architecture/modules/presentation-reader.md#分析视图目录版本历史与旧格式)
+- [MIT License](packages/dsh-data-analysis/LICENSE)
