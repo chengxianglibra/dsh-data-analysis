@@ -25,6 +25,7 @@ import {
   installMarivoPresentationCodeDelivery,
   registerMarivoPresentTool,
   registerMarivoReportDeleteTool,
+  registerMarivoReportListTool,
   registerMarivoUiReadTool,
 } from './presentation/index.ts'
 import { restorePythonResults } from './python-results-context.ts'
@@ -144,6 +145,7 @@ export function createMarivoAgentInstallation(
       controller.addDisposer(() => credentialService.disposeAgent(agent))
       controller.addDisposer(registerMarivoUiReadTool(agent.ctx, workspace, presentationDrafts))
       controller.addDisposer(registerMarivoReportDeleteTool(agent.ctx, workspace))
+      controller.addDisposer(registerMarivoReportListTool(agent.ctx, workspace))
       if (options.reportPublishing)
         controller.addDisposer(
           registerReportPublishTool(agent.ctx, options.reportPublishing, agent.session),

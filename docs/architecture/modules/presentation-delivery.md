@@ -46,6 +46,8 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 
 候选按参数约束生成，例如 line/area 的 Frame 轴、排除已选轴的系列、可绘图的数值和未占用的表格列。候选解决指定参数，配置中的其他问题仍会独立校验。语法、身份、Runtime 与存储失败走各自原有错误路径。修复配置后沿用固定资源及成功基准，草稿上下文缺失或冲突时通过 `marivo_report_read` 恢复。
 
+组件结构校验保留节点的实际类型，按生成 Catalog 校验自身属性，再检查子组件和插槽；不将子节点转成无类型属性后尝试所有组件分支。`analysis-program-invalid` 的 `error.recovery` 包含 `statement`、`component`、`path`，以及可用的标量 `received`、枚举 `allowed` 或约束 `expected`；仍提供 `applied:false` 和已有的 `currentRef`。具名组件定位如 `kpiGrid/columns`，内联组件定位如 `root/children/0/columns`。配置 union 根据实际 discriminator 定位到具体参数；上游解析器丢弃无效组件时从原始语法定位，存在同类组件歧义时不猜测绝对路径。错误不再拼接或截断原始 Zod union JSON。DashboardGrid.columns 与 DashboardGridItem.span 保持 1–4，span 不能超过父网格列数；6 张卡可以使用 3 列 × 2 行。
+
 比较或分解目标存在歧义时，候选值名对应 `view/encoding/value`。筛选字段种类不匹配时，路径指向 `field/kind`，`expectedKind` 为 `field-kind`，候选为 `axis` 或 `column`；种类正确后再校验 `field/name`。
 
 
@@ -56,7 +58,7 @@ metric 要求完整单行快照，table 的 `columns` 使用互异的快照列 I
 `SnapshotFilter` 须为可达的具名声明，数据视图通过 `filters` 显式绑定同一快照。完整文档准入校验字段、候选默认值、唯一 ID、消费关系与支持的原始视图；刷新后默认成员消失或视图不再受支持时拒绝新版本，保留最后成功的草稿和正式版本。筛选选择只属于阅读状态，不进入更新请求或保存数据。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
-模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。`report-ref-invalid` 提示复用成功回执；明确需要恢复当前 Turn 草稿时可通过 `marivo_report_read({draft:true})` 取回上下文并确认目标，不自动纠正引用或选择最新版本。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。
+模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。`report-ref-invalid` 提示准确复制成功回执，或通过 `marivo_report_list` 检索已保存报告，再读取选中的 ref 确认目标；不解码、修补引用或自动选择最新报告。`marivo_report_read({draft:true})` 仅恢复尚未保存的当前 Turn 草稿，成功保存会立即清除草稿。保存 ref 编码后执行解析自检；提交证明与 canonical 回执复用同一个 ref，文本回执核对其与持久化 receipt 的身份一致。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。
 
 
 更新读取准确 saved ref，用固定 `mergeStatements` 合并完整命名语句，再校验完整程序与资源计划
@@ -68,6 +70,8 @@ program、Catalog id/build、资源声明、实际快照和来源绑定全部保
   同名同声明复制基版本已保存字节，只有新资源执行读取。
 - 纯展示更新只核验 Workspace，不获取 Runtime、不启动 Python；原数据源或捕获文件不存在仍可更新。
 - 新版本独立内嵌全部资源，以基版本 buildId 执行条件保存；冲突不自动重试，失败不改 current。
+
+`marivo_report_list({query?,limit?,cursor?})` 复用 Workspace 的已发布目录，返回当前版本的 `{title,publishedAt,sourceSessionId,ref}`，不返回业务行、文件路径或完整文档。无需旧 Session、草稿或 Runtime；当前 Session 的 Workspace 仍是访问边界，请求结束前复核绑定。`query` 最多 200 字符，按 NFKC 和小写归一化后以空白分词，各词均须匹配标题；同名报告保持独立。按发布时间倒序、report ID 排序，limit 默认 20、范围 1–50。`nextCursor:null` 表示结束；后续页原样传回 cursor 并保持 query，Workspace、查询或目录变化导致 `report-list-cursor-stale`，须重新检索。`unavailable` 是整个 Workspace 中不可读发布指针数，不是标题搜索结果数；列出的指针对应文档仍须经 read 校验。检索不恢复未发布的构建或未保存草稿，不隐式选定报告。
 
 `marivo_report_read({ref,version?:"exact"|"current",includeCode?})` 读取准确版本（默认 exact），current 只用于 saved ref；`{draft:true,includeCode?}` 恢复当前 Session/Turn 草稿，两类输入互斥。读取结果为结构化 definition，包含实际读取到的 ref、reuseGroups、title、locale、Catalog、program、完整资源声明及有界 schema/coverage；不返回业务行。草稿还返回 mode 及可用的 basedOn saved ref。
 

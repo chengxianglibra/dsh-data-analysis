@@ -17,7 +17,7 @@ A community data analysis plugin for [DeepSeek Harness](https://github.com/deeps
 - **Natural language analysis:** explore trends, compare segments, investigate changes, and ask follow-up questions about results.
 - **Files and data sources:** analyze uploaded or workspace CSV, JSON, Parquet, and Excel `.xlsx` files; connect to DuckDB, Trino, or ClickHouse and enter secrets in the credential form.
 - **Reusable business definitions:** define metrics and dimensions with the assistant, browse their relationships, and reference objects by typing `@`.
-- **Interactive analysis views:** present results as charts, single values, and tables; inspect exact data, ask about selected points, and revisit saved versions.
+- **Interactive analysis views:** present results as charts, single values, and tables; inspect exact data, ask about selected points, and revisit saved versions. Find saved reports by title in the current workspace to continue reading or editing.
 - **Share results:** export offline HTML or configure object storage publishing to obtain a link to a saved view.
 
 ## Installation

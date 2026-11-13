@@ -3,7 +3,10 @@ import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { analysisCatalogSpec } from '../../src/presentation/contracts/analysis-catalog.ts'
-import { parseAnalysisProgram } from '../../src/presentation/contracts/analysis-program.ts'
+import {
+  AnalysisProgramError,
+  parseAnalysisProgram,
+} from '../../src/presentation/contracts/analysis-program.ts'
 import { program } from './catalog-fixture.ts'
 
 test('generated Host schema matches the installed Client library without importing React into Host', async () => {
@@ -93,6 +96,83 @@ test('dashboard slots accept nested components and enforce column spans', () => 
   )
   assert.throws(() => parseAnalysisProgram('root = DashboardGrid([DashboardGridItem([], 0)]);'))
   assert.throws(() => parseAnalysisProgram('root = DashboardGrid([], 5);'))
+})
+
+test('component failures locate named and inline parameters without unrelated union branches', () => {
+  for (const [source, path] of [
+    ['root = Stack([DashboardGrid([],2,"bad")]);', 'root/children/0/gap'],
+    ['root = Stack([TextContent(2)]);', 'root/children/0/text'],
+    ['root = Stack([missing,DashboardGrid([],2,"bad")]);', 'root/children/1/gap'],
+  ])
+    assert.throws(
+      () => parseAnalysisProgram(source!),
+      (error: unknown) => {
+        assert(error instanceof AnalysisProgramError)
+        assert.equal(error.details.path, path)
+        return true
+      },
+    )
+  assert.throws(
+    () => parseAnalysisProgram('root = Stack([TextContent(2),TextContent(3)]);'),
+    (error: unknown) => {
+      assert(error instanceof AnalysisProgramError)
+      assert.equal(error.details.path, undefined)
+      return true
+    },
+  )
+  for (const [source, path, statement] of [
+    ['root = Stack([kpiGrid]);\nkpiGrid = DashboardGrid([], 6);', 'kpiGrid/columns', 'kpiGrid'],
+    ['root = Stack([DashboardGrid([], 6)]);', 'root/children/0/columns', 'root'],
+    [
+      'root = Accordion([AccordionItem("x", "X", [DashboardGrid([], 6)])]);',
+      'root/items/0/content/0/columns',
+      'root',
+    ],
+  ]) {
+    assert.throws(
+      () => parseAnalysisProgram(source!),
+      (error: unknown) => {
+        assert(error instanceof AnalysisProgramError)
+        assert.deepEqual(error.details, {
+          component: 'DashboardGrid',
+          statement,
+          path,
+          received: 6,
+          allowed: [1, 2, 3, 4],
+        })
+        return true
+      },
+    )
+  }
+  assert.throws(
+    () =>
+      parseAnalysisProgram(
+        'root = DatasetView("data", {chart:"bar",encoding:{axis:6,values:["value"]}});',
+      ),
+    (error: unknown) => {
+      assert(error instanceof AnalysisProgramError)
+      assert.equal(error.details.path, 'root/view/encoding/axis')
+      assert.equal(error.details.received, 6)
+      return true
+    },
+  )
+  assert.throws(
+    () => parseAnalysisProgram('root = DatasetView("data", {chart:"unknown"});'),
+    (error: unknown) => {
+      assert(error instanceof AnalysisProgramError)
+      assert.equal(error.details.path, 'root/view/chart')
+      assert.deepEqual(error.details.allowed, [
+        'auto',
+        'table',
+        'metric',
+        'line',
+        'area',
+        'bar',
+        'heatmap',
+      ])
+      return true
+    },
+  )
 })
 
 test('accordion section identifiers are nonempty and unique within each group', () => {

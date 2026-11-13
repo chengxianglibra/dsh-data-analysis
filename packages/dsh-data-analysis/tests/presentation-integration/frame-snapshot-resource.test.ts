@@ -6,8 +6,10 @@ import path from 'node:path'
 import test from 'node:test'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { z } from 'zod'
 import {
   type AnalysisDocument,
+  AnalysisViewError,
   parseAnalysisDocument,
   sameAnalysisDeclaration,
 } from '../../src/presentation/contracts/analysis-document.ts'
@@ -16,6 +18,7 @@ import { datasetSnapshotRef, frameSnapshotRef } from '../../src/presentation/dat
 import { presentationSha256 } from '../../src/presentation/files.ts'
 import { parsePresentationDelivery } from '../../src/presentation/receipt.ts'
 import { readReceiptDocument } from '../../src/presentation/reports.ts'
+import { analysisResultSummarySchema } from '../../src/presentation/result-summary.ts'
 import {
   MarivoPresentationFileService,
   registerMarivoPresentationRpc,
@@ -50,7 +53,7 @@ const dataset = {
   },
 }
 
-async function fixture(t: { after(fn: () => Promise<void>): void }) {
+async function fixture(t: { after(fn: () => Promise<void>): void }, frame = frameSnapshotV2()) {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'frame-snapshot-resource-')))
   const previousHome = process.env.DSH_HOME
   process.env.DSH_HOME = root
@@ -62,7 +65,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   const directory = `.dsh-data-analysis/captures/${randomUUID()}`
   await mkdir(path.join(root, directory), { recursive: true })
   const entries = []
-  for (const snapshot of [frameSnapshotV2(), dataset]) {
+  for (const snapshot of [frame, dataset]) {
     const captureId = randomUUID()
     const bytes = Buffer.from(JSON.stringify(snapshot))
     await writeFile(path.join(root, directory, `${captureId}.json`), bytes)
@@ -118,6 +121,7 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     codeRef,
     datasources,
     exec,
+    tool,
     present,
     service,
     frameRef: frameSnapshotRef(codeRef, entries[0]!.captureId),
@@ -125,6 +129,62 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
   }
 }
 const note = 'root = TextContent("Saved");'
+
+test('Frame receipts distinguish exported columns from chart axes and guide fixed-result repair', async (t) => {
+  const snapshot = frameSnapshotV2()
+  snapshot.frame.axes[0]!.name = 'warehouse.query.region'
+  const f = await fixture(t, snapshot)
+  const first = z.object({ ref: z.string(), resultMetadata: analysisResultSummarySchema }).parse(
+    await f.tool.execute(
+      {
+        stage: 'preview',
+        resourcePatch: { put: { frame: { kind: 'frame-snapshot', snapshotRef: f.frameRef } } },
+        program: 'root = AnalysisFrameView("frame", {chart:"table",columns:["region","amount"]});',
+      },
+      f.exec,
+    ),
+  )
+  assert(first.resultMetadata.status === 'captured')
+  const metadata = first.resultMetadata.resources.frame!
+  assert.deepEqual(metadata.viewCandidates.columns, ['region', 'amount'])
+  assert.deepEqual(metadata.viewCandidates.axis, ['warehouse.query.region'])
+  assert.equal(metadata.viewCandidateUsage.columns.nameKind, 'column-id')
+  assert.equal(metadata.viewCandidateUsage.axis.nameKind, 'public-axis-name')
+  assert(metadata.viewCandidateUsage.axis.parameters.includes('bar.encoding.axis'))
+  assert.equal(metadata.coordinateColumns[0]!.axisName, 'warehouse.query.region')
+  await assert.rejects(
+    f.tool.execute(
+      {
+        stage: 'preview',
+        ref: first.ref,
+        program:
+          'root = AnalysisFrameView("frame", {chart:"bar",encoding:{axis:"region",values:["amount"]}});',
+      },
+      f.exec,
+    ),
+    (error: unknown) => {
+      assert(error instanceof AnalysisViewError)
+      assert.equal(error.path, 'root/view/encoding/axis')
+      assert.equal(error.details.receivedKind, 'column')
+      assert.equal(error.details.expectedKind, 'axis')
+      assert.deepEqual(error.details.candidates, ['warehouse.query.region'])
+      assert.deepEqual(error.details.resultMetadata, first.resultMetadata)
+      return true
+    },
+  )
+  const repaired = z.object({ ref: z.string() }).parse(
+    await f.tool.execute(
+      {
+        stage: 'preview',
+        ref: first.ref,
+        program:
+          'root = AnalysisFrameView("frame", {chart:"bar",encoding:{axis:"warehouse.query.region",values:["amount"]}});',
+      },
+      f.exec,
+    ),
+  )
+  assert.notEqual(repaired.ref, first.ref)
+})
 
 test('frame-snapshot resources bind codeRef, Session and call; refs must match their kind', async (t) => {
   const f = await fixture(t)

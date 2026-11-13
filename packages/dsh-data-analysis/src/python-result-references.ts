@@ -5,6 +5,7 @@ import {
   numericViewType,
   viewAxis,
   viewCandidates,
+  viewCandidateUsage,
   viewFieldMetadata,
   viewNames,
 } from './presentation/contracts/view-fields.ts'
@@ -62,6 +63,11 @@ function describeMetadata(
   const values = facts.kind === 'frame' ? facts.values : facts.columns
   const summary = {
     ...facts,
+    coordinateColumns: facts.coordinateColumns.map((column) => ({
+      ...column,
+      axisName: facts.axes.find((axis) => axis.token === column.axisToken)?.name,
+    })),
+    viewCandidateUsage: viewCandidateUsage(facts.kind),
     viewCandidates: viewCandidates(
       facts.columns,
       facts.kind === 'frame' ? facts.axes : undefined,
@@ -69,7 +75,14 @@ function describeMetadata(
       values.filter((name) => Object.hasOwn(valueTypes, name) && numericViewType(valueTypes[name])),
     ),
   }
-  return Buffer.byteLength(JSON.stringify(summary)) > 4096
+  // Preserve field candidates when repeated public axis names exceed the budget;
+  // callers can still join axisToken to axes[].token.
+  if (Buffer.byteLength(JSON.stringify(summary)) > 5 * 1024)
+    summary.coordinateColumns = facts.coordinateColumns.map((column) => ({
+      ...column,
+      axisName: undefined,
+    }))
+  return Buffer.byteLength(JSON.stringify(summary)) > 5 * 1024
     ? { status: 'unavailable', reason: 'budget' }
     : summary
 }

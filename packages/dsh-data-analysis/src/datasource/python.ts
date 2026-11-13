@@ -176,7 +176,7 @@ const pythonOutputSchema = {
           type: 'object',
           additionalProperties: true,
           description:
-            'Named fixed outputs. Each entry provides resource, metadata and sourceStatus. Pass resource unchanged to the report writer. Captured metadata.viewCandidates gives exact table column, chart axis, time axis, value and numeric value names. Outputs can be available even when execution or other exports failed.',
+            'Named fixed outputs. Each entry provides resource, metadata and sourceStatus. Pass resource unchanged to the report writer. Captured metadata.viewCandidates gives exact names; metadata.viewCandidateUsage maps each candidate group to nameKind and chart.parameter paths. Frame table/metric use column IDs, Frame chart axes use public axis names, and Dataset uses column IDs. Outputs can be available even when execution or other exports failed.',
         },
         resultCaptureError: {
           type: 'string',

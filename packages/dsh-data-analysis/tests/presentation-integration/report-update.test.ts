@@ -31,6 +31,7 @@ import { datasetSnapshotRef, frameSnapshotRef } from '../../src/presentation/dat
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
 import { presentationSha256 } from '../../src/presentation/files.ts'
 import { draftDeliverySchema, parsePresentationDelivery } from '../../src/presentation/receipt.ts'
+import { createMarivoReportListTool } from '../../src/presentation/report-list.ts'
 import {
   publishPresentation,
   readAnalysisRecord,
@@ -384,6 +385,7 @@ test('real Harness PTC repairs a rejected column and saves using the same draft'
     })
     agent.ctx.tools.register(createMarivoPresentTool(f.source, agent.session, undefined, f.drafts))
     agent.ctx.tools.register(createMarivoUiReadTool(f.source, f.drafts))
+    agent.ctx.tools.register(createMarivoReportListTool(f.source))
     const callId = ToolCallId('ptc-report-edit')
     agent.session.append('tool/call', {
       turn: 0,
@@ -402,6 +404,18 @@ test('real Harness PTC repairs a rejected column and saves using the same draft'
         code: `
           const first = await tools.marivo_report_write({stage:'preview', resourcePatch:{put:${JSON.stringify({ data: f.resources.data })}}});
           if (first.stage !== 'preview' || !first.ref) throw new Error('preview-identity');
+          let layoutFailure;
+          try {
+            await tools.marivo_report_write({stage:'preview', ref:first.ref,
+              program:'root = Stack([kpis]);\\nkpis = DashboardGrid([], 6);'});
+          } catch (error) {
+            const message = String(error.message);
+            layoutFailure = JSON.parse(message.slice(message.indexOf('error=') + 6));
+          }
+          const repair = layoutFailure?.recovery;
+          if (repair?.path !== 'kpis/columns' || repair.component !== 'DashboardGrid' ||
+              repair.received !== 6 || JSON.stringify(repair.allowed) !== '[1,2,3,4]' ||
+              repair.currentRef !== first.ref || repair.applied !== false) throw new Error('layout-repair-details');
           const recovered = (await tools.marivo_report_read({draft:true})).definition;
           if (recovered.ref !== first.ref) throw new Error('draft-read-identity');
           let failure;
@@ -426,7 +440,9 @@ test('real Harness PTC repairs a rejected column and saves using the same draft'
           if (second.ref === first.ref) throw new Error('revision-not-advanced');
           const saved = await tools.marivo_report_write({stage:'save', ref:second.ref});
           if (saved.stage !== 'save' || !saved.ref) throw new Error('save-identity');
-          const current = (await tools.marivo_report_read({ref:saved.ref,version:"current"})).definition;
+          const matches = await tools.marivo_report_list({query:'PTC reviewed'});
+          if (matches.reports.length !== 1 || matches.reports[0].ref !== saved.ref) throw new Error('saved-list-identity');
+          const current = (await tools.marivo_report_read({ref:matches.reports[0].ref})).definition;
           if (current.ref !== saved.ref || current.title !== 'PTC reviewed') throw new Error('saved-read-identity');
           console.log('PTC_PUBLIC_IDENTIFIERS_VERIFIED');
         `,

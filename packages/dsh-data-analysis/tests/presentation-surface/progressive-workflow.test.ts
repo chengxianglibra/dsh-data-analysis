@@ -12,6 +12,7 @@ import { AnalysisViewError } from '../../src/presentation/contracts/analysis-doc
 import { parseReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
 import { readReportHistory } from '../../src/presentation/reports.ts'
+import { analysisResultSummary } from '../../src/presentation/result-summary.ts'
 import { createMarivoPresentTool } from '../../src/presentation/tool.ts'
 import { savePythonExecution } from '../../src/python-execution.ts'
 import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
@@ -172,6 +173,11 @@ test('shared exact result is admitted once, preserves its producer and repairs v
   const chart = first.resources.chart,
     table = first.resources.table
   assert(chart?.kind === 'snapshot' && table?.kind === 'snapshot')
+  const many = analysisResultSummary(
+    Object.fromEntries(Array.from({ length: 16 }, (_, i) => [`resource${i}`, table])),
+  )
+  assert.equal(many.status, 'captured')
+  if (many.status === 'captured') assert.equal(Object.keys(many.resources).length, 16)
   assert.deepEqual(chart.binding.codeRef, codeRef)
   assert.equal(chart.binding.callId, 'producer-call')
   assert.equal(chart.snapshot.data.columns[1]?.label, 'Chart label')
@@ -213,6 +219,12 @@ test('shared exact result is admitted once, preserves its producer and repairs v
         assert.equal(metadata?.status, 'captured')
         assert.deepEqual(Object.keys(metadata.resources), ['table'])
         assert.deepEqual(metadata.resources.table?.viewCandidates.columns, ['category', 'value'])
+        assert.equal(metadata.resources.table?.viewCandidateUsage.axis.nameKind, 'column-id')
+        assert(
+          metadata.resources.table?.viewCandidateUsage.axis.parameters.includes(
+            'bar.encoding.axis',
+          ),
+        )
         return true
       },
     )

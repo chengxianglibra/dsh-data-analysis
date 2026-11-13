@@ -14,6 +14,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import { z } from 'zod'
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
+import { createMarivoReportListTool } from '../../src/presentation/report-list.ts'
 import { createMarivoPresentTool, createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { TestShellEnv } from '../test-shell-env.ts'
 
@@ -35,7 +36,7 @@ try {
   await ctx.plugin(ToolRuntime, { mode: 'native' })
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
-  const agent = await ctx.agentLoop.create(SessionId('session'), {
+  const agent = await ctx.agentLoop.create(SessionId(savedRef ? 'recovery-session' : 'session'), {
     provider: 'unused',
     model: 'unused',
   })
@@ -43,6 +44,8 @@ try {
   const source = () => ({ id: 'workspace', path: root })
   const reader = createMarivoUiReadTool(source, drafts)
   const writer = createMarivoPresentTool(source, agent.session, undefined, drafts)
+  const lister = createMarivoReportListTool(source)
+  agent.ctx.tools.register(lister)
   agent.ctx.tools.register(reader)
   agent.ctx.tools.register(writer)
   const call = async (id: string, name: string, args: Record<string, unknown>) => {
@@ -66,6 +69,7 @@ try {
     const saved = await call('cold-create-saved', writer.name, {
       stage: 'save',
       program: 'root = TextContent("Cold Host report");',
+      title: 'Cold Host report',
     })
     assert.equal(saved.isError, false, JSON.stringify(saved))
     if (saved.isError) throw new Error('save failed')
@@ -83,7 +87,15 @@ try {
       }),
     )
   } else {
-    const saved = await call('cold-saved', reader.name, { ref: savedRef })
+    const found = await call('cold-list', lister.name, { query: 'Cold Host report' })
+    assert.equal(found.isError, false, JSON.stringify(found))
+    if (found.isError) throw new Error('list failed')
+    const reports = z
+      .object({ reports: z.array(z.object({ ref: z.string() })) })
+      .parse(found.value).reports
+    assert.equal(reports.length, 1)
+    assert.equal(reports[0]!.ref, savedRef)
+    const saved = await call('cold-saved', reader.name, { ref: reports[0]!.ref })
     assert.equal(saved.isError, false, JSON.stringify(saved))
     if (saved.isError) throw new Error('saved read failed')
     const definition = z

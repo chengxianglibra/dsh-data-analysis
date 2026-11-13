@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { ReportCatalogModel, visibleReports } from '../../src/client/presentation/catalog-model.ts'
 import {
   PresentationDeliveryModel,
@@ -27,6 +37,7 @@ import {
 import { parseReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { presentationReportPath } from '../../src/presentation/files.ts'
 import { PresentationRecoveryError } from '../../src/presentation/recovery.ts'
+import { createMarivoReportListTool } from '../../src/presentation/report-list.ts'
 import {
   listReports,
   publishPresentation,
@@ -36,7 +47,9 @@ import {
   MarivoPresentationFileService,
   registerMarivoPresentationRpc,
 } from '../../src/presentation/rpc.ts'
+import { createMarivoUiReadTool } from '../../src/presentation/tool.ts'
 import { createConnectionFixture } from '../semantic-reference-input/fixtures.ts'
+import { reportListOutput, reportReadOutput } from './report-protocol-fixture.ts'
 
 const tab = { kind: 'agent', sessionId: 'source', surface: 'tab' } as const
 
@@ -104,6 +117,85 @@ async function fixture(t: { after(fn: () => Promise<void>): void }) {
     },
   }
 }
+
+test('Agent title search recovers distinct saved refs with bounded pages and no draft', async (t) => {
+  const f = await fixture(t)
+  const source = () => ({ id: 'workspace', path: f.root })
+  // List and saved-read only consume the execution signal; no Agent or Runtime is needed.
+  const exec = { signal: new AbortController().signal } as ToolRunContext
+  const list = createMarivoReportListTool(source)
+  for (const reportId of ['one', 'two'])
+    await publishPresentation(
+      f.root,
+      analysisDocument(reportId, 'build', 'Ｔｒｉｎｏ 每日报告'),
+      null,
+      async () => {},
+      undefined,
+      tab,
+    )
+  const first = reportListOutput.parse(await list.execute({ query: 'trino 报告', limit: 1 }, exec))
+  assert.equal(first.reports.length, 1)
+  assert(first.nextCursor)
+  const second = reportListOutput.parse(
+    await list.execute({ query: 'trino 报告', limit: 1, cursor: first.nextCursor }, exec),
+  )
+  assert.equal(second.reports.length, 1)
+  assert.equal(second.nextCursor, null)
+  assert.notEqual(first.reports[0]!.ref, second.reports[0]!.ref)
+  for (const item of [...first.reports, ...second.reports]) {
+    assert.equal(item.title, 'Ｔｒｉｎｏ 每日报告')
+    assert.equal(item.sourceSessionId, 'source')
+    const read = await createMarivoUiReadTool(source).execute({ ref: item.ref }, exec)
+    assert.equal(reportReadOutput(read).title, item.title)
+  }
+  const empty = reportListOutput.parse(await list.execute({ query: 'no matching report' }, exec))
+  assert.deepEqual(empty.reports, [])
+  assert.equal(empty.nextCursor, null)
+  await assert.rejects(
+    list.execute({ query: 'different', cursor: first.nextCursor }, exec),
+    /report-list-cursor-stale/,
+  )
+  await assert.rejects(list.execute({ cursor: 'broken' }, exec), /report-list-cursor-invalid/)
+  for (const args of [{ limit: 0 }, { limit: 51 }, { workspaceId: 'other' }])
+    await assert.rejects(list.execute(args, exec))
+  await publishPresentation(
+    f.root,
+    analysisDocument('new', 'build', 'trino 报告'),
+    null,
+    async () => {},
+    undefined,
+    tab,
+  )
+  await assert.rejects(
+    list.execute({ query: 'trino 报告', cursor: first.nextCursor }, exec),
+    /report-list-cursor-stale/,
+  )
+})
+
+test('Agent discovery reports unreadable pointers and rejects changed Workspace or cancellation', async (t) => {
+  const f = await fixture(t)
+  const exec = { signal: new AbortController().signal } as ToolRunContext
+  const directory = presentationReportPath(f.root, 'broken')
+  await mkdir(directory, { recursive: true })
+  await writeFile(path.join(directory, 'current.json'), '{}')
+  const list = createMarivoReportListTool(() => ({ id: 'workspace', path: f.root }))
+  const result = reportListOutput.parse(await list.execute({}, exec))
+  assert.equal(result.unavailable, 1)
+  assert.equal(result.reports.length, 1)
+  assert.equal(parseReportRef(result.reports[0]!.ref).workspaceId, 'workspace')
+  const other = reportListOutput.parse(
+    await createMarivoReportListTool(() => ({ id: 'other', path: f.root })).execute({}, exec),
+  )
+  assert.deepEqual(other.reports, [])
+  let changed = false
+  const switching = createMarivoReportListTool(() => {
+    const id = changed ? 'other' : 'workspace'
+    changed = true
+    return { id, path: f.root }
+  })
+  await assert.rejects(switching.execute({}, exec), /presentation-workspace-changed/)
+  await assert.rejects(list.execute({}, { ...exec, signal: AbortSignal.abort() }), /abort/i)
+})
 
 test('refresh preparation accepts only the readable current build in the session workspace', async (t) => {
   const f = await fixture(t)

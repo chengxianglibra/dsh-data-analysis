@@ -1,3 +1,5 @@
+import type { AnalysisProgramError } from './contracts/analysis-program.ts'
+
 export type PresentationRecoveryCode =
   | 'analysis-draft-invalid-request'
   | 'analysis-draft-stage-required'
@@ -11,14 +13,10 @@ export type PresentationRecoveryCode =
   | 'report-save-conflict'
   | 'report-history-full'
 
-interface RecoveryDetails {
+type RecoveryDetails = AnalysisProgramError['details'] & {
   currentRef?: string
   applied?: false
-  line?: number
-  column?: number
   resource?: string
-  unresolved?: string[]
-  detail?: string
 }
 
 /** Repair facts survive Harness normalization to plain Tool error text. */
@@ -38,6 +36,6 @@ export class PresentationRecoveryError extends Error {
 export function unavailableDraft() {
   return new PresentationRecoveryError(
     'analysis-draft-unavailable',
-    'Drafts exist only in their original Session Turn and Host process. Read an accessible saved ref, then rebuild a preview from retained definitions and fixed resources. If these are missing, disclose the gap; do not replay analysis just to recover a draft.',
+    'Drafts exist only in their original Session Turn and Host process and are cleared after saving. Use marivo_report_list to find saved reports, then marivo_report_read with a returned ref to confirm the target and recover its definition. Rebuild a preview from retained definitions and fixed resources. If these are missing, disclose the gap; do not replay analysis just to recover a draft.',
   )
 }

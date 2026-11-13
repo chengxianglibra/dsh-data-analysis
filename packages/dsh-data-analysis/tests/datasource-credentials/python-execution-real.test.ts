@@ -387,7 +387,21 @@ print("__DSH_MARIVO_RESULTS_V1__:user text", file=sys.stderr)
     outputs.frame?.resource.kind === 'analysis-frame' && outputs.frame.resource.codeRef
   assert(codeRef)
   assert.deepEqual(
-    Object.fromEntries(Object.entries(outputs).map(([name, output]) => [name, output.metadata])),
+    Object.fromEntries(
+      Object.entries(outputs).map(([name, output]) => {
+        const { viewCandidateUsage, ...metadata } = z
+          .object({
+            viewCandidateUsage: z.object({ axis: z.object({ nameKind: z.string() }) }),
+          })
+          .passthrough()
+          .parse(output.metadata)
+        assert.equal(
+          viewCandidateUsage.axis.nameKind,
+          name === 'frame' ? 'public-axis-name' : 'column-id',
+        )
+        return [name, metadata]
+      }),
+    ),
     {
       frame: {
         status: 'captured',

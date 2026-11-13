@@ -13,6 +13,7 @@ import type { MarivoCheckedRunner } from '../../src/environment/types.ts'
 import { AnalysisViewError } from '../../src/presentation/contracts/analysis-document.ts'
 import { parseReportRef, savedReportRef } from '../../src/presentation/contracts/report-ref.ts'
 import { AnalysisDrafts } from '../../src/presentation/drafts.ts'
+import { createMarivoReportListTool } from '../../src/presentation/report-list.ts'
 import {
   deletePresentation,
   readAnalysisRecord,
@@ -24,6 +25,7 @@ import {
   createMarivoUiReadTool,
 } from '../../src/presentation/tool.ts'
 import { datasetSnapshot } from '../unified-analysis-ui/dataset-fixtures.ts'
+import { reportListOutput } from './report-protocol-fixture.ts'
 
 const output = z.object({
   stage: z.enum(['preview', 'save']),
@@ -141,7 +143,41 @@ test('ReportRef is bounded, versioned, canonical, and Workspace scoped', () => {
   })
   for (const value of [null, '', 'mr2:s:e30', 'mr1:s:e30', `${ref}=`, 'x'.repeat(4097)])
     assert.throws(() => parseReportRef(value), /report-ref-invalid/)
-  assert.throws(() => parseReportRef('invalid'), /marivo_report_read\(\{draft:true\}\)/)
+  assert.throws(() => parseReportRef('invalid'), /marivo_report_list/)
+})
+
+test('a damaged copied ref recovers through title search after saving clears the draft', async (t) => {
+  const f = await fixture(t)
+  const preview = await f.write({
+    stage: 'preview',
+    title: 'Recoverable report',
+    program: 'root = TextContent("Saved evidence");',
+  })
+  const args = { stage: 'save', ref: preview.ref }
+  const raw = z.record(z.string(), z.json()).parse(await f.tool.execute(args, f.exec))
+  const saved = output.parse(raw)
+  const content = f.tool.output.render(args, raw)
+  const receiptText = content
+    .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+    .join('\n')
+  assert.equal(receiptText.match(/^Ref: (.+)$/m)?.[1], saved.ref)
+  const payload = Buffer.from(saved.ref.split(':')[2]!, 'base64url').toString('utf8')
+  const damaged = `mr1:s:${Buffer.from(payload.replace('"reportId"', '"seportId"')).toString('base64url')}`
+  assert.throws(
+    () => f.tool.output.render(args, { ...raw, ref: damaged }),
+    /report-receipt-ref-mismatch/,
+  )
+  await assert.rejects(f.read(damaged), /report-ref-invalid/)
+  const reader = createMarivoUiReadTool(f.source, f.drafts)
+  await assert.rejects(reader.execute({ draft: true }, f.exec), /analysis-draft-unavailable/)
+  await assert.rejects(reader.execute({ version: 'current' }, f.exec), /report-read-input-invalid/)
+  const found = reportListOutput.parse(
+    await createMarivoReportListTool(f.source).execute({ query: 'Recoverable report' }, f.exec),
+  )
+  assert.equal(found.reports.length, 1)
+  assert.equal(found.reports[0]!.ref, saved.ref)
+  assert.equal((await f.read(found.reports[0]!.ref)).ref, saved.ref)
+  assert.equal((await f.document(saved.ref)).title, 'Recoverable report')
 })
 
 test('Agent deletion rejects stale or draft refs and removes all published versions', async (t) => {

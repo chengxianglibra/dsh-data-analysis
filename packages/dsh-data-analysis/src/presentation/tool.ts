@@ -87,7 +87,7 @@ export function createMarivoPresentTool(
   return defineTool({
     name: MARIVO_PRESENT_TOOL_NAME,
     description:
-      'Create or update an analysis view in the right sidebar. Load dsh-data-analysis-presentation for composition and delivery. Reuse matching fixed outputs with AnalysisFrameView for analysis-frame resources and DatasetView for dataframe resources. For a new view needing computation, preview the question and scope before computing, update the same draft as results become ready, and save once. Only results already ready at task entry or small edits can save directly. Send only changed resources and named program statements. Choose exact names from metadata.viewCandidates in marivo_python: columns for tables and metrics, axis for axis/series/x/y, timeAxis for line/area axis, numericValues for numeric encodings, and values for comparison/decomposition targets. A rejected patch does not apply. For configuration failures read error= JSON for the path, candidates and resultMetadata, then retry with the same fixed resources and latest ref. Drafts expire at Turn end or Host restart. Use marivo_report_read to recover editing context or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources.',
+      'Create or update an analysis view in the right sidebar. Load dsh-data-analysis-presentation for composition and delivery. Reuse matching fixed outputs with AnalysisFrameView for analysis-frame resources and DatasetView for dataframe resources. For a new view needing computation, preview the question and scope before computing, update the same draft as results become ready, and save once. Only results already ready at task entry or small edits can save directly. Send only changed resources and named program statements. Choose exact names from metadata.viewCandidates in marivo_python; viewCandidateUsage maps each group to its nameKind and chart.parameter paths: columns for tables and metrics, axis for axis/series/x/y, timeAxis for line/area axis, numericValues for numeric encodings, and values for comparison/decomposition targets. A rejected patch does not apply. For configuration failures read error= JSON for the path, candidates and resultMetadata, then retry with the same fixed resources and latest ref. Drafts expire after saving, at Turn end or Host restart. Use marivo_report_list if a saved ref is missing or invalid, then marivo_report_read to confirm the target or review conflicts. stage is required. refresh-data preserves page content and only replaces compatible existing resources.',
     parameters: {
       stage: {
         type: 'string',
@@ -178,6 +178,15 @@ export function createMarivoPresentTool(
               text: `Preview updated (unsaved).\nRef: ${value.ref}\nReader: right sidebar\nMode: ${value.mode}\nChanged: ${JSON.stringify(value.changed)}\nReused: ${JSON.stringify(value.reused)}\nUnchanged aliases: ${JSON.stringify(value.unchangedAliases)}\nResult metadata: ${JSON.stringify(value.resultMetadata)}`,
             },
           ]
+        if (
+          value.ref !==
+          savedReportRef({
+            workspaceId: delivery.receipt.workspaceId,
+            reportId: delivery.receipt.reportId,
+            buildId: delivery.receipt.buildId,
+          })
+        )
+          throw new Error('report-receipt-ref-mismatch')
         return [
           {
             type: 'text',
@@ -413,6 +422,7 @@ export function createMarivoPresentTool(
               resultMetadata: analysisResultSummary(changedResources),
             }
           }
+          const savedRef = reportRefFromRecordId(document.recordId, identity.id)
           const receipt = await publishPresentation(
             identity.path,
             document,
@@ -420,13 +430,13 @@ export function createMarivoPresentTool(
             check,
             signal,
             { kind: 'agent', sessionId, surface },
-            () => onSaved?.(exec, reportRefFromRecordId(document.recordId, identity.id)),
+            () => onSaved?.(exec, savedRef),
           )
           if (active) drafts.clear(sessionId, turn)
           streamSucceeded = true
           const value = {
             stage: 'save' as const,
-            ref: reportRefFromRecordId(document.recordId, identity.id),
+            ref: savedRef,
             mode,
             changed: changedNames,
             unchangedAliases,
@@ -569,7 +579,7 @@ export function createMarivoUiReadTool(
   return defineTool({
     name: 'marivo_report_read',
     description:
-      'Read an exact/current saved analysis view or the active Turn draft without querying data or executing scripts. Use it to establish data-refresh context, recover missing editing context or resolve conflicts. ref selects an exact version; version=current selects the current version of that view; draft=true selects the calling Session Turn draft. A draft ref reads only its original active Turn. Choose ref or draft input. definition contains the actual ref, program, reusable declarations, codeRefs and bounded schemas, not business rows. includeCode reads available bound execution records in deduplicated sources. For data refresh, review inputs and scripts, prepare explicit new fixed results, reuse shared results across their dependent views, and preview same-name resource replacements while preserving the page definition. Do not routinely read back after successful previews or saves.',
+      'Read an exact/current saved analysis view or the active Turn draft without querying data or executing scripts. If a saved ref is missing or invalid, first use marivo_report_list. Saving clears the draft. Use it to establish data-refresh context, recover missing editing context or resolve conflicts. ref selects an exact version; version=current selects the current version of that view; draft=true selects the calling Session Turn draft. A draft ref reads only its original active Turn. Choose ref or draft input. definition contains the actual ref, program, reusable declarations, codeRefs and bounded schemas, not business rows. includeCode reads available bound execution records in deduplicated sources. For data refresh, review inputs and scripts, prepare explicit new fixed results, reuse shared results across their dependent views, and preview same-name resource replacements while preserving the page definition. Do not routinely read back after successful previews or saves.',
     parameters: {
       ref: { type: 'string', description: 'Opaque ref returned by a successful write or read.' },
       version: {
@@ -596,7 +606,12 @@ export function createMarivoUiReadTool(
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value.definition) }],
     },
     async execute(args, exec) {
-      const input = uiReadInput.parse(args)
+      const parsed = uiReadInput.safeParse(args)
+      if (!parsed.success)
+        throw new Error(
+          'report-read-input-invalid: provide {ref,version?:"exact"|"current",includeCode?} or {draft:true,includeCode?}. version=current still requires a saved ref. Use marivo_report_list to find saved reports; saving clears the draft.',
+        )
+      const input = parsed.data
       const binding = await source()
       let document: AnalysisDocument
       let identifiers: { ref: string; mode?: 'edit' | 'refresh-data'; basedOn?: string }

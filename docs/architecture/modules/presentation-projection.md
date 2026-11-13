@@ -70,7 +70,7 @@ business 固定 unknown。
 
 `marivo_python` 在 `results[name]` 中返回可直接提交的 `resource`、`sourceStatus` 和有界 `metadata`。Frame 通过公开 Session 恢复固定身份，从 schema 读取轴、导出 layout、值和物理类型。无需读行，`totalRows` 为 null。DataFrame 的公开 `read_dataframe` 完整读取固定结果，摘要只使用 schema 和 `row_count`。两者均不访问业务来源。
 
-首次结果 metadata 和写入回执的每资源摘要使用同一个 `viewCandidates` 契约。
+首次结果 metadata 和写入回执的每资源摘要使用同一个 `viewCandidates` 契约。旁边的 `viewCandidateUsage` 以相同分组名披露 `{nameKind,parameters}`：`nameKind` 为 `column-id`、`public-axis-name` 或 `public-value-name`，`parameters` 使用 `bar.encoding.axis` 等 chart.parameter 路径。候选数组结构保持不变；用途信息在首次结果、成功回执和配置失败回执中一致。
 
 | 字段 | 参数用途 |
 | --- | --- |
@@ -80,11 +80,11 @@ business 固定 unknown。
 | `values` | Frame 的公开值名，或 Dataset 的列 ID |
 | `numericValues` | 按物理类型可参与绘图的值或列。实际数据仍须通过图种约束 |
 
-`coordinateColumns` 通过 `{name,axisToken,endpoint,part}` 关联表格列和 `axes[].token`。例如轴名 `trino_query.query_info.cluster` 的导出列可以是 `cluster`。一个轴可投影出多个列，配置使用 metadata 返回的精确名称。Frame 的比较、分解、饼图等视图另受快照事实、角色和保存值约束。
+`coordinateColumns` 通过 `{name,axisToken,endpoint,part,axisName?}` 关联表格列和 `axes[].token`，预算允许且有对应轴时直接提供公开 `axisName`；超出预算时保留 token，可与 `axes[].token` 关联。例如轴名 `trino_query.query_info.cluster` 的导出列可以是 `cluster`。一个轴可投影出多个列，配置使用 metadata 返回的精确名称，不将短列名自动当作轴名。Frame 图表轴误填现有列 ID 时，错误同时披露 `receivedKind:"column"`、`expectedKind:"axis"` 和候选公开轴名。Frame 的比较、分解、饼图等视图另受快照事实、角色和保存值约束。
 
 `marivo_report_write` 成功时返回本次新增或替换的资源摘要，未更改资源时返回空集合。配置失败回执的 `resultMetadata` 使用相同结构，只包含出错组件所引用的已准入快照，包括内联组件及复用资源。两条路径均从已有快照组装，不额外读取。失败诊断另提供具体参数的候选，见[展示交付](presentation-delivery.md#分析视图写入与增量契约)。
 
-首次结果摘要上限为每结果 4 KiB、每类 64 个名称，Python 控制帧上限 32 KiB。写入回执的资源摘要上限为 16 KiB，超预算明确返回 `unavailable/budget`。元数据不可用不使有效引用失效。`coverage.business` 始终为 `unknown`。
+首次结果摘要上限为每结果 5 KiB、每类 64 个名称，Python 控制帧上限 32 KiB。写入回执的资源摘要上限为 32 KiB，超预算明确返回 `unavailable/budget`。元数据不可用不使有效引用失效。`coverage.business` 始终为 `unknown`。
 
 ## Frame 快照
 

@@ -127,6 +127,7 @@ export function analysisElements(root: ElementNode): ElementNode[] {
  */
 type ViewErrorDetails = {
   received?: string | null
+  receivedKind?: 'column'
   expectedKind?: 'axis' | 'column' | 'value' | 'comparison-alias' | 'field-kind'
   candidates?: (string | null)[]
   resultMetadata?: AnalysisResultSummary
@@ -191,7 +192,11 @@ function viewError(
   code: string,
   node: ElementNode,
   relative: string,
-  { expectedKind, candidates }: Pick<ViewErrorDetails, 'expectedKind' | 'candidates'> = {},
+  {
+    expectedKind,
+    candidates,
+    receivedKind,
+  }: Pick<ViewErrorDetails, 'expectedKind' | 'candidates' | 'receivedKind'> = {},
   hint = viewHints[code] ?? '',
 ): AnalysisViewError {
   const received = relative
@@ -211,6 +216,7 @@ function viewError(
     String(node.props.ref),
     {
       expectedKind,
+      ...(receivedKind ? { receivedKind } : {}),
       received:
         received === null || (typeof received === 'string' && received.length <= 512)
           ? received
@@ -288,7 +294,33 @@ export function validateAnalysisResources(
       expectedKind = source.snapshot.kind === 'dataset' ? 'column' : 'axis'
     else if (/^\/view\/encoding\/values?(\/\d+)?$/.test(path) || resolved.candidates?.length)
       expectedKind = source.snapshot.kind === 'dataset' || chart === 'metric' ? 'column' : 'value'
-    throw viewError(code, node, path, { candidates: resolved.candidates, expectedKind })
+    const received = path
+      .split('/')
+      .slice(1)
+      .reduce<unknown>(
+        (value, key) =>
+          value !== null && typeof value === 'object' ? Reflect.get(value, key) : undefined,
+        node.props,
+      )
+    const columnForAxis =
+      expectedKind === 'axis' &&
+      code === 'analysis-view-name-unknown' &&
+      source.snapshot.kind === 'frame' &&
+      !source.snapshot.frame.axes.some((axis) => axis.name === received) &&
+      source.snapshot.data.columns.some((column) => column.id === received)
+    throw viewError(
+      code,
+      node,
+      path,
+      {
+        candidates: resolved.candidates,
+        expectedKind,
+        ...(columnForAxis ? { receivedKind: 'column' as const } : {}),
+      },
+      columnForAxis
+        ? 'This parameter requires a public Frame axis name, but received an exported column ID. Use viewCandidates.axis (timeAxis for line/area axis); coordinateColumns.axisName maps exported columns to public axes.'
+        : undefined,
+    )
   }
   validateSnapshotFilters(program, nodes, resources)
 }

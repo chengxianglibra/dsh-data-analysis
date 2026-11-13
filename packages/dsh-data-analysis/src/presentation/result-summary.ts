@@ -1,7 +1,12 @@
 import { z } from 'zod'
 import type { AnalysisDocument } from './contracts/analysis-document.ts'
 import { snapshotMetadataSchemas } from './contracts/snapshot.ts'
-import { numericViewType, viewCandidates, viewFieldMetadata } from './contracts/view-fields.ts'
+import {
+  numericViewType,
+  viewCandidates,
+  viewCandidateUsage,
+  viewFieldMetadata,
+} from './contracts/view-fields.ts'
 
 export const resultConfigurationSummary = z.strictObject({
   ...viewFieldMetadata,
@@ -42,6 +47,7 @@ export function analysisResultSummary(
       columns,
       coverage: snapshot.coverage,
       ...(frame ? { values, axes } : {}),
+      viewCandidateUsage: viewCandidateUsage(snapshot.kind),
       viewCandidates: viewCandidates(
         ids,
         frame?.axes.map(({ name, variant }) => ({ name, role: variant.kind })),
@@ -54,13 +60,28 @@ export function analysisResultSummary(
         frame?.layout.flatMap((entry) => {
           if (entry.kind !== 'coordinate') return []
           const { name, axisToken, endpoint, part } = entry
-          return [{ name, axisToken, endpoint, part }]
+          return [
+            {
+              name,
+              axisToken,
+              endpoint,
+              part,
+              axisName: axes?.find((axis) => axis.token === axisToken)?.name,
+            },
+          ]
         }) ?? [],
     }
   }
+  // Axis names can repeat across many projected columns. Keep the token mapping
+  // and candidate arrays when direct names alone would exceed the budget.
+  if (Buffer.byteLength(JSON.stringify(summaries)) > 32 * 1024)
+    for (const summary of Object.values(summaries))
+      summary.coordinateColumns = summary.coordinateColumns.map(
+        ({ axisName: _axisName, ...column }) => column,
+      )
   // A large directory is disclosed explicitly as unavailable rather than silently truncated.
   return analysisResultSummarySchema.parse(
-    Buffer.byteLength(JSON.stringify(summaries)) <= 16 * 1024
+    Buffer.byteLength(JSON.stringify(summaries)) <= 32 * 1024
       ? { status: 'captured', resources: summaries }
       : { status: 'unavailable', reason: 'budget' },
   )
@@ -79,7 +100,7 @@ export const analysisResultSummaryToolSchema = {
           additionalProperties: true,
           required: true,
           description:
-            'Resource-name map. Each entry has kind, columns:[{id,type}], coverage, optional Frame values and axes:[{token,name,role}], viewCandidates:{columns,axis,timeAxis,values,numericValues} (name arrays), and coordinateColumns:[{name,axisToken,endpoint,part}].',
+            'Resource-name map. Each entry has kind, columns:[{id,type}], coverage, optional Frame values and axes:[{token,name,role}], viewCandidates:{columns,axis,timeAxis,values,numericValues} (name arrays), viewCandidateUsage mapping each candidate group to {nameKind,parameters} (chart.parameter paths), and coordinateColumns:[{name,axisToken,axisName?,endpoint,part}].',
         },
       },
     },

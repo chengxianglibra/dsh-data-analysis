@@ -38,7 +38,7 @@ function encode(value: ReportRef): string {
 export function parseReportRef(value: unknown): ReportRef {
   const invalid = () =>
     new Error(
-      'report-ref-invalid: use the exact ref from a successful write or read. To recover the current Turn draft, use marivo_report_read({draft:true}) and confirm the target before continuing.',
+      'report-ref-invalid: copy the exact ref from a successful write, read or marivo_report_list. If the saved ref is missing or damaged, use marivo_report_list({query:"report title"}), then marivo_report_read({ref}) to confirm the target. Do not decode, edit or guess refs. Use marivo_report_read({draft:true}) only for an unsaved current Turn draft; saving clears that draft.',
     )
   if (typeof value !== 'string' || value.length > 4096) throw invalid()
   const match = /^mr1:([sd]):([A-Za-z0-9_-]+)$/.exec(value)
@@ -58,7 +58,9 @@ export function parseReportRef(value: unknown): ReportRef {
   }
 }
 export function savedReportRef(value: Omit<SavedReportRef, 'kind'>): string {
-  return encode(saved.parse({ kind: 'saved', ...value }))
+  const ref = encode(saved.parse({ kind: 'saved', ...value }))
+  parseReportRef(ref)
+  return ref
 }
 export function draftReportRef(value: Omit<DraftReportRef, 'kind'>): string {
   return encode(draft.parse({ kind: 'draft', ...value }))

@@ -6,6 +6,20 @@ import {
   reportRefFromRecordId,
 } from '../../src/presentation/contracts/report-ref.ts'
 
+export const reportListOutput = z.object({
+  workspaceId: z.string(),
+  reports: z.array(
+    z.object({
+      title: z.string(),
+      publishedAt: z.string(),
+      sourceSessionId: z.string(),
+      ref: z.string(),
+    }),
+  ),
+  unavailable: z.number().int().nonnegative(),
+  nextCursor: z.string().nullable(),
+})
+
 /** Existing fixtures name internal receipt identities; production only accepts ReportRef. */
 export function reportWriteInput(args: Record<string, unknown>, turn = 1, sessionId = 'session') {
   const { draftId, draftRevision, basedOnRecordId, rebaseOnRecordId, ...input } = args
