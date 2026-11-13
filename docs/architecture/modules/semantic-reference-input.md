@@ -23,7 +23,9 @@ NFKC、大小写和空白规范化仅影响检索，不修改 ref。热度只在
 - 插件通过 Connection 的 `/api/dsh-data-analysis/` 精确认证路由提供 `semantic-references/prepare`、`candidates`、`selected`、`serialize`。
   四个 endpoint 都使用 closed payload；`selected` 和 `serialize` 请求为 `{ envelope }`。
 - envelope 保存 v1 schema、原 Session ID、Environment fingerprint 与精确 Marivo ref，不保存 Catalog fingerprint。
-  模型只收到 `<marivo-semantic-ref>` 内的规范 ref JSON；JSON 中的标记分隔字符使用 Unicode escape。
+  模型收到 `<marivo-semantic-ref>` 包裹的规范 ref JSON；JSON 中的标记分隔字符使用 Unicode escape。
+  发送回显、正式消息、队列和历史重载通过 Harness 用户文本规则显示同一 `kind:path` chip。
+  展示使用消息内的 ref，未闭合或无效的标记保留原文。
 
 请求 query 最多 128 code points；Session ID 与 Environment fingerprint 最多 256，kind 最多 128，path/name 最多
 2048，候选描述最多 240。请求序列化总量最多 1 MiB，候选响应不设条数上限。Catalog 子进程限时 30 秒、stdout 最多
@@ -74,7 +76,7 @@ DSH 移除对应 source group 的行为，提交失败沿用 composer error 并�
 SessionInputShell；这些是输入管线集成证据，不代替真实 Web 验收。真实 Catalog 测试可通过
 `DSH_DATA_ANALYSIS_TEST_PYTHON` 指定目标 Marivo 0.6.6；默认查找本地 DSH shared Runtime，缺失时明确 skip。
 
-`npm run validate:semantic-ask-dsh:web` 验证真实 composer 的两种入口、撤销及模型请求。
+`npm run validate:semantic-ask-dsh:web` 验证真实 composer 的两种入口、撤销、模型请求以及发送后和历史重载的引用 chip。
 
 Marivo 0.6 的公开搜索会在 `.marivo/semantic/search/results/` 写入分页缓存，空查询也如此。
 插件不读取私有索引、不绕过公共搜索、不删除缓存；验收要求只新增该缓存并保留所有已有文件。

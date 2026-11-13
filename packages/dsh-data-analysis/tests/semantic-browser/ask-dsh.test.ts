@@ -264,12 +264,18 @@ test('submission cancels preparation even after the composer returns to a new pl
 test('claimed command drafts accept details just like the native @ source', async () => {
   const f = fixture()
   f.change({ inputPhase: 'claimed' })
-  f.draft({ draft: '/skill question', draftRev: 5, occurrences: [], attachmentIds: ['image'] })
+  f.draft({
+    claim: { name: 'skill', token: '/skill ' },
+    draft: '/skill question',
+    draftRev: 5,
+    occurrences: [],
+    attachmentIds: ['image'],
+  })
   const pending = appendSemanticReference(f.host, f.rpc, f.request, new AbortController().signal)
   f.finish()
   await pending
   assert.equal(f.inserted.length, 1)
-  assert.equal(f.inserted[0].span.draftRev, 5)
+  assert.deepEqual(f.inserted[0].span, { start: 10, end: 10, draftRev: 5 })
   assert.equal(f.listeners.size, 0)
 })
 

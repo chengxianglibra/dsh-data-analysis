@@ -59,6 +59,7 @@ export function ChartFrame({
   label,
   height,
   width = 640,
+  horizontalTickInset,
   legend,
   axisTitle,
   children,
@@ -66,6 +67,7 @@ export function ChartFrame({
   label: string
   height: number
   width?: number
+  horizontalTickInset?: number
   legend?: ReactNode
   axisTitle?: string
   children: ReactElement
@@ -74,6 +76,8 @@ export function ChartFrame({
   const regionRef = useRef<HTMLElement>(null)
   const hintId = useId()
   const [scrollable, setScrollable] = useState(false)
+  const [measuredTickWidth, setMeasuredTickWidth] = useState(0)
+  const plotWidth = Math.max(width, horizontalTickInset === undefined ? 0 : measuredTickWidth)
   const [rail, setRail] = useState<
     { label: string; title: string; incomplete: boolean; y: number; index: string }[]
   >([])
@@ -81,8 +85,22 @@ export function ChartFrame({
   useEffect(() => {
     const region = regionRef.current
     if (!region) return
-    const update = () =>
-      setScrollable(region.scrollWidth > region.clientWidth + 1 || width > region.clientWidth + 1)
+    const update = () => {
+      setScrollable(
+        region.scrollWidth > region.clientWidth + 1 || plotWidth > region.clientWidth + 1,
+      )
+      if (horizontalTickInset === undefined) return
+      const labels = region.querySelectorAll<SVGTextElement>('[data-tick] text')
+      if (!labels.length) return
+      const widths = Array.from(labels, (label) => label.getComputedTextLength())
+      // Indexed categories occupy equally spaced slots centered under their marks.
+      const slotWidth = Math.max(
+        widths[0]!,
+        widths.at(-1)!,
+        ...widths.slice(1).map((width, index) => (width + widths[index]!) / 2 + 8),
+      )
+      setMeasuredTickWidth(Math.ceil(horizontalTickInset + labels.length * slotWidth))
+    }
     const observer = new ResizeObserver(update)
     observer.observe(region)
     const chart = region.firstElementChild
@@ -90,20 +108,24 @@ export function ChartFrame({
     const mutation = new MutationObserver(update)
     mutation.observe(region, {
       attributes: true,
+      characterData: horizontalTickInset !== undefined,
       childList: true,
       subtree: true,
       attributeFilter: ['style', 'transform', 'x', 'y', 'width', 'height'],
     })
+    if (horizontalTickInset !== undefined) document.fonts.addEventListener('loadingdone', update)
     update()
     // The grid's min track and its SVG are committed in the same render; measure
     // again after layout so a shrinking chart clears a previously needed hint.
     const frame = requestAnimationFrame(update)
     return () => {
       cancelAnimationFrame(frame)
+      if (horizontalTickInset !== undefined)
+        document.fonts.removeEventListener('loadingdone', update)
       mutation.disconnect()
       observer.disconnect()
     }
-  }, [width])
+  }, [horizontalTickInset, plotWidth])
   const updateRail = () => {
     const region = regionRef.current
     if (!region || region.scrollLeft < 1) {
@@ -138,7 +160,7 @@ export function ChartFrame({
         aria-describedby={scrollable ? hintId : undefined}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: This local overflow region supports keyboard scrolling.
         tabIndex={0}
-        style={{ display: 'grid', gridTemplateColumns: `minmax(${width}px,1fr)` }}
+        style={{ display: 'grid', gridTemplateColumns: `minmax(${plotWidth}px,1fr)` }}
         onScroll={updateRail}
         onKeyDown={(event) => {
           if (
@@ -151,8 +173,8 @@ export function ChartFrame({
         }}
       >
         <ChartContainer
-          initialDimension={{ width, height }}
-          style={{ height, width: '100%', minWidth: width, gridArea: '1 / 1' }}
+          initialDimension={{ width: plotWidth, height }}
+          style={{ height, width: '100%', minWidth: plotWidth, gridArea: '1 / 1' }}
           className="aspect-auto"
         >
           {children}

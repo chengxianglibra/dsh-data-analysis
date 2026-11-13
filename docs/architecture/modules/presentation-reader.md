@@ -70,6 +70,8 @@ AnalysisFrameView 和 DatasetView 内的普通图表统一使用 Recharts，配�
   Frame 图表和提示使用可读数值格式，详细数据按默认字段语义呈现；Dataset 默认保留精确显示，作者指定格式时主视图按声明显示，详细数据仍保留精确值。int64/decimal 绘图位置可近似，引用仍使用保存值。
   共享图表与领域图表的悬停数据使用单一提示，时间游标只标记位置。日历轴按已知内置粒度呈现刻度和悬停标签，保留必要的期间范围说明；
   Dataset 的时间坐标省略小数秒末尾的零。图表摘要仍可由辅助技术读取，数据表与数据引用保留原始坐标。
+  普通折线、面积和柱图的离散轴最多有 12 个成员时显示全部标签。图表按实际标签宽度留出空间，必要时局部横向滚动。
+  时间轴和更多成员的离散轴按可用空间选择刻度。
 - v2 Frame 由 [frame-view.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/frame-view.ts) 的
   `resolveFrameView` 先确定性分类（成员、分解、比较、对齐、相关、观察）与形状，再选择主视图；保存时校验与渲染使用同一函数。
   显式图表使用快照中的公开轴名和值名。table 的 `columns` 和显式 metric 的 `encoding.value` 使用保存列 ID。

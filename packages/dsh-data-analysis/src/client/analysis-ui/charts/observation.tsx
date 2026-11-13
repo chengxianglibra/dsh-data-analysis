@@ -138,6 +138,9 @@ export function TimeChart(props: ChartProps<'line' | 'area' | 'bar' | 'interval-
     </div>
   )
 }
+const timeChartMargin = { top: 16, right: 24, bottom: 12, left: 8 }
+const timeChartYAxisWidth = 64
+
 function TimeChartPlot({
   model: s,
   view,
@@ -151,6 +154,9 @@ function TimeChartPlot({
   const axis = axisOf(s, view.axis)
   if (!axis) return null
   const { ticks, tickOf } = ticksOf(s, axis)
+  const axisType = columnOf(s, axis.id)?.column.type
+  const showAllCategories =
+    !axis.ticks && axisType !== 'date' && axisType !== 'datetime' && ticks.length <= 12
   const height = requestedHeight ?? (ticks.length === 1 ? 160 : 260)
   const seriesAxis = axisOf(s, view.series)
   const visible = s.visibleRowIndices ? new Set(s.visibleRowIndices) : undefined
@@ -268,6 +274,11 @@ function TimeChartPlot({
           .map((name) => valueLabelWithUnit(s, name))
           .join(' · ')}
         width={s.frameStyle && bars ? barChartWidth : undefined}
+        horizontalTickInset={
+          showAllCategories
+            ? timeChartMargin.left + timeChartMargin.right + timeChartYAxisWidth
+            : undefined
+        }
         legend={
           <>
             {showLegend && (
@@ -299,7 +310,7 @@ function TimeChartPlot({
           aria-label={label}
           desc={label}
           data={referenceData}
-          margin={{ top: 16, right: 24, bottom: 12, left: 8 }}
+          margin={timeChartMargin}
           accessibilityLayer
         >
           <defs>
@@ -332,7 +343,7 @@ function TimeChartPlot({
             type="number"
             domain={[-0.5, Math.max(0.5, ticks.length - 0.5)]}
             ticks={ticks.map((_, index) => index)}
-            interval="preserveStartEnd"
+            interval={showAllCategories ? 0 : 'preserveStartEnd'}
             minTickGap={24}
             tickFormatter={(index) => ticks[index]?.label ?? ''}
             tick={<PeriodTick ticks={ticks} />}
@@ -344,7 +355,7 @@ function TimeChartPlot({
             tickFormatter={(value) =>
               (view.values[0] && s.tickDisplay?.(value, view.values[0])) || compact(t.locale, value)
             }
-            width={64}
+            width={timeChartYAxisWidth}
           />
           <ExactTooltip
             textAt={tip}

@@ -33,11 +33,16 @@ function ownedInput(host: InputContextHost, sessionId: string, workspaceId: stri
 
 /** Host detect coordinates count each atomic reference as one character. */
 function inputEnd({
+  claim,
   draft,
   draftRev,
   occurrences,
-}: Pick<InputState, 'draft' | 'draftRev' | 'occurrences'>) {
-  const end = occurrences.reduce((length, item) => length - item.length + 1, draft.length)
+}: Pick<InputState, 'claim' | 'draft' | 'draftRev' | 'occurrences'>) {
+  const commandExpansion = claim ? claim.token.trimEnd().length - 1 : 0
+  const end = occurrences.reduce(
+    (length, item) => length - item.length + 1,
+    draft.length - commandExpansion,
+  )
   return { start: end, end, draftRev }
 }
 

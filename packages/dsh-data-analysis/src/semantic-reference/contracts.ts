@@ -2,6 +2,8 @@
 export const CHANNEL = '/dsh-data-analysis'
 export const SOURCE = 'marivo-semantic'
 export const MAX_WIRE_BYTES = 1024 * 1024
+export const SEMANTIC_REF_TEXT_START = '<marivo-semantic-ref>'
+export const SEMANTIC_REF_TEXT_END = '</marivo-semantic-ref>'
 export interface SemanticRef {
   readonly schema: 'marivo.semantic_ref/v1'
   readonly kind: string
@@ -83,7 +85,7 @@ export function modelMarker(envelope: Envelope): string {
     .replaceAll('<', '\\u003c')
     .replaceAll('>', '\\u003e')
     .replaceAll('&', '\\u0026')
-  return `<marivo-semantic-ref>${json}</marivo-semantic-ref>`
+  return `${SEMANTIC_REF_TEXT_START}${json}${SEMANTIC_REF_TEXT_END}`
 }
 export function parseCandidate(value: unknown): Candidate {
   const r = closed(value, ['ref', 'refKey', 'name', 'businessDefinition'])

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { semanticReferenceTextRule } from '../../src/client/semantic-reference-text-rule.ts'
 import { SemanticReferenceBridge } from '../../src/semantic-reference/bridge.ts'
 import {
   envelopeJson,
@@ -40,6 +41,22 @@ test('closed wire shapes, Unicode bounds and identity independent of display', (
     }).match(/<\/marivo-semantic-ref>/g)?.length,
     1,
   )
+})
+
+test('sent semantic references keep original offsets and skip invalid neighbors', () => {
+  const invalid = modelMarker(envelope()).replace('semantic_ref/v1', 'semantic_ref/v2')
+  const path = 'sales.区域</marivo-semantic-ref>'
+  const wire = modelMarker({ ...envelope(), ref: { ...envelope().ref, path } })
+  const prefix = `Compare 😀 ${invalid} with <marivo-semantic-ref>`
+  const text = `${prefix}${wire}, then ${wire.slice(0, -1)}`
+  const facts = { read: () => undefined }
+  assert.deepEqual(semanticReferenceTextRule.match(text, 0, facts), {
+    id: 'marivo-semantic-ref',
+    start: prefix.length,
+    end: prefix.length + wire.length,
+    data: { label: `metric:${path}` },
+  })
+  assert.equal(semanticReferenceTextRule.match(text, prefix.length + wire.length, facts), undefined)
 })
 
 test('NFKC, strict tiers, Chinese definitions, typo threshold and short-query exclusion', () => {
