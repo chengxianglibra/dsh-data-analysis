@@ -110,7 +110,7 @@ Runtime 安装锁位于 `<runtimeRoot>.install-lock`。锁记录 PID 和开始�
 默认值，配置无效时拒绝绑定。后续 datasource authoring 或 Session 操作按需创建的文件归 Marivo 对应操作所有，不能把
 “插件 install 零写入”解释为“分析永不写入”。
 
-`marivo_python` 通过 `project: "none" | "required"` 明确项目意图，省略为 `none`。普通文件分析无需准备项目；Marivo 项目分析、持久化、非空 datasources 或 resultVariables 使用 required。插件不解析 Python 源码猜测项目需求。
+`marivo_python` 接受 `project: "none" | "required"`。省略时，非空 `datasources` 或合法 `resultVariables` 推导为 `required`，其余调用采用 `none`。显式 `none` 与上述声明冲突。普通文件分析无需准备项目。只在 Python 代码中访问或写入 Marivo 项目时，调用者显式传 `required`。
 
 required 在凭据准入前调用内部项目准备适配：固定 canonical Workspace root，以 `lstat` 检查该目录本身的 `marivo.toml`，不继承父项目；符号链接和非普通文件明确拒绝。缺少时在按 root 协调的插件内锁中复查，再通过绑定 Runtime 的公开 CLI init 初始化，不使用 `--force`、不手写 manifest。CLI 创建脚手架与上游 Skill 链接；已有项目不在每次调用前运行完整 doctor。Python 的初始化写入与用户代码遵循同次调用的 Harness Shell/sandbox policy、取消与超时限制，执行进程继续复核 Runtime identity。
 

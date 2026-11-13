@@ -17,7 +17,7 @@ Harness `read` 可预览文本，但计算仍需通过 `marivo_python` 从原路
 
 每次调用是独立进程。本次调用内可以复用原生 DuckDB 连接和临时表并及时关闭，后续调用不依赖这些状态。控制读取和输出规模；SQL LIMIT 不等于扫描预算。
 
-项目分析、datasource 访问或持久化结果时传 `project:"required"`，由插件准备绑定 Workspace 的项目。根据本次返回处理无效项目或准备失败。
+声明非空 `datasources` 或 `resultVariables` 时，省略 `project` 会自动准备绑定 Workspace 的项目；显式 `project:"none"` 与这些声明冲突。仅在代码中访问项目而没有这些声明时，显式传 `project:"required"`。项目缺失时准备可能初始化根项目；根据本次返回处理无效项目或准备失败。
 
 ## 计算与证据
 
@@ -31,7 +31,7 @@ Harness `read` 可预览文本，但计算仍需通过 `marivo_python` 从原路
 
 遵循展示 Skill 的增量流程，结果就绪后及时更新同一草稿。governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，使用 AnalysisFrameView，不要仅为展示转成 DataFrame。纯文件或外部结果可用 DatasetView，不为更换视图强行建模。
 
-新计算显式读取准确输入；通过 `project:"required"`、`resultVariables` 直接导出已计算的 Frame、pandas DataFrame 或准确固定引用。待计算 Frame 先显式 compute，工具负责必要的持久化。原样把 `results[name].resource` 交给 marivo_report_write，kind 和 codeRef 由插件关联；来源或 metadata 失败不使有效资源失效，不授权重跑。
+新计算显式读取准确输入；通过 `resultVariables` 直接导出已计算的 Frame、pandas DataFrame 或准确固定引用。待计算 Frame 先显式 compute，工具负责必要的持久化。原样把 `results[name].resource` 交给 marivo_report_write，kind 和 codeRef 由插件关联；来源或 metadata 失败不使有效资源失效，不授权重跑。
 
 相同固定结果可供多个视图使用，保留原 resource/codeRef。确需派生时显式读取准确固定输入并导出新结果，不依赖前次内存。stdout 不用于发现引用，外部结果缺脚本时说明缺口，不补执行记录。首次交接读展示 Skill 的结果导出参考，Marivo API 约束以 live Help 为准。视图说明输入与范围，刷新按仅资源替换流程保留布局和正文。
 

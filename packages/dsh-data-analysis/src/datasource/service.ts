@@ -152,6 +152,15 @@ function assert(condition: unknown, code: string): asserts condition {
   if (!condition) throw new CredentialServiceError(code)
 }
 
+export function assertExecutionDatasources(names: string[]): void {
+  assert(
+    names.length <= 16 &&
+      new Set(names).size === names.length &&
+      names.every((name) => typeof name === 'string' && !!name.trim() && name.length <= 256),
+    'invalid-datasources',
+  )
+}
+
 /** Owns only plugin operations and execution-scoped waits. No value cache or datasource registry. */
 export class MarivoCredentialService {
   readonly generation = randomUUID()
@@ -490,12 +499,7 @@ export class MarivoCredentialService {
     names: string[],
   ): Promise<PreparedCredentialExecution | CredentialNeedsInput> {
     assert(exec.agent, 'agent-required')
-    assert(
-      names.length <= 16 &&
-        new Set(names).size === names.length &&
-        names.every((name) => typeof name === 'string' && !!name.trim() && name.length <= 256),
-      'invalid-datasources',
-    )
+    assertExecutionDatasources(names)
     const signal = this.executionSignal(exec.signal, exec.agent)
     const session = exec.agent.session
     const currentWorkspace = () =>

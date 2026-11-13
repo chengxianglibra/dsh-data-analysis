@@ -46,7 +46,7 @@ source = pd.read_csv(path)
 result = source.groupby("category", dropna=False)["amount"].sum(min_count=1).reset_index()
 ```
 
-直接声明已计算的 DataFrame，由工具持久化并组装 resource。通过 `marivo_python` 调用执行，传 `project:"required"`、`datasources:[]` 和 `resultVariables:{"result":"result"}`。原样把 `results.result.resource` 作为 marivo_report_write 的资源，及时更新同一草稿，不等待其他组件全部完成。不从 stdout 解析引用。governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，用 AnalysisFrameView 展示，不从文件示例推断需要先建模。
+直接声明已计算的 DataFrame，由工具持久化并组装 resource。通过 `marivo_python` 调用执行，传 `datasources:[]` 和 `resultVariables:{"result":"result"}`，省略 `project` 时自动准备项目。原样把 `results.result.resource` 作为 marivo_report_write 的资源，及时更新同一草稿，不等待其他组件全部完成。不从 stdout 解析引用。governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，用 AnalysisFrameView 展示，不从文件示例推断需要先建模。
 持久化的输入约束与原值精度以 Marivo live Help 为准；需要保留的业务 index 先显式变成列。
 结果由绑定 Python Runtime 读取，无需 HTTP 服务；展示不会自动重跑原分析。
 

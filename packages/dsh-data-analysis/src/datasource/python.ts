@@ -28,6 +28,7 @@ import {
 } from './python-options.ts'
 import { PYTHON_LAUNCHER, PYTHON_WORKER } from './resolver-program.ts'
 import {
+  assertExecutionDatasources,
   CredentialServiceError,
   type MarivoCredentialService,
   type PreparedCredentialExecution,
@@ -234,7 +235,7 @@ export function registerMarivoPythonTool(
     defineTool({
       name: 'marivo_python',
       description:
-        'Run user code once in the bound Runtime and Workspace. Declare reusable outputs with resultVariables and pass results[name].resource unchanged to the report writer. Derived computations explicitly read fixed inputs. Use project=required for Marivo datasource access, project analysis or result exports; project=none defaults to ordinary files. Execution, result export and source recording have independent outcomes. Memory ends with the call; use returned resources to continue. Follow credential handoffs and keep secrets out of code and output.',
+        'Run user code once in the bound Runtime and Workspace. Declare reusable outputs with resultVariables and pass results[name].resource unchanged to the report writer. Derived computations explicitly read fixed inputs. Nonempty datasources or resultVariables imply project=required when project is omitted; explicitly use project=required for other project analysis. Execution, result export and source recording have independent outcomes. Memory ends with the call; use returned resources to continue. Follow credential handoffs and keep secrets out of code and output.',
       parameters: {
         code: {
           type: 'string',
@@ -253,7 +254,7 @@ export function registerMarivoPythonTool(
           type: 'string',
           enum: ['none', 'required'],
           description:
-            'Project intent, default none. Use required for Marivo project analysis, persistence, nonempty datasources or resultVariables. The tool prepares the exact Workspace root through the bound Runtime CLI without force. none skips plugin project preparation and does not restrict arbitrary code behavior.',
+            'Project intent. When omitted, nonempty datasources or resultVariables imply required; otherwise defaults to none. Use required for other Marivo project analysis or persistence. required prepares the exact Workspace root through the bound Runtime CLI without force, initializing a missing project. none skips plugin project preparation, conflicts with nonempty datasources or resultVariables, and does not restrict arbitrary code behavior.',
         },
         timeoutMs: {
           type: 'number',
@@ -264,7 +265,7 @@ export function registerMarivoPythonTool(
           type: 'object',
           additionalProperties: true,
           description:
-            'Optional resource name -> Python variable name (up to 16, project=required). Assign a computed AnalysisFrame, pandas DataFrame or exact fixed reference. Preserve AnalysisFrame outputs for AnalysisFrameView instead of converting them just for display. The plugin saves declared in-memory outputs and reuses fixed references. Call compute() explicitly for a pending Frame. Use results[name].resource to continue, including after partial failure.',
+            'Optional resource name -> Python variable name (up to 16). Requires project=required, inferred when project is omitted. Assign a computed AnalysisFrame, pandas DataFrame or exact fixed reference. Preserve AnalysisFrame outputs for AnalysisFrameView instead of converting them just for display. The plugin saves declared in-memory outputs and reuses fixed references. Call compute() explicitly for a pending Frame. Use results[name].resource to continue, including after partial failure.',
         },
       },
       output: {
@@ -316,10 +317,13 @@ export function registerMarivoPythonTool(
             nextAction,
           }
         }
-        const rejectInput: (message: string) => never = (message) => {
+        const rejectInput: (message: string, recovery?: string) => never = (message, recovery) => {
           throw new MarivoPythonExecutionError(
             message,
-            summary('not-started', 'Correct the input or Host configuration before retrying.'),
+            summary(
+              'not-started',
+              recovery ?? 'Correct the input or Host configuration before retrying.',
+            ),
             'python-input-invalid',
           )
         }
@@ -349,8 +353,14 @@ export function registerMarivoPythonTool(
           if (args.project !== undefined && args.project !== 'none' && args.project !== 'required')
             rejectInput('project must be none or required')
           if (!Array.isArray(args.datasources)) rejectInput('datasources must be an array')
-          if (args.project !== 'required' && (args.datasources.length > 0 || resultVariables))
-            rejectInput('project=required is required for datasources or resultVariables')
+          assertExecutionDatasources(args.datasources)
+          const needsProject = args.datasources.length > 0 || !!resultVariables
+          if (args.project === 'none' && needsProject)
+            rejectInput(
+              `project="none" conflicts with ${args.datasources.length > 0 && resultVariables ? 'nonempty datasources and resultVariables' : args.datasources.length > 0 ? 'nonempty datasources' : 'resultVariables'}`,
+              'Omit project or set project="required" before retrying; no user code has run.',
+            )
+          const effectiveProject = args.project ?? (needsProject ? 'required' : 'none')
           const shell = ctx.get('shell')
           if (!shell) rejectInput('DSH Shell execution service is required')
           const shellEnv = ctx.get('shellEnv')
@@ -358,7 +368,7 @@ export function registerMarivoPythonTool(
           const policyService = ctx.get('sandboxPolicy')
           if (shell.sandboxMode !== undefined && !policyService)
             rejectInput('DSH sandbox policy is required')
-          if (args.project === 'required') {
+          if (effectiveProject === 'required') {
             if (!exec.agent) rejectInput('An Agent is required')
             const agent = exec.agent!
             const session = agent.session

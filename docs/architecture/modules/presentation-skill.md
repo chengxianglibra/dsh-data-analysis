@@ -14,7 +14,7 @@ Harness 的 Skill provider 与 `skill` 工具提供发现、加载与引用资�
 
 数据视图使用独立命名语句，可以共享准确固定结果。新计算显式读取输入并计算，按实际依赖组织执行，可导出多个结果或从准确固定输入派生，不依赖前次内存。Python 与草稿写入当前保持 Harness exclusive 调度，同一草稿使用最新成功 ref 串行修改。
 
-项目准备、引用关联、版本组合和刷新校验由工具拥有。Python 使用 `project:"required"`，通过 resultVariables 直接声明已计算的 AnalysisFrame、DataFrame 或准确固定引用；工具负责必要的持久化，待计算 Frame 须先显式 compute。原样交付 `results[name].resource`；模型不编写初始化样板，不配对 kind/codeRef，不维护 draft ID 与 revision 两字段。所有报告写入显式指定 stage，preview/save 返回可直接续接的 ref。流程示例见[页面示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)。
+项目准备、引用关联、版本组合和刷新校验由工具拥有。通过 `resultVariables` 直接声明已计算的 AnalysisFrame、DataFrame 或准确固定引用，省略 `project` 时工具会准备项目并负责必要的持久化。待计算 Frame 须先显式 compute。原样交付 `results[name].resource`；模型不编写初始化样板，不配对 kind/codeRef，不维护 draft ID 与 revision 两字段。所有报告写入显式指定 stage，preview/save 返回可直接续接的 ref。流程示例见[页面示例](../../../packages/dsh-data-analysis/skills/dsh-data-analysis-presentation/references/examples.md)。
 
 结果类型在计算前选择：governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，使用 AnalysisFrameView，不要仅为展示转成 DataFrame。纯文件、外部计算或合适的表格明细可用 DatasetView，不为更换组件强行建模。脚本关联只证明导出事实，不能证明最初生产来源、完整 lineage 或计算正确性。来源或 metadata 失败不授权重跑业务计算；已有外部固定结果也不需补执行记录。
 

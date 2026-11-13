@@ -254,19 +254,74 @@ test('headless and subagent missing credentials return bounded needs without a l
   }
 })
 
-test('Python requires explicit project intent before binding, credentials or execution', async (t) => {
-  const f = fixture()
-  t.after(() => f.service.close())
-  const p = pythonTool(f)
+test('Python infers project preparation from declared datasources or result variables', async (t) => {
   for (const args of [
     { code: 'pass', datasources: ['warehouse'] },
     { code: 'pass', datasources: [], resultVariables: { data: 'ref' } },
-    { code: 'pass', datasources: [], project: 'invalid' },
+  ]) {
+    const f = fixture()
+    t.after(() => f.service.close())
+    const p = pythonTool(f)
+    f.store.put('DB_PASSWORD')
+    const result = (await p.definition.execute(args, {
+      ...f.exec,
+      deferContext: () => {},
+      concludeTurn: () => {},
+    })) as Record<string, unknown>
+    assert.deepEqual(result.project, { status: 'already-ready', projectRoot: '/workspace' })
+    assert.equal(result.exitCode, 0)
+  }
+})
+
+test('Python without project requirements does not prepare a project', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f)
+  f.bridge.ensureProject = async () => {
+    throw new Error('Project preparation was unexpected')
+  }
+  const result = (await p.definition.execute(
+    { code: 'pass', datasources: [] },
+    { ...f.exec, deferContext: () => {}, concludeTurn: () => {} },
+  )) as Record<string, unknown>
+  assert.equal(result.exitCode, 0)
+  assert.equal(result.project, undefined)
+})
+
+test('Python rejects conflicting explicit project intent before preparation, credentials or execution', async (t) => {
+  const f = fixture()
+  t.after(() => f.service.close())
+  const p = pythonTool(f)
+  let preparations = 0
+  f.bridge.ensureProject = async () => {
+    preparations++
+    return { status: 'already-ready', projectRoot: '/workspace' }
+  }
+  for (const args of [
+    { code: 'pass', datasources: ['warehouse'], project: 'none' },
+    { code: 'pass', datasources: [], resultVariables: { data: 'ref' }, project: 'none' },
   ])
     await assert.rejects(
       p.definition.execute(args, { ...f.exec, deferContext: () => {}, concludeTurn: () => {} }),
-      /project/,
+      (error: unknown) => {
+        assert(error instanceof MarivoPythonExecutionError)
+        assert.equal(error.code, 'python-input-invalid')
+        assert.equal(error.phase, 'preparing')
+        assert.equal(error.execution.reason, 'not-started')
+        assert.match(error.message, /project/)
+        assert.match(error.recovery!, /Omit project/)
+        assert.match(error.recovery!, /project="required"/)
+        return true
+      },
     )
+  await assert.rejects(
+    p.definition.execute(
+      { code: 'pass', datasources: [], project: 'invalid' },
+      { ...f.exec, deferContext: () => {}, concludeTurn: () => {} },
+    ),
+    /project/,
+  )
+  assert.equal(preparations, 0)
   assert.equal(f.store.calls.resolve, 0)
   assert.equal(p.launches.length, 0)
 })

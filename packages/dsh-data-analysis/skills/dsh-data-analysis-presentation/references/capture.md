@@ -4,7 +4,7 @@
 
 ## 准备结果
 
-使用 `marivo_python`，访问项目、datasource 或持久化结果时传 `project:"required"`。插件准备当前 Workspace 根项目并返回准备状态，不需要初始化脚本。纯文件检查使用 `project:"none"` 和 `datasources:[]`。
+使用 `marivo_python` 时，声明非空 `datasources` 或 `resultVariables` 即可在省略 `project` 时触发项目准备；显式 `project:"none"` 与这些声明冲突。仅在代码中访问项目而没有这些声明时，显式传 `project:"required"`。插件准备当前 Workspace 根项目并返回准备状态；项目缺失时可能初始化，不需要初始化脚本。纯文件检查可使用 `project:"none"` 和 `datasources:[]`。
 
 新计算在同次调用中显式读取输入并完成计算，不依赖前次进程内存。governed 输入和受支持的类型化分析优先保留 AnalysisFrame，用 AnalysisFrameView 展示，不要仅为展示导出为 DataFrame。纯文件、外部计算或合适的明细可保留 DataFrame，用 DatasetView 展示。
 

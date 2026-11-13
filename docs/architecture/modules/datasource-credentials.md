@@ -34,7 +34,7 @@ Agent 依据绑定 Runtime 的 live Help 通过 `marivo_python` 修改非秘密�
 子 Agent/委派调用缺凭据时返回 `handoff.reason: parent-agent-required` 和 `nextAction`，由父 Agent 完成 Host 交互。`credentialInteraction: none` 返回 `web-interaction-disabled`；回执不包含秘密值。
 
 - `marivo_datasource_test({ name })`：通过 Host 凭证执行真实 `md.load().test()`，将连接结果返回对话。
-- `marivo_python({ code, datasources, project?, resultVariables?, timeoutMs? })`：project 省略为 none；required 明确准备当前 Workspace 项目。非空 datasources 或声明 resultVariables 必须使用 required，否则在用户代码执行和凭据准入前拒绝。顺序固定为绑定、必要项目准备、凭据准入、fresh identity、一次用户 Python。
+- `marivo_python({ code, datasources, project?, resultVariables?, timeoutMs? })`：省略 project 时，非空 datasources 或合法 resultVariables 推导为 required，否则为 none；显式 required 也准备当前 Workspace 项目。显式 none 与非空 datasources 或 resultVariables 冲突时，在项目准备、凭据准入及用户代码执行前拒绝。只在代码中使用项目、没有上述声明时仍需显式传 required。项目准备可能初始化缺失的根项目。顺序固定为绑定、必要项目准备、凭据准入、fresh identity、一次用户 Python。
   声明本次可能访问的全部精确 datasource 名称，包括无需密码的数据源。使用配置中的名称，例如 Catalog ID
   `datasource:warehouse` 对应 `datasources: ["warehouse"]`。纯 Catalog 定义读取不连接数据源时可传空列表，仍安装拒绝未声明凭证请求的 resolver。
 
@@ -43,7 +43,7 @@ Agent 依据绑定 Runtime 的 live Help 通过 `marivo_python` 修改非秘密�
 成功 `marivo_python` 会在 Host 的 `$DSH_HOME/dsh-data-analysis/python-executions/` 按 Workspace 隔离，
 原子保存本次提交的 Python 原文。声明结果导出成功后，Host 在 `results[name].resource.codeRef` 关联同次执行记录；模型不再配对顶层 codeRef、resultRefs 或 resultMetadata。
 读写位置由 Host 决定，不从 Workspace 接受作者自报的执行记录文件。
-可选 `resultVariables` 将 1–16 个资源名映射到 Python 变量名，要求 `project:"required"`。
+可选 `resultVariables` 将 1–16 个资源名映射到 Python 变量名；省略 project 时推导为 required，不可与显式 `project:"none"` 组合。
 变量可持有已经计算的 AnalysisFrame、可持久化的 pandas DataFrame 或准确固定引用。worker 在进程退出前
 逐项导出。已固定的引用原样复用，内存结果通过 Marivo 公开 API 持久化，待计算的 Frame 返回导出错误。
 引用通过临时控制文件和 launcher 的首个控制帧返回，Host 校验输出名、引用和 32 KiB 预算。

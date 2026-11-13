@@ -150,6 +150,6 @@ Presentation 的公开读取、来源身份与数据预算由 `tests/presentatio
 bridge runner 绕过 Host 执行边界。独立 launcher 捕获并脱敏输出后才交回 Shell，worker 在复核解释器、
 package 和 cwd 后建立公开 credential scope。实现与限制见 [凭证模块](datasource-credentials.md)。
 
-内部 `ensureMarivoProject()` 在明确项目意图下检查 exact-root manifest，缺失时通过公开 CLI 初始化；它不属于 binding 或安装的隐式副作用。它按 canonical root 串行协调插件请求，在锁内重新核验 Host 上下文和 manifest；不接受根目录 manifest 的符号链接、不使用父目录发现、不使用 force。已有项目的准备不运行完整 doctor；首次 binding 仍校验项目配置，绑定后配置发生的错误由实际使用时报告。
+内部 `ensureMarivoProject()` 在显式 required 或工具从非空 datasources、合法 resultVariables 推导出项目意图时检查 exact-root manifest，缺失时通过公开 CLI 初始化；它不属于 binding 或安装的隐式副作用。它按 canonical root 串行协调插件请求，在锁内重新核验 Host 上下文和 manifest；不接受根目录 manifest 的符号链接、不使用父目录发现、不使用 force。已有项目的准备不运行完整 doctor；首次 binding 仍校验项目配置，绑定后配置发生的错误由实际使用时报告。
 
 Python 工具注入初始化 executor，使实际 init 写入经过 Harness Shell 及当前 Session sandbox policy；同一 Python 进程先核对 bound import identity，再调用公开 Marivo CLI。取消或失败后仅检查已有影响，失败结果不自动再次初始化或清理文件。

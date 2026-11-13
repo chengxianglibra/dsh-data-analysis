@@ -16,7 +16,7 @@ Harness 可预览文本附件。分析按附件原路径读取数据；聊天中
 无需先调用 `md.raw_sql` 或查询 Marivo Help；访问 Marivo datasource 时仍须声明精确名称并遵守公开契约。
 原生 DuckDB 连接在一次调用内可执行多条 SQL 和使用临时表；每次 Tool 使用独立 Python 进程，不保留跨调用内存状态。
 
-普通文件预览使用 project=none，不创建项目；Marivo 项目分析或结果持久化使用 project=required，由插件按[Workspace 契约](runtime-workspace.md#workspace-解析与-zero-init-binding)准备准确根项目。无需因此建立 datasource 或业务语义。
+普通文件预览可省略 `project`，跳过项目准备。声明 `resultVariables` 持久化结果时，插件按[Workspace 契约](runtime-workspace.md#workspace-解析与-zero-init-binding)准备准确根项目。只在代码中访问项目且没有声明数据源或结果导出时，显式传 `project:"required"`。无需因此建立 datasource 或业务语义。
 
 文件流程覆盖 CSV、JSON／JSON Lines、Parquet、Excel `.xlsx`。`.xlsx` 复用 DuckDB 官方扩展，首次获取
 需要联网；不新增 `openpyxl` 依赖，不承诺旧 `.xls`。这不限制 Skill 根据实际可用 reader 处理其他合适文件。

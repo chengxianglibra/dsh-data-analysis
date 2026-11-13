@@ -564,7 +564,7 @@ raise ValueError("after computing ready")
   assert(result.meta)
 })
 
-test('real empty Workspace keeps file work zero-init and prepares persisted exports exactly once', {
+test('real empty Workspace keeps file work zero-init and infers project preparation for persisted exports', {
   skip,
 }, async (t) => {
   const h = await harness(t, undefined, true)
@@ -580,7 +580,6 @@ test('real empty Workspace keeps file work zero-init and prepares persisted expo
     arguments: {
       code: 'import pandas as pd\nimport marivo.analysis as mv\ndata_ref = mv.persist_dataframe(pd.DataFrame({"amount": [42]})).to_dict()',
       datasources: [],
-      project: 'required',
       resultVariables: { data: 'data_ref' },
     },
   })

@@ -13,7 +13,7 @@ Host 拥有交付形式与流程，文件或 Marivo 分析 Skill 拥有分析方
 
 在计算前选择结果类型：governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，用 `AnalysisFrameView` 展示，不要仅为画图或表格转成 DataFrame。纯文件、外部计算或合适的表格明细可用 `DatasetView`，不为更换视图强行建模。复用符合范围和时效的固定结果及其 codeRef。
 
-新计算显式读取输入，不依赖前次进程内存。用 `marivo_python(project:"required")` 的 `resultVariables` 声明已计算的 Frame、DataFrame 或准确固定引用，工具负责必要的持久化和 resource 关联。待计算 Frame 先显式 compute；执行、导出、来源及 metadata 状态分别核对。原样交付 `results[name].resource`，不手工配对 kind/codeRef。首次交接读[结果导出](references/capture.md)。
+新计算显式读取输入，不依赖前次进程内存。用 `marivo_python` 的 `resultVariables` 声明已计算的 Frame、DataFrame 或准确固定引用，工具负责必要的持久化和 resource 关联。待计算 Frame 先显式 compute；执行、导出、来源及 metadata 状态分别核对。原样交付 `results[name].resource`，不手工配对 kind/codeRef。首次交接读[结果导出](references/capture.md)。
 
 每个数据视图使用独立命名语句；多个视图可共享准确固定结果，不为不同展示重复计算。文字和布局无需 Python，已有外部结果缺少脚本时说明来源缺口，不补执行记录。
 
