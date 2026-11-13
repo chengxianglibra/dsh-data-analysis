@@ -38,6 +38,8 @@ Host 拥有交付形式与流程，文件或 Marivo 分析 Skill 拥有分析方
 
 用 TextContent 写解释，数据视图呈现可核对的数值和图形。按阅读需要用 Stack、DashboardGrid、Card、Tabs 和 Accordion 组织；单个数据视图已有外壳，无需再加装饰性 Card。TextCallout 说明范围和假设。已有图片或不支持的图形可用 Image，需要核对原值时配独立数据视图。
 
+按实际绑定展示[筛选范围](references/analysis-ui.md#筛选范围与布局)。
+
 无结论时展示问题与证据缺口；结论成立后将结论、支持数据和影响解读的范围、分母、缺失项放在一起。比较、归因和覆盖检查见[叙事与证据](references/narrative.md)。
 
 每轮最终保存后，用 `marivo_next_steps` 和准确 saved ref 提交新的下一步推荐。没有合适建议用 `no-suggestions`，用户明确拒绝用 `declined`。删除或发布见[恢复与管理](references/recovery.md#删除与发布)。

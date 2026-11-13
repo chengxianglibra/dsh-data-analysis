@@ -171,11 +171,13 @@ table = DatasetView("by_category", {chart:"table", columns:["category", "value"]
 ## 跨资源日期筛选
 
 ```openui
-root = Stack([day, period, dailyKpi, hourlyTrend]);
+root = Stack([dailyScope, hourlyScope]);
+dailyScope = Card([day, dailyKpi]);
+hourlyScope = Card([period, hourlyTrend]);
 day = SnapshotFilter("day", "daily", {kind:"column", name:"day"}, "日期", "single", [], {allowAll:false, defaultPolicy:"latest"});
 period = SnapshotFilter("period", "daily", {kind:"column", name:"day"}, "日期范围", "date-range", [], {defaultPolicy:"latest"});
 dailyKpi = DatasetView("daily", {chart:"metric", encoding:{value:"total"}}, {}, ["day"]);
 hourlyTrend = DatasetView("hourly", {chart:"line", encoding:{axis:"hour", values:["total"]}}, {}, [{filter:"period", field:{kind:"column",name:"hour"}}]);
 ```
 
-示例假定字段与类型均已核验，daily 中每个 day 恰有一行；日期范围仅联动趋势。其他维度需要对应已保存字段并显式绑定。
+假定字段和类型已核验、daily 每个 day 恰有一行；日期单选仅联动指标，日期范围仅联动趋势，分别用 Card 标示范围。其他维度须有保存字段并显式绑定。
