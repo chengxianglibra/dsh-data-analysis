@@ -20,17 +20,14 @@ test('generated Host schema matches the installed Client library without importi
     'AnalysisFrameView',
     'Button',
     'Card',
-    'CheckBoxGroup',
-    'CheckBoxItem',
     'DashboardGrid',
     'DashboardGridItem',
     'DatasetView',
     'DatePicker',
+    'FilterChips',
     'FormControl',
     'Image',
     'Label',
-    'Select',
-    'SelectItem',
     'Stack',
     'TabItem',
     'Tabs',
@@ -47,8 +44,8 @@ test('generated Host schema matches the installed Client library without importi
     assert.match(analysisCatalogSpec.components[name]!.signature, /ref: string, view\?/)
   }
   assert.equal(
-    parseAnalysisProgram('root = Select("region", [SelectItem("a", "All")]);').typeName,
-    'Select',
+    parseAnalysisProgram('$region = "a";\nroot = FilterChips("region", $region);').typeName,
+    'FilterChips',
   )
   assert.equal(parseAnalysisProgram(program).typeName, 'Stack')
   for (const source of [
@@ -74,7 +71,6 @@ test('generated Host schema matches the installed Client library without importi
 
 test('unsupported nodes and wrong parent slots cannot enter the subset', () => {
   for (const source of [
-    'root = SelectItem("a", "wrong root");',
     'root = Stack(["not a component"]);',
     'root = Tabs([DatasetView("wrong-parent")]);',
     'root = Stack([TabItem("wrong", "wrong", [])]);',

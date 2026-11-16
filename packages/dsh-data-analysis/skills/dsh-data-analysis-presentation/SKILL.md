@@ -17,7 +17,7 @@ Host 拥有交付形式与流程，文件或 Marivo 分析 Skill 拥有分析方
 
 每个数据视图使用独立命名语句。同一固定结果的不同展示可共享 resource 和 codeRef。复用输入与脚本来源规则见[结果导出](references/capture.md)。
 
-按 `viewCandidates` 选择准确字段。候选缺失时，用 `marivo_report_read({resource: resource.ref, candidateGroup})` 从固定结果按组读取。配置失败按回执修复展示，复用已完成计算。组件和参数见[视图与布局](references/analysis-ui.md)和[组件签名](references/analysis-catalog.md)。Marivo Python API 用 `marivo_help` 查询。
+按 `viewCandidates` 选择准确字段。候选缺失时，用 `marivo_report_read({resource: resource.ref, candidateGroup})` 从固定结果按组读取。配置失败按回执修复展示，复用已完成计算。组件和参数见[视图与布局](references/analysis-ui.md)；普通单选、多选统一用 FilterChips，日期范围用 DatePicker和[组件签名](references/analysis-catalog.md)。Marivo Python API 用 `marivo_help` 查询。
 
 ## 边分析边更新
 

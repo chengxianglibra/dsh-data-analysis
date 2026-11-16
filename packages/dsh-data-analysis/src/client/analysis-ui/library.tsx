@@ -1,5 +1,5 @@
 import type { ElementNode } from '@openuidev/lang-core'
-import { createLibrary, defineComponent, defineFunction } from '@openuidev/react-lang'
+import { createLibrary, defineComponent, defineFunction, reactive } from '@openuidev/react-lang'
 import { openuiLibrary } from '@openuidev/react-ui'
 import { createContext, type ReactNode, useContext, useLayoutEffect, useRef } from 'react'
 import { z } from 'zod/v4'
@@ -16,6 +16,7 @@ import { useAnalysisResources } from './context.tsx'
 import { DashboardAccordion, DashboardTextCallout } from './dashboard-components.tsx'
 import { AnalysisDataView } from './data-view.tsx'
 import { AnalysisDatePicker } from './date-picker.tsx'
+import { AnalysisFilterChips } from './filter-chips.tsx'
 import { Card, DashboardGrid as Grid, DashboardGridItem as GridItem, Stack } from './layout.tsx'
 import { ReadingComponent, useReportReading } from './reading-state.tsx'
 import { validSelectionDraft } from './selection-data.tsx'
@@ -159,6 +160,17 @@ function ResourceImage({
   ) : null
 }
 
+const FilterChips = defineComponent({
+  name: 'FilterChips',
+  description:
+    'Instant single or multiple selection from a declared selectionSources entry. Bind value to the state variable with the same ID as source. Label, defaults and clear policy come from the source.',
+  props: z.object({
+    source: z.string().min(1).max(80),
+    value: reactive(z.union([z.string(), z.record(z.string(), z.boolean())])),
+  }),
+  component: ({ props }) => <AnalysisFilterChips {...props} />,
+})
+
 export const analysisCatalogId = 'dsh-data-analysis/analysis-ui/v1'
 const officialNames = [
   'Stack',
@@ -170,10 +182,6 @@ const officialNames = [
   'TextCallout',
   'Accordion',
   'AccordionItem',
-  'Select',
-  'SelectItem',
-  'CheckBoxGroup',
-  'CheckBoxItem',
   'DatePicker',
   'Button',
   'FormControl',
@@ -213,11 +221,12 @@ const DashboardGrid = defineComponent({
 })
 const content = z.union([
   ...officialNames
-    .filter((name) => !['TabItem', 'AccordionItem', 'SelectItem', 'CheckBoxItem'].includes(name))
+    .filter((name) => !['TabItem', 'AccordionItem'].includes(name))
     .map((name) => official[name]!.ref),
   AnalysisFrameView.ref,
   DatasetView.ref,
   DashboardGrid.ref,
+  FilterChips.ref,
 ])
 
 // Path segments distinguish repeated named nodes under the same or different
@@ -266,7 +275,7 @@ const StackLayout = defineComponent({
 // definitions. Its root/id are not configurable by extend in 1.0.1.
 const subsetBase = openuiLibrary.extend({
   components: {
-    add: [AnalysisFrameView, DatasetView, DashboardGrid, DashboardGridItemBase],
+    add: [AnalysisFrameView, DatasetView, DashboardGrid, DashboardGridItemBase, FilterChips],
     remove: Object.keys(openuiLibrary.components).filter(
       (name) => !officialNames.some((item) => item === name),
     ),
@@ -391,13 +400,7 @@ const DashboardGridItem = defineComponent({
         Object.values(subsetBase.components)
           .filter(
             (component) =>
-              ![
-                'TabItem',
-                'AccordionItem',
-                'DashboardGridItem',
-                'SelectItem',
-                'CheckBoxItem',
-              ].includes(component.name),
+              !['TabItem', 'AccordionItem', 'DashboardGridItem'].includes(component.name),
           )
           .map((component) => component.ref),
       ),
@@ -433,6 +436,5 @@ export const analysisLibrary = createLibrary({
   functions: [selectionValid, selectionOrCurrent],
 })
 export const analysisRootComponents = Object.keys(analysisLibrary.components).filter(
-  (name) =>
-    !['TabItem', 'AccordionItem', 'DashboardGridItem', 'SelectItem', 'CheckBoxItem'].includes(name),
+  (name) => !['TabItem', 'AccordionItem', 'DashboardGridItem'].includes(name),
 )

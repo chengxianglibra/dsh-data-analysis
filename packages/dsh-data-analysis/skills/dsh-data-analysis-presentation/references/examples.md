@@ -111,9 +111,9 @@ $period = {};
 root = Stack([dailyScope, hourlyScope]);
 dailyScope = Card([dayInput, dailyKpi]);
 hourlyScope = Card([periodInput, applyPeriod, resetPeriod, hourlyTrend]);
-dayInput = FormControl("日期", Select("day", @Each($source_3_day_options, "item", SelectItem(item.id, item.label)), null, null, $day));
+dayInput = FilterChips("day", $day);
 periodInput = FormControl("日期范围", DatePicker("period", "range", null, $source_6_period_draft));
-applyPeriod = Button("应用", @Set($period, @SelectionOrCurrent($period, $source_6_period_draft, $source_6_period_options, "date-range", true)));
+applyPeriod = Button("应用", @Set($period, @SelectionOrCurrent($period, $source_6_period_draft, [], "date-range", true)));
 resetPeriod = Button("恢复默认", Action([@Set($period, $source_6_period_default), @Set($source_6_period_draft, $source_6_period_default)]));
 dailyKpi = DatasetView("daily", {chart:"metric", encoding:{value:"total"}}, {}, [{source:"day",selection:$day}]);
 hourlyTrend = DatasetView("hourly", {chart:"line", encoding:{axis:"hour", values:["total"]}}, {}, [{source:"period",field:{kind:"column",name:"hour"},selection:$period}]);
@@ -123,7 +123,7 @@ hourlyTrend = DatasetView("hourly", {chart:"line", encoding:{axis:"hour", values
 
 ## 多选维度筛选
 
-在 `selectionSources` 声明来源。以下应用操作先检查草稿；恢复默认同时更新已应用值和草稿。
+在 `selectionSources` 声明来源。选择或移除地区即更新表格，清空恢复全部。
 
 ```json
 {"region":{"ref":"sales","field":{"kind":"column","name":"region"},"label":"地区","mode":"multiple"}}
@@ -131,9 +131,7 @@ hourlyTrend = DatasetView("hourly", {chart:"line", encoding:{axis:"hour", values
 
 ```openui
 $region = {};
-root = Stack([regionInput, applyRegion, resetRegion, salesTable]);
-regionInput = FormControl("地区", CheckBoxGroup("region", @Each($source_6_region_options, "item", CheckBoxItem(item.label, "", item.id)), null, $source_6_region_draft));
-applyRegion = Button("应用", @Set($region, @SelectionOrCurrent($region, $source_6_region_draft, $source_6_region_options, "multiple", true)));
-resetRegion = Button("恢复默认", Action([@Set($region, $source_6_region_default), @Set($source_6_region_draft, $source_6_region_default)]));
+root = Stack([regionInput, salesTable]);
+regionInput = FilterChips("region", $region);
 salesTable = DatasetView("sales", {chart:"table"}, {}, [{source:"region",selection:$region}]);
 ```

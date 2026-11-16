@@ -18,7 +18,7 @@ Harness 的 Skill provider 与 `skill` 工具提供发现、加载与引用资�
 
 结果类型在计算前选择：governed 输入和受支持的类型化分析优先产生并保留 AnalysisFrame，使用 AnalysisFrameView，不要仅为展示转成 DataFrame。纯文件、外部计算或合适的表格明细可用 DatasetView，不为更换组件强行建模。同次 Python 执行导出的结果共享执行级 codeRef，具体绑定和证据范围见[展示投影](presentation-projection.md#数据流程)。
 
-读者筛选使用 OpenUI 官方交互组件和状态。Skill 说明 `selectionSources` 的资源字段、默认值及跨资源绑定，要求从保存快照取得候选、使用状态变量连接数据视图；多选和日期先在草稿中编辑，再校验并应用。选中条件只投影已保存行，不重算指标或改写报告。组件签名由 Catalog 生成。组件的筛选准入和跨资源绑定约束见[展示阅读](presentation-reader.md#固定快照筛选)及[展示交付](presentation-delivery.md#分析视图写入与增量契约)，失败时按服务端回执修复。
+读者筛选使用 FilterChips、DatePicker 和 OpenUI 状态。Skill 说明 `selectionSources` 的资源字段、默认值及跨资源绑定，要求从保存快照取得候选、使用状态变量连接数据视图；单选、多选即时生效；日期范围在完成两端后更新草稿，再校验并应用。选中条件只投影已保存行，不重算指标或改写报告。组件签名由 Catalog 生成。组件的筛选准入和跨资源绑定约束见[展示阅读](presentation-reader.md#固定快照筛选)及[展示交付](presentation-delivery.md#分析视图写入与增量契约)，失败时按服务端回执修复。
 
 ## 数据刷新与完成
 

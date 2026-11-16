@@ -36,7 +36,9 @@ DatasetView 按保存列 ID 配置。table 用 columns，metric 用 encoding.val
 - date-range 包含两端 `YYYY-MM-DD`，可选同日，也可选超出捕获范围的边界。支持严格日期字符串、date、datetime 和 builtin hour/day、step=1 的 calendar 单键轴。datetime 用保存文本的日期，calendar 用轴的业务时区，绑定的 calendar 轴须同一时区。DatePicker 导航为 1900–2100 年。见[跨资源日期示例](examples.md#跨资源日期筛选)。
 - 多选内部为 OR，多个筛选器之间为 AND。allowAll:false 要求有效默认值。single 的 defaultPolicy:"latest" 适用于 date 或非空值均为严格日期的 string 字段；date-range 的 latest 选最新的一天。刷新重新解析 latest，失效的显式普通默认值会拒绝新版本。
 
-用官方 Select、CheckBoxGroup 或 DatePicker。用 `@Each` 从 `$source_<ID长度>_<ID>_options` 的 id 和 label 生成候选。单选全部为 `"a"`；普通成员 ID 为 `"v:"` 加原值的 JSON。多选以成员 ID 为键、boolean 为值，允许全部时空对象清除条件。多选和日期范围编辑对应的 `_draft`，用 `@SelectionOrCurrent(current,draft,items,mode,allowAll)` 校验后 `@Set` 应用。恢复默认时将 `_default` 写入已应用值和草稿，不用 `@Reset` 推断 latest。
+枚举用 `FilterChips("region", $region)`，两个参数必须引用同一来源 ID。组件读取来源的 label、mode、默认值和 allowAll，候选来自固定快照。选择、移除、清除和恢复默认即时生效，禁止移除必选筛选的最后一项。`$region = "a";` 用于初始化单选占位，`$region = {};` 用于多选。运行时优先使用来源默认值。候选多时可展开搜索。
+
+日期范围用 DatePicker，选完整范围后写入 `$source_<ID长度>_<ID>_draft`。用 `@SelectionOrCurrent(current,draft,[],"date-range",allowAll)` 校验后通过 `@Set` 应用。恢复默认时将 `_default` 写入已应用值和草稿。
 
 ### 各视图的筛选准入
 
@@ -63,10 +65,8 @@ DatasetView 按保存列 ID 配置。table 用 columns，metric 用 encoding.val
 
 ```openui
 $month = {};
-root = Stack([monthInput, applyMonth, resetMonth, totals, shares, details]);
-monthInput = FormControl("月份", CheckBoxGroup("month", @Each($source_5_month_options, "item", CheckBoxItem(item.label, "", item.id)), null, $source_5_month_draft));
-applyMonth = Button("应用", @Set($month, @SelectionOrCurrent($month, $source_5_month_draft, $source_5_month_options, "multiple", true)));
-resetMonth = Button("恢复默认", Action([@Set($month, $source_5_month_default), @Set($source_5_month_draft, $source_5_month_default)]));
+root = Stack([monthInput, totals, shares, details]);
+monthInput = FilterChips("month", $month);
 totals = DatasetView("monthly", {chart:"metric",encoding:{value:"total"}}, {}, [{source:"month",selection:$month}]);
 shares = AnalysisFrameView("regionalShare", {chart:"auto"}, {}, [{source:"month",field:{kind:"axis",name:"month"},selection:$month}]);
 details = AnalysisFrameView("regionalShare", {chart:"table"}, {}, [{source:"month",field:{kind:"axis",name:"month"},selection:$month}]);

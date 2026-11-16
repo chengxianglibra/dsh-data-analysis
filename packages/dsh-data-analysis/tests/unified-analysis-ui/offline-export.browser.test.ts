@@ -195,11 +195,8 @@ test('offline filters begin at saved defaults and operate on the complete embedd
     },
     program: [
       '$category = {};',
-      'root = Stack([f, apply, clear, reset, v]);',
-      'f = CheckBoxGroup("category", @Each($source_8_category_options, "i", CheckBoxItem(i.label, "", i.id)), null, $source_8_category_draft);',
-      'apply = Button("Apply", @Set($category, @SelectionOrCurrent($category, $source_8_category_draft, $source_8_category_options, "multiple", true)));',
-      'clear = Button("Clear", Action([@Set($category, {}), @Set($source_8_category_draft, {})]));',
-      'reset = Button("Restore defaults", Action([@Set($category, $source_8_category_default), @Set($source_8_category_draft, $source_8_category_default)]));',
+      'root = Stack([f, v]);',
+      'f = FilterChips("category", $category);',
       'v = DatasetView("result", {chart:"table"}, {}, [{source:"category",selection:$category}]);',
     ].join('\n'),
     resources: {
@@ -234,15 +231,14 @@ test('offline filters begin at saved defaults and operate on the complete embedd
     })
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto(pathToFileURL(reportPath).href)
-    await page.getByRole('checkbox', { name: '"A"' }).waitFor()
+    await page.getByRole('button', { name: '"A"' }).waitFor()
     assert.deepEqual(
       await page
         .locator('tbody tr[data-row-index]')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
       ['0', '2'],
     )
-    await page.getByRole('checkbox', { name: '"B"' }).check()
-    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await page.getByRole('button', { name: '"B"' }).click()
     assert.deepEqual(
       await page
         .locator('tbody tr')
@@ -250,7 +246,10 @@ test('offline filters begin at saved defaults and operate on the complete embedd
       ['0', '1', '2'],
     )
     await page.getByRole('button', { name: 'Clear', exact: true }).click()
-    assert.equal(await page.getByRole('checkbox', { name: '"A"' }).isChecked(), false)
+    assert.equal(
+      await page.getByRole('button', { name: '"A"' }).getAttribute('aria-pressed'),
+      'false',
+    )
     await page.getByRole('button', { name: 'Restore defaults' }).click()
     assert.deepEqual(
       await page
@@ -258,10 +257,13 @@ test('offline filters begin at saved defaults and operate on the complete embedd
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
       ['0', '2'],
     )
-    await page.getByRole('checkbox', { name: '"B"' }).check()
+    await page.getByRole('button', { name: '"B"' }).click()
     await page.reload()
-    await page.getByRole('checkbox', { name: '"A"' }).waitFor()
-    assert.equal(await page.getByRole('checkbox', { name: '"B"' }).isChecked(), false)
+    await page.getByRole('button', { name: '"A"' }).waitFor()
+    assert.equal(
+      await page.getByRole('button', { name: '"B"' }).getAttribute('aria-pressed'),
+      'false',
+    )
     assert.deepEqual(
       await page
         .locator('tbody tr')
@@ -416,12 +418,11 @@ test('exported filters combine single, multiple and date range selections withou
       '$region = "a";',
       '$cluster = {};',
       '$period = {};',
-      'root = Stack([region, cluster, applyCluster, period, applyPeriod, view]);',
-      'region = Select("region", @Each($source_6_region_options, "i", SelectItem(i.id, i.label)), null, null, $region);',
-      'cluster = CheckBoxGroup("cluster", @Each($source_7_cluster_options, "i", CheckBoxItem(i.label, "", i.id)), null, $source_7_cluster_draft);',
-      'applyCluster = Button("Apply cluster", @Set($cluster, @SelectionOrCurrent($cluster, $source_7_cluster_draft, $source_7_cluster_options, "multiple", true)));',
+      'root = Stack([region, cluster, period, applyPeriod, view]);',
+      'region = FilterChips("region", $region);',
+      'cluster = FilterChips("cluster", $cluster);',
       'period = DatePicker("period", "range", null, $source_6_period_draft);',
-      'applyPeriod = Button("Apply period", @Set($period, @SelectionOrCurrent($period, $source_6_period_draft, $source_6_period_options, "date-range", true)));',
+      'applyPeriod = Button("Apply period", @Set($period, @SelectionOrCurrent($period, $source_6_period_draft, [], "date-range", true)));',
       'view = DatasetView("result", {chart:"table"}, {}, [{source:"region",selection:$region}, {source:"cluster",selection:$cluster}, {source:"period",field:{kind:"column",name:"time"},selection:$period}]);',
     ].join('\n'),
     resources: {
@@ -459,7 +460,7 @@ test('exported filters combine single, multiple and date range selections withou
         .locator('tbody tr[data-row-index]')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index')))
     await page.goto(pathToFileURL(reportPath).href)
-    await page.getByRole('combobox').first().waitFor()
+    await page.getByRole('group', { name: 'region', exact: true }).waitFor()
     assert.deepEqual(await visibleRows(), ['3', '4'])
     const period = page.locator('.openui-date-picker-renderer-floating-input-container')
     assert.match((await period.textContent()) ?? '', /Nov 13, 2026/)
@@ -477,19 +478,101 @@ test('exported filters combine single, multiple and date range selections withou
       .click()
     await page.getByRole('button', { name: 'Apply period' }).click()
     assert.deepEqual(await visibleRows(), ['0', '1', '3', '4'])
-    await page.getByRole('combobox').first().click()
-    await page.getByRole('option', { name: '"South"' }).click()
+    await page.getByRole('button', { name: '"South"' }).click()
     assert.deepEqual(await visibleRows(), [])
-    await page.getByRole('checkbox', { name: '"C"' }).check()
-    await page.getByRole('button', { name: 'Apply cluster' }).click()
+    await page.getByRole('button', { name: '"C"' }).click()
     assert.deepEqual(await visibleRows(), ['2', '5'])
     await page.reload()
-    await page.getByRole('combobox').first().waitFor()
+    await page.getByRole('group', { name: 'region', exact: true }).waitFor()
     assert.deepEqual(await visibleRows(), ['3', '4'])
-    assert.equal(await page.getByRole('checkbox', { name: '"C"' }).isChecked(), false)
+    assert.equal(
+      await page.getByRole('button', { name: '"C"' }).getAttribute('aria-pressed'),
+      'false',
+    )
     assert.deepEqual(requests, [])
     assert.deepEqual(errors, [])
     await context.close()
+  } finally {
+    await browser.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('a narrow report can find and remove a chip beyond the first candidate page', async () => {
+  const longLabel = 'Destination 120 — long saved label '.repeat(8).trim()
+  const snapshot = datasetSnapshot(
+    Array.from({ length: 120 }, (_, index) => [
+      index === 119 ? longLabel : `Destination ${String(index + 1).padStart(3, '0')}`,
+    ]),
+    [{ id: 'destination', label: 'Destination', type: 'string', nullable: false }],
+  )
+  const report = parseAnalysisDocument({
+    schemaVersion: ANALYSIS_UI_FORMAT,
+    workspaceId: 'workspace',
+    reportId: 'report',
+    buildId: 'build',
+    recordId: analysisRecordId('report', 'build'),
+    title: 'Destinations',
+    locale: 'en-US',
+    generatedAt: '2026-11-05T00:00:00Z',
+    catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+    selectionSources: {
+      destination: {
+        ref: 'result',
+        field: { kind: 'column', name: 'destination' },
+        label: 'Destination',
+        mode: 'multiple',
+      },
+    },
+    program: `$destination = {};
+root = Stack([filter, view]);
+filter = FilterChips("destination", $destination);
+view = DatasetView("result", {chart:"table"}, {}, [{source:"destination",selection:$destination}]);`,
+    resources: {
+      result: {
+        kind: 'snapshot',
+        declaration: { kind: 'dataset-snapshot', snapshotRef: 'ref' },
+        snapshot,
+        binding: {
+          workspaceId: 'workspace',
+          sessionId: 'session',
+          callId: 'call',
+          codeRef: {
+            executionId: '12345678-1234-4123-8123-123456789abc',
+            sha256: 'a'.repeat(64),
+          },
+        },
+      },
+    },
+  })
+  const directory = await mkdtemp(path.join(tmpdir(), 'dsh-offline-many-chips-'))
+  const browser = await chromium.launch()
+  try {
+    const file = path.join(directory, 'report.html')
+    await writeFile(file, exportAnalysisHtml(report))
+    const page = await browser.newPage({ viewport: { width: 390, height: 800 } })
+    await page.goto(pathToFileURL(file).href)
+    const filter = page.getByRole('group', { name: 'Destination', exact: true })
+    await filter.getByRole('button', { name: 'Show more', exact: true }).click()
+    const search = filter.getByRole('searchbox')
+    assert.equal(await search.evaluate((node) => node === document.activeElement), true)
+    await search.fill('destination 120')
+    const chip = filter.getByRole('button', { name: JSON.stringify(longLabel), exact: true })
+    await chip.press('Enter')
+    assert.equal(await chip.getAttribute('aria-pressed'), 'true')
+    assert.equal(await chip.getAttribute('title'), JSON.stringify(longLabel))
+    assert.deepEqual(
+      await page
+        .locator('tbody tr[data-row-index]')
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
+      ['119'],
+    )
+    assert.equal(await filter.evaluate((node) => node.scrollWidth <= node.clientWidth), true)
+    await chip.press('Space')
+    assert.equal(await chip.getAttribute('aria-pressed'), 'false')
+    await filter.getByRole('button', { name: 'Show fewer', exact: true }).click()
+    assert.equal(await search.count(), 0)
+    assert.equal(await chip.count(), 0)
   } finally {
     await browser.close()
     await rm(directory, { recursive: true, force: true })

@@ -39,7 +39,7 @@ test('a real Frame filter preserves saved point identities and table rows', asyn
     }
     const program = `$region = "a";
 root = Stack([filter, chart, table]);
-filter = Select("region", @Each($source_6_region_options, "i", SelectItem(i.id,i.label)), null, null, $region);
+filter = FilterChips("region", $region);
 chart = AnalysisFrameView("frame", {chart:"auto"}, {}, [{source:"region",selection:$region}]);
 table = AnalysisFrameView("frame", {chart:"table"}, {}, [{source:"region",selection:$region}]);`
     validateAnalysisResources(program, { frame: resource }, selectionSources)
@@ -80,8 +80,7 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:$
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
       ['0', '1', '2', '3', '4', '5'],
     )
-    await page.getByRole('combobox').first().click()
-    await page.getByRole('option', { name: '"south"' }).click()
+    await page.getByRole('button', { name: '"south"' }).click()
     await page.waitForFunction(
       () => document.querySelectorAll('[data-frame-view="table"] tbody tr').length === 3,
     )

@@ -45,7 +45,7 @@ preview/save 回执触发文档读取时，已显示内容持续挂载，直到�
 
 ## 组件与数据视图
 
-对外组件为 AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image、DashboardGrid、DashboardGridItem、TextCallout、Accordion、AccordionItem，以及 OpenUI 官方 Select、SelectItem、CheckBoxGroup、CheckBoxItem、DatePicker、Button、FormControl、Label。
+对外组件为 AnalysisFrameView、DatasetView、Stack、TextContent、Card、Tabs、TabItem、Image、DashboardGrid、DashboardGridItem、TextCallout、Accordion、AccordionItem，FilterChips，以及 OpenUI 官方 DatePicker、Button、FormControl、Label。
 [Catalog 生成器](../../../packages/dsh-data-analysis/scripts/generate-analysis-catalog.mjs)从组件库生成本地 TypeScript Catalog，并校验 Git 中的随包 Skill 签名。
 OpenUI Lang / Renderer 负责分析视图编排；私有 Stack / Card / Tabs、主题、控件和共用结果外壳见[插件私有 UI 组件](custom-ui-components.md)。
 DashboardGrid 使用 1–4 列和显式 item 跨列，按容器宽度缩减列数并保持内容顺序；span 不得超过声明列数。TextCallout 展示作者声明的静态提示；Accordion 每组单项展开且可全部折叠，展开选择属于当前阅读状态，具名组件按语句与出现次序识别，inline 组件按位置识别。DashboardGridItem 和 AccordionItem 只用于各自父组件的槽位。
@@ -131,7 +131,7 @@ Dataset 点引用绑定当前 Session、Workspace、固定 Build、资源、原�
 
 ### 固定快照筛选
 
-官方 OpenUI 控件支持原值单选、原值多选和包含两端的日期范围。`selectionSources` 声明来源和默认值，只有显式绑定该来源的视图响应。多选和日期范围先编辑草稿，再校验并应用。多个控件之间为 AND，多选内部为 OR，允许全部时空多选等于清除筛选条件。候选来自固定来源快照，已截断的来源在筛选摘要标明。跨资源使用显式目标字段；目标可以缺少来源中的成员。auto 在原始快照上解析。
+FilterChips 支持原值单选和多选。选项在候选区与已选区之间移动，选择即时生效；候选多时可展开搜索。已选区显示选择数量，组件支持清除和恢复来源默认值，必选时至少保留一项。DatePicker 支持包含两端的日期范围。`selectionSources` 声明来源和默认值，只有显式绑定该来源的视图响应。日期范围选完两端后写入草稿，再由应用操作校验并提交；关闭日历会丢弃未完成的范围。多个控件之间为 AND，多选内部为 OR，允许全部时空多选等于清除筛选条件。候选来自固定来源快照，已截断的来源在筛选摘要标明。跨资源使用显式目标字段；目标可以缺少来源中的成员。auto 在原始快照上解析。
 
 | 视图 | 筛选准入与展示 |
 | --- | --- |

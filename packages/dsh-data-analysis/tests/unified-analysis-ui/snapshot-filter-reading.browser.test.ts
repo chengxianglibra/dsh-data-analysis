@@ -8,7 +8,7 @@ import { build } from 'esbuild'
 import { chromium } from 'playwright'
 import { datasetSnapshot } from './dataset-fixtures.ts'
 
-test('official OpenUI selections drive shared saved views and survive reader moves', async () => {
+test('chips and date ranges drive shared saved views and survive reader moves', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'dsh-openui-selection-'))
   const browser = await chromium.launch()
   try {
@@ -27,12 +27,11 @@ test('official OpenUI selections drive shared saved views and survive reader mov
     const program = `$region = "a";
 $group = {};
 $period = null;
-root = Stack([single, multi, multiApply, date, dateApply, dateClear, dateRestore, first, second]);
-single = Select("region", @Each($source_6_region_options, "i", SelectItem(i.id, i.label)), null, null, $region);
-multi = CheckBoxGroup("group", @Each($source_5_group_options, "i", CheckBoxItem(i.label, "", i.id)), null, $source_5_group_draft);
-multiApply = Button("Apply group", @Set($group, @SelectionOrCurrent($group, $source_5_group_draft, $source_5_group_options, "multiple", false)));
+root = Stack([single, multi, date, dateApply, dateClear, dateRestore, first, second]);
+single = FilterChips("region", $region);
+multi = FilterChips("group", $group);
 date = DatePicker("period", "range", null, $source_6_period_draft);
-dateApply = Button("Apply date", @Set($period, @SelectionOrCurrent($period, $source_6_period_draft, $source_6_period_options, "date-range", true)));
+dateApply = Button("Apply date", @Set($period, @SelectionOrCurrent($period, $source_6_period_draft, [], "date-range", true)));
 dateClear = Button("Clear date", Action([@Set($period, {}), @Set($source_6_period_draft, {})]));
 dateRestore = Button("Restore date", Action([@Set($period, $source_6_period_default), @Set($source_6_period_draft, $source_6_period_default)]));
 first = DatasetView("data", {chart:"table"}, {title:"First"}, [{source:"region",selection:$region},{source:"group",selection:$group},{source:"period",selection:$period}]);
@@ -88,7 +87,7 @@ window.change=(name)=>{if(name==='move')host++; if(name==='other'){owner=1;host+
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
-    await page.getByRole('button', { name: 'Apply group' }).waitFor()
+    await page.getByRole('group', { name: 'group', exact: true }).waitFor()
     assert.deepEqual(await page.locator('tbody tr[data-row-index]').allTextContents(), [
       'A2026-11-133',
       'A2026-11-133',
@@ -103,11 +102,18 @@ window.change=(name)=>{if(name==='move')host++; if(name==='other'){owner=1;host+
       await page.locator('.openui-date-picker-renderer-floating-content').isVisible(),
       true,
     )
-    await page
-      .locator('.openui-date-picker-renderer-floating-content')
-      .locator('button')
-      .filter({ hasText: /^13$/ })
-      .click()
+    await page.locator('.openui-date-picker-renderer-floating-input-container').click()
+    await page.getByRole('button', { name: 'Apply date' }).click()
+    assert.deepEqual(await page.locator('tbody tr[data-row-index]').allTextContents(), [
+      'A2026-11-133',
+      'A2026-11-133',
+    ])
+    await page.locator('.openui-date-picker-renderer-floating-input-container').click()
+    for (const day of ['12', '13'])
+      await page
+        .locator('.openui-date-picker-renderer-floating-content button')
+        .filter({ hasText: new RegExp(`^${day}$`) })
+        .click()
     await page.locator('.openui-date-picker-renderer-floating-content').waitFor({ state: 'hidden' })
     await page.waitForFunction(() => {
       const text = document.querySelector(
@@ -216,84 +222,49 @@ window.change=(name)=>{if(name==='move')host++; if(name==='other'){owner=1;host+
       document.body.style.zoom = ''
     })
     await page.setViewportSize({ width: 1280, height: 1200 })
-    const a = page.getByRole('checkbox', { name: '"A"' })
-    const b = page.getByRole('checkbox', { name: '"B"' })
-    await a.waitFor()
-    assert.equal(await a.isChecked(), true)
-    await a.uncheck()
-    await page.getByRole('button', { name: 'Apply group' }).click()
-    assert.deepEqual(await page.locator('tbody tr[data-row-index]').allTextContents(), [
-      'A2026-11-121',
-      'A2026-11-133',
-      'A2026-11-121',
-      'A2026-11-133',
-    ])
-    await a.check()
-    await b.check()
-    await page.getByRole('button', { name: 'Apply group' }).click()
-    const select = page.getByRole('combobox').first()
-    await select.click()
-    await page.getByRole('option', { name: '"B"' }).click()
-    assert.equal(await page.locator('.openui-select-trigger').first().textContent(), '"B"')
-    assert.deepEqual(await page.locator('tbody tr[data-row-index]').allTextContents(), [
-      'B2026-11-132',
-      'B2026-11-132',
-    ])
-    await select.click()
-    const portal = page.locator('.openui-select-content')
-    await portal.waitFor()
-    const themeValue = () =>
-      portal.evaluate((node) =>
-        getComputedStyle(node).getPropertyValue('--openui-foreground').trim(),
-      )
-    const light = await themeValue()
-    assert.ok(light)
-    await page.evaluate(() => document.body.setAttribute('data-ds-dark-theme', ''))
-    await page.waitForFunction(
-      (previous) =>
-        getComputedStyle(document.querySelector('.openui-select-content')!)
-          .getPropertyValue('--openui-foreground')
-          .trim() !== previous,
-      light,
-    )
-    const dark = await themeValue()
+    const group = page.getByRole('group', { name: 'group', exact: true })
+    const a = group.getByRole('button', { name: '"A"', exact: true })
+    const b = group.getByRole('button', { name: '"B"', exact: true })
+    assert.equal(await a.getAttribute('aria-pressed'), 'true')
+    assert.equal(await a.getAttribute('aria-disabled'), 'true')
+    await a.press('Enter')
+    assert.equal(await a.getAttribute('aria-pressed'), 'true')
+    await b.press('Space')
+    assert.equal(await b.getAttribute('aria-pressed'), 'true')
+    assert.equal(await b.evaluate((node) => node === document.activeElement), true)
+    const region = page.getByRole('group', { name: 'Region', exact: true })
+    const regionB = region.getByRole('button', { name: '"B"', exact: true })
+    await regionB.click()
+    assert.equal(await regionB.getAttribute('aria-pressed'), 'true')
     assert.equal(
-      dark,
-      await page
-        .locator('article[data-openui-scope]')
-        .evaluate((node) => getComputedStyle(node).getPropertyValue('--openui-foreground').trim()),
+      await region.getByRole('button', { name: '"A"', exact: true }).getAttribute('aria-pressed'),
+      'false',
     )
-    assert.equal(await page.locator('.openui-select-trigger').first().textContent(), '"B"')
-    await page.evaluate(() => document.body.removeAttribute('data-ds-dark-theme'))
-    await page.waitForFunction(
-      (expected) =>
-        getComputedStyle(document.querySelector('.openui-select-content')!)
-          .getPropertyValue('--openui-foreground')
-          .trim() === expected,
-      light,
+    assert.deepEqual(await page.locator('tbody tr[data-row-index]').allTextContents(), [
+      'B2026-11-132',
+      'B2026-11-132',
+    ])
+    const background = regionB.locator('.au-filter-chip-background')
+    const light = await background.evaluate((node) => getComputedStyle(node).backgroundColor)
+    await page.evaluate(() => document.body.setAttribute('data-ds-dark-theme', ''))
+    await page.waitForFunction((previous) => {
+      const chip = document.querySelector(
+        '.au-filter-chip[aria-pressed="true"] .au-filter-chip-background',
+      )
+      return chip && getComputedStyle(chip).backgroundColor !== previous
+    }, light)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await b.press('Enter')
+    assert.equal(await b.getAttribute('aria-pressed'), 'false')
+    assert.equal(
+      await b.locator('.au-filter-chip-background').evaluate((node) => node.getAnimations().length),
+      0,
     )
-    await page.emulateMedia({ colorScheme: 'dark' })
-    await page.waitForFunction(
-      (expected) =>
-        getComputedStyle(document.querySelector('.openui-select-content')!)
-          .getPropertyValue('--openui-foreground')
-          .trim() === expected,
-      dark,
-    )
-    await page.emulateMedia({ colorScheme: 'light' })
-    await page.waitForFunction(
-      (expected) =>
-        getComputedStyle(document.querySelector('.openui-select-content')!)
-          .getPropertyValue('--openui-foreground')
-          .trim() === expected,
-      light,
-    )
-    await page.keyboard.press('Escape')
-    assert.equal(await select.textContent(), '"B"')
+    await b.press('Enter')
     await page.evaluate(() => Reflect.get(window, 'change')('move'))
-    await page.getByRole('button', { name: 'Apply group' }).waitFor()
-    assert.equal(await page.getByRole('checkbox', { name: '"B"' }).isChecked(), true)
-    assert.equal(await page.getByRole('combobox').first().textContent(), '"B"')
+    await group.waitFor()
+    assert.equal(await b.getAttribute('aria-pressed'), 'true')
+    assert.equal(await regionB.getAttribute('aria-pressed'), 'true')
     assert.deepEqual(errors, [])
   } finally {
     await browser.close()

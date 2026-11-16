@@ -68,13 +68,9 @@ test('one filter state synchronizes bound views without changing an unbound view
       },
     },
     program: `$category = {}; $large = {};
-root = Stack([category, categoryApply, categoryClear, large, largeApply, largeClear, first, second, baseline], "row", "m", "start", "start", true);
-category = CheckBoxGroup("category", @Each($source_8_category_options, "i", CheckBoxItem(i.label,"",i.id)), null, $source_8_category_draft);
-categoryApply = Button("Apply category", @Set($category, @SelectionOrCurrent($category, $source_8_category_draft, $source_8_category_options, "multiple", true)));
-categoryClear = Button("Clear category", Action([@Set($category,{}), @Set($source_8_category_draft,{})]));
-large = CheckBoxGroup("large", @Each($source_5_large_options, "i", CheckBoxItem(i.label,"",i.id)), null, $source_5_large_draft);
-largeApply = Button("Apply ID", @Set($large, @SelectionOrCurrent($large, $source_5_large_draft, $source_5_large_options, "multiple", true)));
-largeClear = Button("Clear ID", Action([@Set($large,{}), @Set($source_5_large_draft,{})]));
+root = Stack([category, large, first, second, baseline], "row", "m", "start", "start", true);
+category = FilterChips("category", $category);
+large = FilterChips("large", $large);
 first = DatasetView("sales", {chart:"table"}, {}, [{source:"category",selection:$category}, {source:"large",selection:$large}]);
 second = DatasetView("sales", {chart:"table"}, {}, [{source:"category",selection:$category}, {source:"large",selection:$large}]);
 baseline = DatasetView("sales", {chart:"table"});`,
@@ -153,8 +149,8 @@ window.renderReport();`,
       if (/^https?:/i.test(request.url())) remoteRequests.push(request.url())
     })
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
-    const category = page
-    const large = page
+    const category = page.getByRole('group', { name: 'Category filter', exact: true })
+    const large = page.getByRole('group', { name: 'ID filter', exact: true })
     const assertRows = async (selected: string[], first = selected, all = ['0', '1', '2', '3']) => {
       const expected = [first, selected, all]
       await page.waitForFunction((target) => {
@@ -177,37 +173,29 @@ window.renderReport();`,
       assert.match((await summary.textContent()) ?? '', /Category filter/)
       assert.match((await summary.textContent()) ?? '', /ID filter/)
     }
-    await category.getByRole('checkbox', { name: 'Missing value', exact: true }).check()
-    await page.getByRole('button', { name: 'Apply category' }).click()
+    await category.getByRole('button', { name: 'Missing value', exact: true }).click()
     await assertRows(['0'])
-    await category.getByRole('checkbox', { name: 'Empty string', exact: true }).check()
-    await page.getByRole('button', { name: 'Apply category' }).click()
+    await category.getByRole('button', { name: 'Empty string', exact: true }).click()
     await assertRows(['0', '1', '3'])
-    await category.getByRole('checkbox', { name: 'Missing value', exact: true }).uncheck()
-    await page.getByRole('button', { name: 'Apply category' }).click()
-    await category.getByRole('checkbox', { name: '"Missing value"', exact: true }).check()
-    await page.getByRole('button', { name: 'Apply category' }).click()
+    await category.getByRole('button', { name: 'Missing value', exact: true }).click()
+    await category.getByRole('button', { name: '"Missing value"', exact: true }).click()
     await assertRows(['1', '2', '3'])
-    await large.getByRole('checkbox', { name: '"9007199254740993"', exact: true }).check()
-    await page.getByRole('button', { name: 'Apply ID' }).click()
+    await large.getByRole('button', { name: '"9007199254740993"', exact: true }).click()
     await assertRows(['1', '2'])
-    await category.getByRole('button', { name: 'Clear category', exact: true }).click()
+    await category.getByRole('button', { name: 'Clear', exact: true }).click()
     await assertRows(['1', '2'])
-    await large.getByRole('checkbox', { name: '"9007199254740993"', exact: true }).uncheck()
-    await page.getByRole('button', { name: 'Apply ID' }).click()
-    await large.getByRole('checkbox', { name: '"9007199254740992"', exact: true }).check()
-    await page.getByRole('button', { name: 'Apply ID' }).click()
+    await large.getByRole('button', { name: '"9007199254740993"', exact: true }).click()
+    await large.getByRole('button', { name: '"9007199254740992"', exact: true }).click()
     await assertRows(['0', '3'])
     const first = page.locator('[data-resource="sales"]').first()
     const sort = first.locator('th[data-column-id="large"] button')
     await sort.click()
     await sort.click()
-    await category.getByRole('checkbox', { name: '"Missing value"', exact: true }).check()
-    await page.getByRole('button', { name: 'Apply category' }).click()
+    await category.getByRole('button', { name: '"Missing value"', exact: true }).click()
     await assertRows([])
     assert.equal(await first.getByText('No matching rows', { exact: true }).isVisible(), true)
-    await category.getByRole('button', { name: 'Clear category', exact: true }).click()
-    await large.getByRole('button', { name: 'Clear ID', exact: true }).click()
+    await category.getByRole('button', { name: 'Clear', exact: true }).click()
+    await large.getByRole('button', { name: 'Clear', exact: true }).click()
     await assertRows(['0', '1', '2', '3'], ['1', '2', '0', '3'])
 
     const renderStage = async (stage: string) => {
@@ -343,14 +331,13 @@ test('shared date controls project saved rows and keep the KPI on its selected r
       },
     },
     program: `$day = "a"; $range = {}; $requiredCluster = "a"; $region = "a"; $clusters = {};
-root = Stack([day, range, rangeApply, requiredCluster, region, clusters, clustersApply, metric, singleTrend, rangeTrend, frameTrend, details]);
-day = Select("day", @Each($source_3_day_options, "i", SelectItem(i.id,i.label)), null, null, $day);
+root = Stack([day, range, rangeApply, requiredCluster, region, clusters, metric, singleTrend, rangeTrend, frameTrend, details]);
+day = FilterChips("day", $day);
 range = DatePicker("range", "range", null, $source_5_range_draft);
-rangeApply = Button("Apply range", @Set($range, @SelectionOrCurrent($range, $source_5_range_draft, $source_5_range_options, "date-range", false)));
-requiredCluster = Select("requiredCluster", @Each($source_15_requiredCluster_options, "i", SelectItem(i.id,i.label)), null, null, $requiredCluster);
-region = Select("region", @Each($source_6_region_options, "i", SelectItem(i.id,i.label)), null, null, $region);
-clusters = CheckBoxGroup("clusters", @Each($source_8_clusters_options, "i", CheckBoxItem(i.label,"",i.id)), null, $source_8_clusters_draft);
-clustersApply = Button("Apply clusters", @Set($clusters, @SelectionOrCurrent($clusters, $source_8_clusters_draft, $source_8_clusters_options, "multiple", true)));
+rangeApply = Button("Apply range", @Set($range, @SelectionOrCurrent($range, $source_5_range_draft, [], "date-range", false)));
+requiredCluster = FilterChips("requiredCluster", $requiredCluster);
+region = FilterChips("region", $region);
+clusters = FilterChips("clusters", $clusters);
 metric = DatasetView("daily", {chart:"metric",encoding:{value:"value"}}, {}, [{source:"day",selection:$day}, {source:"requiredCluster",selection:$requiredCluster}]);
 singleTrend = DatasetView("hourly", {chart:"line",encoding:{axis:"time",values:["value"]}}, {}, [{source:"day",field:{kind:"column",name:"day"},selection:$day}]);
 rangeTrend = DatasetView("hourly", {chart:"line",encoding:{axis:"time",values:["value"]}}, {}, [{source:"range",field:{kind:"column",name:"time"},selection:$range}]);
@@ -421,14 +408,15 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{
       ['2026-11-13T00:00:00Z', '2026-11-13T13:00:00Z'],
     )
     assert.match((await metric.textContent()) ?? '', /106/)
-    await page.getByRole('combobox').nth(0).click()
-    await page.getByRole('option', { name: '"2026-11-12"' }).click()
+    await page.getByRole('button', { name: '"2026-11-12"', exact: true }).click()
     await single.locator('[data-frame-point="143:value"]').first().waitFor()
     assert.equal(await single.locator('[data-frame-point$=":value"]').count(), 24)
     await metric.getByRole('status').filter({ hasText: 'No matching rows' }).waitFor()
     assert.doesNotMatch((await metric.textContent()) ?? '', /106/)
-    await page.getByRole('combobox').nth(1).click()
-    await page.getByRole('option', { name: '"A"' }).click()
+    await page
+      .getByRole('group', { name: 'KPI cluster', exact: true })
+      .getByRole('button', { name: '"A"', exact: true })
+      .click()
     await metric.getByText('105', { exact: true }).waitFor()
     const chooseRange = async (from: string, to: string) => {
       await page.locator('.openui-date-picker-renderer-floating-input-container').click()
@@ -461,18 +449,21 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{
         count,
       )
     await waitForDetailRows(6)
-    await page.getByRole('combobox').nth(2).click()
-    await page.getByRole('option', { name: '"East"' }).click()
+    await page.getByRole('button', { name: '"East"', exact: true }).click()
     await waitForDetailRows(4)
-    await page.getByRole('checkbox', { name: '"A"', exact: true }).check()
-    await page.getByRole('checkbox', { name: '"B"', exact: true }).check()
-    await page.getByRole('button', { name: 'Apply clusters' }).click()
+    await page
+      .getByRole('group', { name: 'Clusters', exact: true })
+      .getByRole('button', { name: '"A"', exact: true })
+      .click()
+    await page
+      .getByRole('group', { name: 'Clusters', exact: true })
+      .getByRole('button', { name: '"B"', exact: true })
+      .click()
     await waitForDetailRows(4)
     await chooseRange('13', '13')
     await page.getByRole('button', { name: 'Apply range' }).click()
     await waitForDetailRows(2)
-    await page.getByRole('combobox').nth(2).click()
-    await page.getByRole('option', { name: '"South"' }).click()
+    await page.getByRole('button', { name: '"South"', exact: true }).click()
     await waitForDetailRows(0)
     await details.getByRole('status').filter({ hasText: 'No matching rows' }).waitFor()
     await chooseRange('12', '13')
@@ -544,9 +535,8 @@ test('one multi-select keeps the same saved periods in indicators, heatmap and c
       },
     },
     program: `$period = {};
-root = Stack([period, apply, metric, heatmap, shares, attribution, comparison, alignment, correlation, members]);
-period = CheckBoxGroup("period", @Each($source_6_period_options, "i", CheckBoxItem(i.label,"",i.id)), null, $source_6_period_draft);
-apply = Button("Apply periods", @Set($period, @SelectionOrCurrent($period, $source_6_period_draft, $source_6_period_options, "multiple", true)));
+root = Stack([period, metric, heatmap, shares, attribution, comparison, alignment, correlation, members]);
+period = FilterChips("period", $period);
 metric = DatasetView("metric", {chart:"metric",encoding:{value:"total"}}, {}, [{source:"period",selection:$period}]);
 heatmap = DatasetView("metric", {chart:"heatmap",encoding:{x:"period",y:"region",value:"total"}}, {}, [{source:"period",selection:$period}]);
 shares = AnalysisFrameView("shares", {chart:"auto"}, {dataTable:"visible"}, [{source:"period",field:{kind:"axis",name:"month"},selection:$period}]);
@@ -620,8 +610,7 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer, {
     const page = await browser.newPage()
     await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
     for (const period of [periods[0], periods[2]])
-      await page.getByRole('checkbox', { name: JSON.stringify(period), exact: true }).check()
-    await page.getByRole('button', { name: 'Apply periods' }).click()
+      await page.getByRole('button', { name: JSON.stringify(period), exact: true }).click()
     const ids = (selector: string, attribute: string) =>
       page
         .locator(selector)

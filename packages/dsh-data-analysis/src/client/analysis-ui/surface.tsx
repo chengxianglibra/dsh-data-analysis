@@ -12,6 +12,7 @@ import { PRESENTATION_STYLES } from '../presentation/styles.ts'
 import { UIStyleSheet } from '../ui/theme.ts'
 import { type AnalysisResourceContext, AnalysisResources } from './context.tsx'
 import { DASHBOARD_COMPONENT_STYLES } from './dashboard-components.tsx'
+import { FILTER_CHIPS_STYLES } from './filter-chips.tsx'
 import { FRAME_STYLES } from './frame/styles.ts'
 import { LAYOUT_STYLES } from './layout.tsx'
 import { analysisLibrary } from './library.tsx'
@@ -43,7 +44,6 @@ const styles = `
 .au-text pre{overflow:auto}
 .au-surface .pr-table-scroll{max-width:100%;overflow:auto}
 .au-result-content{display:flex;flex-direction:column;gap:1rem;min-width:0}
-.au-filter{min-width:0;max-width:100%;border:1px solid var(--border);border-radius:var(--radius-lg);padding:.75rem;display:grid;gap:.5rem}.au-filter legend{font-weight:600;padding:0 .25rem}.au-filter-resource{color:var(--muted-foreground);font-size:.875rem;overflow-wrap:anywhere}.au-filter-options{display:grid;gap:.35rem;max-height:12rem;overflow:auto}.au-filter-options label{display:flex;align-items:baseline;gap:.5rem;min-width:0;overflow-wrap:anywhere}.au-filter-actions{display:flex;gap:.5rem;flex-wrap:wrap}
 `
 /** Shared static renderer. Adapters supply saved resources; components never perform Host IO. */
 export function AnalysisSurface({
@@ -162,13 +162,8 @@ export function AnalysisRenderer({
   }, [])
   const reading = useReportReading()
   const selections = useMemo(
-    () =>
-      prepareSelectionSources(
-        selectionSources ?? {},
-        readResource ?? ((name) => saved[name]),
-        locale,
-      ),
-    [selectionSources, readResource, saved, locale],
+    () => prepareSelectionSources(selectionSources ?? {}, readResource ?? ((name) => saved[name])),
+    [selectionSources, readResource, saved],
   )
   const resources = useMemo(
     () => ({
@@ -221,8 +216,7 @@ export function AnalysisRenderer({
   const initialState = useMemo(() => {
     const constants = Object.fromEntries(
       Object.entries(selections.initialState).filter(
-        ([name]) =>
-          name.startsWith('$source_') && (name.endsWith('_options') || name.endsWith('_default')),
+        ([name]) => name.startsWith('$source_') && name.endsWith('_default'),
       ),
     )
     return {
@@ -250,6 +244,7 @@ export function AnalysisRenderer({
             <style>{LAYOUT_STYLES}</style>
             <style>{DASHBOARD_COMPONENT_STYLES}</style>
             <style>{FRAME_STYLES}</style>
+            <style>{FILTER_CHIPS_STYLES}</style>
             <div className="au-surface-content">
               {progress && (
                 <div className="au-surface-header">

@@ -1,15 +1,13 @@
-import { type ElementNode, parseExpression, split, tokenize } from '@openuidev/lang-core'
+import type { ElementNode } from '@openuidev/lang-core'
 import { z } from 'zod'
 import type { AnalysisResultSummary } from '../result-summary.ts'
 import { analysisCatalogId } from './analysis-catalog.ts'
-import { analysisStatements, parseAnalysisProgram } from './analysis-program.ts'
+import { parseAnalysisProgram } from './analysis-program.ts'
 import { datasetDisplayIssue, datasetDisplaySchema, resolveDatasetView } from './dataset-view.ts'
 import { frameDisplayIssue } from './frame-display.ts'
 import { frameDisplaySchema, frameViewSchema, resolveFrameView } from './frame-view.ts'
 import { parsePresentationBuildId } from './index.ts'
-import { migrateLegacySelections } from './legacy-selection-migration.ts'
 import { analysisResourceDeclaration, pythonCodeRef } from './resource-declaration.ts'
-import { findSelectionWiringIssue } from './selection-wiring.ts'
 import { isFrameSnapshotV2, parseAnalysisSnapshot } from './snapshot.ts'
 import {
   resolveSnapshotFilter,
@@ -28,7 +26,6 @@ import type { AnalysisResourceDeclaration } from './resource-declaration.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
 
 export const ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v4'
-const LEGACY_ANALYSIS_UI_FORMAT = 'dsh.analysis-ui/v3'
 const id = z
   .string()
   .min(1)
@@ -355,6 +352,17 @@ export function validateAnalysisResources(
   }
 }
 
+function isSelectionSourceState(value: unknown, source: string): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'k' in value &&
+    value.k === 'StateRef' &&
+    'n' in value &&
+    value.n === `$${source}`
+  )
+}
+
 /** Resolve immutable source metadata and validate each bound view without owning state. */
 export function validateSelectionSources(
   _program: string,
@@ -407,15 +415,7 @@ export function validateSelectionSources(
         'Use distinct selection source IDs.',
       )
     for (const [index, binding] of bindings.entries()) {
-      const state = binding.selection
-      if (
-        !state ||
-        typeof state !== 'object' ||
-        !('k' in state) ||
-        state.k !== 'StateRef' ||
-        !('n' in state) ||
-        state.n !== `$${binding.source}`
-      )
+      if (!isSelectionSourceState(binding.selection, binding.source))
         failNode(
           node,
           'analysis-filter-reference-invalid',
@@ -442,15 +442,20 @@ export function validateSelectionSources(
         source.ref,
       )
 
-  const wiring = findSelectionWiringIssue(nodes, sources)
-  if (wiring)
-    throw new AnalysisViewError(
-      'analysis-filter-reference-invalid',
-      `${wiring.statementId ?? wiring.component}/value`,
-      `Bind this control to ${wiring.expected}.`,
-      sources?.[wiring.source]?.ref ?? '',
-      { received: wiring.actual },
-    )
+  for (const node of nodes) {
+    if (node.typeName !== 'FilterChips') continue
+    const id = String(node.props.source)
+    const source = sources && Object.hasOwn(sources, id) ? sources[id] : undefined
+    if (!source || source.mode === 'date-range')
+      failNode(
+        node,
+        'analysis-filter-reference-invalid',
+        'source',
+        'Use a single or multiple selection source.',
+      )
+    if (!isSelectionSourceState(node.props.value, id))
+      failNode(node, 'analysis-filter-reference-invalid', 'value', `Bind the control to $${id}.`)
+  }
 
   for (const [id, source] of sourceEntries) {
     const resource = resources[source.ref]
@@ -631,32 +636,14 @@ export function parseAnalysisResource(value: unknown, workspaceId: string): Anal
     throw new Error('analysis-resource-result-identity-invalid')
   return item
 }
-/** Convert legacy v3 in memory without modifying its immutable saved Build. */
 export function parseSavedPresentation(value: unknown): AnalysisDocument {
   if (
     !value ||
     typeof value !== 'object' ||
     !('schemaVersion' in value) ||
-    ![ANALYSIS_UI_FORMAT, LEGACY_ANALYSIS_UI_FORMAT].includes(String(value.schemaVersion))
+    value.schemaVersion !== ANALYSIS_UI_FORMAT
   )
     throw new Error('report-version-unsupported')
-  if (value.schemaVersion === LEGACY_ANALYSIS_UI_FORMAT) {
-    const legacy = z
-      .strictObject({
-        schemaVersion: z.literal(LEGACY_ANALYSIS_UI_FORMAT),
-        ...documentFields.omit({ selectionSources: true }).shape,
-      })
-      .parse(value)
-    let filtered = false
-    for (const statement of split(tokenize(analysisStatements(legacy.program)))) {
-      const expression = parseExpression(statement.tokens)
-      if (expression.k === 'Comp' && expression.name === 'SnapshotFilter') filtered = true
-    }
-    const migration = filtered
-      ? migrateLegacySelections(analysisStatements(legacy.program), legacy.locale)
-      : { program: legacy.program, selectionSources: undefined }
-    return parseAnalysisDocument({ ...legacy, ...migration, schemaVersion: ANALYSIS_UI_FORMAT })
-  }
   return parseAnalysisDocument(value)
 }
 

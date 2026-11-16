@@ -59,13 +59,11 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 
 显式 metric 需要完整快照。只绑定单选时，所有绑定均须必选；包含多选或日期范围时，按绑定字段元组展示各自的保存值。两种情况均要求目标字段元组唯一定位一行，覆盖所有可选状态。零匹配显示无数据。普通表格筛已捕获行；比较保留已保存的两端；份额、分解和相关性验证组内各行具有相同的筛选键，确保每个筛选器能保留或移除完整组。详见[展示阅读](presentation-reader.md#固定快照筛选)。auto 按原始资源选图。刷新后显式默认成员消失或其他准入失败时拒绝新版本，保留最后成功的草稿和正式版本；latest 在新 Build 上重新解析。筛选选择属于阅读状态。
 
-来源 ID 以字母开头，只能包含字母、数字和下划线，保留 `source_` 前缀避免与注入状态冲突。来源 `region` 的候选、默认值和草稿变量分别命名为 `$source_6_region_options`、`$source_6_region_default`、`$source_6_region_draft`；数字为 ID 的字符长度。控件通过官方 `@Each` 使用候选，数据视图通过对应 `$region` 状态消费已应用选择。
+来源 ID 以字母开头，只能包含字母、数字和下划线，保留 `source_` 前缀避免与注入状态冲突。枚举控件 `FilterChips("region", $region)` 与消费视图使用同一状态。保存和读取检查控件来源存在、模式为单选或多选，且绑定同名状态。组件从来源读取候选、默认值、是否允许清除和标签（缺省时显示来源 ID）。页面可只绑定视图，省略筛选控件。
 
-当官方选择控件明确使用来源候选时，准入检查控件的状态变量能否直接或通过可达的 `@Set` 应用到该来源；明确不连通时返回可修复的绑定错误。不强制页面必须包含选择控件，也不推断无法静态判断的表达式。
+日期范围来源 `period` 的默认值和草稿变量分别为 `$source_6_period_default` 和 `$source_6_period_draft`；数字为 ID 字符长度。完整范围在校验后写到 `$period`。
 
-筛选来源的可选 `label` 用于消费视图的筛选摘要，应与控件标签和报告语言一致；省略时显示来源 ID。
-
-`dsh.analysis-ui/v3` 报告读取时在内存中转换为当前组件声明和状态绑定，不修改已保存的不可变 Build，不要求 Catalog build 相等；转换后的文档仍须通过当前快照与视图校验。早期 Frame 图表曾允许重复坐标并在绘图时覆盖其中的行；这类筛选图不满足当前唯一性约束，读取会明确拒绝，需要修复报告配置或数据。
+读取按当前 Catalog 验证保存程序。`dsh.analysis-ui/v3` 和引用已移除筛选控件的程序需要重新生成报告。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
 模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。`report-ref-invalid` 提示准确复制成功回执，或通过 `marivo_report_list` 检索已保存报告，再读取选中的 ref 确认目标；不解码、修补引用或自动选择最新报告。`marivo_report_read({draft:true})` 仅恢复尚未保存的当前 Turn 草稿，成功保存会立即清除草稿。保存 ref 编码后执行解析自检；提交证明与 canonical 回执复用同一个 ref，文本回执核对其与持久化 receipt 的身份一致。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。

@@ -141,7 +141,14 @@ test('documented filter examples bind each view to its declared source state', a
     )
     for (const [name, source] of Object.entries(sources)) {
       assert.ok(source.label, `${name} needs a report-language summary label`)
-      assert.ok(controlLabels.has(source.label), `${name} label must match its control`)
+      if (source.mode === 'date-range') {
+        assert.ok(controlLabels.has(source.label), `${name} label must match its control`)
+      } else {
+        const chips = nodes.find(
+          (node) => node.typeName === 'FilterChips' && node.props.source === name,
+        )
+        assert.deepEqual(chips?.props.value, { k: 'StateRef', n: `$${name}` })
+      }
     }
     const used = new Set<string>()
     for (const node of nodes) {

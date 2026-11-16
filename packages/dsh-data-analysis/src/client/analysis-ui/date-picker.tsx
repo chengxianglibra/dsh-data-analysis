@@ -5,7 +5,7 @@ import {
   useStateField,
 } from '@openuidev/react-lang'
 import { DatePicker } from '@openuidev/react-ui'
-import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react'
+import { type ComponentProps, useEffect, useMemo, useState } from 'react'
 
 type DateRange = NonNullable<ComponentProps<typeof DatePicker>['selectedRangeDates']>
 
@@ -55,7 +55,7 @@ export function AnalysisDatePicker({
   const rules = useMemo(() => parseStructuredRules(rawRules), [rawRules])
   const hasRules = rules.length > 0
   const [open, setOpen] = useState(false)
-  const firstClick = useRef(false)
+  const [anchor, setAnchor] = useState<Date>()
 
   useEffect(() => {
     if (!isStreaming && hasRules && formValidation) {
@@ -70,7 +70,7 @@ export function AnalysisDatePicker({
     if (hasRules) formValidation?.validateField(field.name, next, rules)
   }
   const setIsOpen = (next: boolean) => {
-    firstClick.current = false
+    setAnchor(undefined)
     setOpen(next)
   }
   if (mode === 'single')
@@ -91,24 +91,22 @@ export function AnalysisDatePicker({
       />
     )
 
-  const selected = range(field.value)
+  const selected = anchor ? { from: anchor, to: anchor } : range(field.value)
   return (
     <DatePicker
       mode="range"
       selectedRangeDates={selected ?? { from: undefined }}
       setSelectedRangeDates={(next) => {
-        if (!firstClick.current) {
+        if (!anchor) {
           const day = clickedDay(selected, next)
           if (!day) return
-          firstClick.current = true
-          update({ from: day, to: day })
+          setAnchor(day)
           return
         }
         const complete = next?.from && next.to ? next : selected
         if (!complete?.from || !complete.to) return
         update(complete)
-        firstClick.current = false
-        setOpen(false)
+        setIsOpen(false)
       }}
       isOpen={open}
       setIsOpen={setIsOpen}

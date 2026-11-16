@@ -5,6 +5,11 @@ import type {
 
 export const optionId = (value: SnapshotFilterValue) => `v:${JSON.stringify(value)}`
 
+export function encodeEnumSelection(values: readonly SnapshotFilterValue[], multiple: boolean) {
+  if (multiple) return Object.fromEntries(values.map((value) => [optionId(value), true]))
+  return values.length ? optionId(values[0]!) : 'a'
+}
+
 export function dateFromDay(day: string): Date {
   const [year, month, date] = day.split('-').map(Number)
   const result = new Date(0)

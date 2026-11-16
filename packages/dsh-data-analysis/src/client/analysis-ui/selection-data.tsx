@@ -11,20 +11,20 @@ import {
   visibleSnapshotRows,
 } from '../../presentation/contracts/snapshot-filter.ts'
 import { useCopy } from '../i18n/context.tsx'
-import { dateFromDay, decodeSelection, optionId } from './selection-codec.ts'
+import type { Translator } from '../i18n/copy.ts'
+import { dateFromDay, decodeSelection, encodeEnumSelection } from './selection-codec.ts'
 
 export { validSelectionDraft } from './selection-codec.ts'
 
-function optionLabel(value: SnapshotFilterValue, locale: 'zh-CN' | 'en-US'): string {
-  if (value === null) return locale === 'zh-CN' ? '空值' : 'Missing value'
-  if (value === '') return locale === 'zh-CN' ? '空字符串' : 'Empty string'
+export function optionLabel(value: SnapshotFilterValue, t: Translator): string {
+  if (value === null) return t('marivo.presentation.missing-value')
+  if (value === '') return t('marivo.presentation.empty-string')
   return typeof value === 'string' ? JSON.stringify(value) : String(value)
 }
 
 export function prepareSelectionSources(
   sources: SelectionSources,
   readResource: (name: string) => AnalysisResource | undefined,
-  locale: 'zh-CN' | 'en-US',
 ) {
   const definitions = new Map<string, ResolvedSnapshotFilter>()
   const errors = new Map<string, 'date-unrepresentable'>()
@@ -43,16 +43,6 @@ export function prepareSelectionSources(
       // Incomplete resource streams are expected during candidate rendering.
       continue
     }
-    const items = definition.options.map((value) => ({
-      id: optionId(value),
-      label: optionLabel(value, locale),
-    }))
-    if (
-      source.mode !== 'multiple' &&
-      source.mode !== 'date-range' &&
-      source.options?.allowAll !== false
-    )
-      items.unshift({ id: 'a', label: locale === 'zh-CN' ? '全部' : 'All' })
     let selected: unknown
     if (source.mode === 'date-range') {
       try {
@@ -67,20 +57,16 @@ export function prepareSelectionSources(
         errors.set(id, 'date-unrepresentable')
         continue
       }
-    } else if (source.mode === 'multiple') {
-      selected = Object.fromEntries(
-        definition.defaultValues.map((value) => [optionId(value), true]),
-      )
     } else {
-      selected = definition.defaultValues.length ? optionId(definition.defaultValues[0]!) : 'a'
+      selected = encodeEnumSelection(definition.defaultValues, source.mode === 'multiple')
     }
     definitions.set(id, definition)
-    const prefix = `$source_${id.length}_${id}`
-    initialState[`${prefix}_options`] = items
-    initialState[`${prefix}_default`] = selected
     initialState[`$${id}`] = selected
-    if (source.mode === 'date-range' || source.mode === 'multiple')
+    if (source.mode === 'date-range') {
+      const prefix = `$source_${id.length}_${id}`
+      initialState[`${prefix}_default`] = selected
       initialState[`${prefix}_draft`] = selected
+    }
   }
   return { definitions, errors, initialState }
 }
@@ -149,17 +135,7 @@ export function SelectionSummary({
         <p key={filter.id}>
           {filter.label}:{' '}
           {filter.selected.length
-            ? filter.selected
-                .map((value) =>
-                  value === null
-                    ? t('marivo.presentation.missing-value')
-                    : value === ''
-                      ? t('marivo.presentation.empty-string')
-                      : typeof value === 'string'
-                        ? JSON.stringify(value)
-                        : String(value),
-                )
-                .join(', ')
+            ? filter.selected.map((value) => optionLabel(value, t)).join(', ')
             : t('marivo.presentation.ui-filter-all')}
           {!filter.sourceComplete && <> · {t('marivo.presentation.ui-filter-incomplete-source')}</>}
         </p>
