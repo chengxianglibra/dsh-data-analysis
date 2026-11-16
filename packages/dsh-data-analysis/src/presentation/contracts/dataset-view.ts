@@ -142,10 +142,7 @@ export function resolveDatasetView(
   const unique = (names: string[]) => {
     const indices = names.map((name) => ids.indexOf(name))
     return uniqueRowKeys(
-      [
-        ...(view.chart === 'heatmap' ? [] : (filters?.requiredSingles ?? [])),
-        ...indices.map((i) => rows.map((row) => row[i])),
-      ],
+      [...(filters?.requiredSingles ?? []), ...indices.map((i) => rows.map((row) => row[i]))],
       rows.length,
     )
   }

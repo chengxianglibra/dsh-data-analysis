@@ -10,4 +10,5 @@ export interface MainViewProps<K extends ResolvedFrameView['chart']> {
   view: View<K>
   height?: number
   visibleRowIndices?: readonly number[]
+  filterSelectionKey?: string
 }

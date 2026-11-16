@@ -2,6 +2,7 @@
 export const zh = {
   'marivo.presentation.ui-filter-resource': '作用资源：{p0}',
   'marivo.presentation.ui-filter-summary': '生效的筛选条件',
+  'marivo.presentation.ui-filter-incomplete-source': '筛选来源仅捕获部分数据',
   'marivo.presentation.ui-filter-all': '全部',
   'marivo.presentation.ui-filter-clear': '清除',
   'marivo.presentation.ui-filter-reset': '恢复默认',
@@ -21,6 +22,8 @@ export const zh = {
   'marivo.presentation.ui-semantic-groups': '分组',
   'marivo.presentation.ui-semantic-scope': '范围',
   'marivo.presentation.ui-filter-empty': '没有匹配的行',
+  'marivo.presentation.ui-filter-composition-scope': '构成比例以当前匹配项的合计为分母',
+  'marivo.presentation.ui-filter-composition-zero': '匹配项合计为零，无法显示构成比例',
   'marivo.presentation.ui-next-steps-connection-failed':
     '下一步建议连接中断。重连后可重新请求建议。',
   'marivo.presentation.ui-next-steps-reconnect': '重试连接',
@@ -279,6 +282,7 @@ export const zh = {
 export const en = {
   'marivo.presentation.ui-filter-resource': 'Resource: {p0}',
   'marivo.presentation.ui-filter-summary': 'Active filter conditions',
+  'marivo.presentation.ui-filter-incomplete-source': 'Filter source contains only part of the data',
   'marivo.presentation.ui-filter-all': 'All',
   'marivo.presentation.ui-filter-clear': 'Clear',
   'marivo.presentation.ui-filter-reset': 'Restore defaults',
@@ -298,6 +302,10 @@ export const en = {
   'marivo.presentation.ui-semantic-groups': 'Groups',
   'marivo.presentation.ui-semantic-scope': 'Scope',
   'marivo.presentation.ui-filter-empty': 'No matching rows',
+  'marivo.presentation.ui-filter-composition-scope':
+    'Shares use the total of the matching categories.',
+  'marivo.presentation.ui-filter-composition-zero':
+    'The matching categories total zero, so shares are undefined.',
   'marivo.presentation.ui-next-steps-connection-failed':
     'Next steps connection failed. Reconnect, then request suggestions again.',
   'marivo.presentation.ui-next-steps-reconnect': 'Retry connection',

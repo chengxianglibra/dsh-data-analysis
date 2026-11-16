@@ -8,7 +8,10 @@ import {
   resolveFrameView,
 } from '../../../presentation/contracts/frame-view.ts'
 import type { TypedDataset } from '../../../presentation/contracts/types.ts'
-import type { ViewFilterContext } from '../../../presentation/contracts/view-filter-context.ts'
+import type {
+  FilterTarget,
+  ViewFilterContext,
+} from '../../../presentation/contracts/view-filter-context.ts'
 import type { PythonCodeRef } from '../../../python-execution-contracts.ts'
 import { useCopy } from '../../i18n/context.tsx'
 import type { Translator } from '../../i18n/copy.ts'
@@ -19,7 +22,13 @@ import { FishLogo } from '../../ui/fish-logo.tsx'
 import { Button } from '../../ui/primitives/button.tsx'
 import { CardContent } from '../../ui/primitives/card.tsx'
 import { Popover, PopoverAnchor, PopoverContent } from '../../ui/primitives/popover.tsx'
-import { MetricGroup, ResultCard, ResultHeader, ResultStatus } from '../components/result.tsx'
+import {
+  MetricGroup,
+  metricGroupLabel,
+  ResultCard,
+  ResultHeader,
+  ResultStatus,
+} from '../components/result.tsx'
 import { type ComponentIdentity, useAnalysisResources } from '../context.tsx'
 import { useFocusAfterAsk } from '../focus-after-ask.ts'
 import { ResourceAskButton } from '../resource-ask-button.tsx'
@@ -53,6 +62,7 @@ import {
   endpointLabels,
   headerContext,
   interpretationOf,
+  rowsOf,
   type Snapshot,
   valueName,
 } from './model.ts'
@@ -104,6 +114,7 @@ export function AnalysisFrame({
       classification={resolution.classification}
       view={resolution.view}
       display={display}
+      filterContext={filterContext}
       {...rest}
     />
   )
@@ -116,7 +127,17 @@ function keyColumns(s: Snapshot, c: FrameClassification): number {
   return first < 0 ? s.frame.layout.length : first
 }
 
-function MembersTable({ snapshot, height }: { snapshot: Snapshot; height?: number }) {
+function MembersTable({
+  snapshot,
+  height,
+  visibleRowIndices,
+  filterSelectionKey,
+}: {
+  snapshot: Snapshot
+  height?: number
+  visibleRowIndices?: readonly number[]
+  filterSelectionKey?: string
+}) {
   const t = useCopy()
   const data = membersData(snapshot)
   const ref = useFrozenColumns(data.columns.length > 1 ? 1 : 0)
@@ -129,6 +150,8 @@ function MembersTable({ snapshot, height }: { snapshot: Snapshot; height?: numbe
     >
       <DatasetTable
         data={data}
+        visibleRowIndices={visibleRowIndices}
+        filterSelectionKey={filterSelectionKey}
         caption=""
         hideRowCount
         hideExactTitle
@@ -153,13 +176,24 @@ function membersData(s: Snapshot): TypedDataset {
 }
 
 /** A compact preview of one-dimensional keys; the table action retains all saved rows. */
-function MembersPreview({ snapshot, height }: { snapshot: Snapshot; height?: number }) {
+function MembersPreview({
+  snapshot,
+  height,
+  visibleRowIndices,
+  filterSelectionKey,
+}: {
+  snapshot: Snapshot
+  height?: number
+  visibleRowIndices?: readonly number[]
+  filterSelectionKey?: string
+}) {
   const t = useCopy()
   const data = membersData(snapshot)
-  if (data.columns.length !== 1 || !snapshot.coverage.complete || data.rows.length === 0)
-    return <MembersTable snapshot={snapshot} height={height} />
+  const indices = visibleRowIndices ?? rowsOf(snapshot)
+  if (data.columns.length !== 1 || !snapshot.coverage.complete || indices.length === 0)
+    return <MembersTable {...{ snapshot, height, visibleRowIndices, filterSelectionKey }} />
   const column = data.columns[0]!
-  const rows = data.rows.slice(0, 40)
+  const rows = indices.slice(0, 40).map((row) => data.rows[row]!)
   const occurrences = new Map<string, number>()
   return (
     <div>
@@ -176,11 +210,11 @@ function MembersPreview({ snapshot, height }: { snapshot: Snapshot; height?: num
           )
         })}
       </div>
-      {data.rows.length > rows.length && (
+      {indices.length > rows.length && (
         <p className="fv-members-more">
           {t('marivo.presentation.ui-frame-members-preview', {
             shown: rows.length.toLocaleString(t.locale),
-            total: data.rows.length.toLocaleString(t.locale),
+            total: indices.length.toLocaleString(t.locale),
           })}
         </p>
       )}
@@ -195,6 +229,7 @@ export function MainView({
   height,
   visibleRowIndices,
   filterSelectionKey,
+  metricGroups,
 }: {
   snapshot: Snapshot
   classification: FrameClassification
@@ -202,9 +237,10 @@ export function MainView({
   height?: number
   visibleRowIndices?: readonly number[]
   filterSelectionKey?: string
+  metricGroups?: readonly FilterTarget[]
 }) {
   const t = useCopy()
-  const common = { snapshot, classification, height, visibleRowIndices }
+  const common = { snapshot, classification, height, visibleRowIndices, filterSelectionKey }
   const tableRows = visibleRowIndices ?? snapshot.data.rows.map((_, index) => index)
   const rowLimit = snapshot.frameDisplay?.rowLimit
   switch (view.chart) {
@@ -218,7 +254,9 @@ export function MainView({
           visibleRowIndices={visibleRowIndices}
         />
       ) : view.layout === 'comparison' ? (
-        <ComparisonTable snapshot={snapshot} classification={classification} />
+        visibleRowIndices?.length === 0 ? null : (
+          <ComparisonTable snapshot={snapshot} classification={classification} />
+        )
       ) : (
         <>
           <DataTable
@@ -247,29 +285,41 @@ export function MainView({
         </>
       )
     case 'members':
-      return <MembersPreview snapshot={snapshot} height={height} />
+      return <MembersPreview {...common} />
     case 'metric': {
-      const row = visibleRowIndices ? visibleRowIndices[0] : 0
-      if (row === undefined) return null
+      const rows = visibleRowIndices ?? [0]
+      if (!rows.length) return null
       return (
         <MetricGroup
-          items={view.values.map((name) => {
-            const column = columnOf(snapshot, name)?.column
-            const value = cellOf(snapshot, row, name)
-            return {
-              key: name,
-              value: (
-                <SelectableFrameValue
-                  snapshot={snapshot}
-                  row={row}
-                  field={name}
-                  label={`${valueName(snapshot, classification, name)}: ${column ? displayFrameCell(snapshot, t.locale, value, column) : String(value)}`}
-                >
-                  {column ? displayFrameCell(snapshot, t.locale, value, column) : String(value)}
-                </SelectableFrameValue>
-              ),
-              label: view.values.length > 1 ? valueName(snapshot, classification, name) : undefined,
-            }
+          key={filterSelectionKey}
+          paginate={!!metricGroups}
+          items={rows.flatMap((row) => {
+            const group = metricGroups && metricGroupLabel(t, metricGroups, row)
+            return view.values.map((name) => {
+              const column = columnOf(snapshot, name)?.column
+              const cell = cellOf(snapshot, row, name)
+              const value = column
+                ? displayFrameCell(snapshot, t.locale, cell, column)
+                : String(cell)
+              const metric = valueName(snapshot, classification, name)
+              return {
+                key: metricGroups ? `${row}:${name}` : name,
+                value: (
+                  <SelectableFrameValue
+                    snapshot={snapshot}
+                    row={row}
+                    field={name}
+                    label={`${group ? `${group} · ` : ''}${metric}: ${value}`}
+                  >
+                    {value}
+                  </SelectableFrameValue>
+                ),
+                label:
+                  group && view.values.length > 1
+                    ? `${group} · ${metric}`
+                    : (group ?? (view.values.length > 1 ? metric : undefined)),
+              }
+            })
           })}
         />
       )
@@ -370,15 +420,17 @@ function headerNumbers(
   s: Snapshot,
   c: FrameClassification,
   view: ResolvedFrameView,
+  visibleRowIndices?: readonly number[],
 ): NumberItem[] {
+  if (visibleRowIndices?.length === 0) return []
   if (view.chart === 'decomposition') {
     const facts = decompositionOf(s, view.decomposition)
-    const total = facts && decompositionTotal(t, s, facts)
-    const relative = facts && decompositionRelativeTotal(t, s, facts)
+    const total = facts && decompositionTotal(t, s, facts, visibleRowIndices)
+    const relative = facts && decompositionRelativeTotal(t, s, facts, visibleRowIndices)
     const binding = s.frameDisplay?.decompositionTotals
     const level = (name: string, label: string): NumberItem | undefined => {
       const column = columnOf(s, name)?.column
-      const cells = s.data.rows.map((_, row) => cellOf(s, row, name))
+      const cells = (visibleRowIndices ?? rowsOf(s)).map((row) => cellOf(s, row, name))
       const first = cells[0]
       if (
         !column ||
@@ -433,8 +485,8 @@ function headerNumbers(
     return [
       {
         key: 'members',
-        value: s.coverage.totalRows.toLocaleString(t.locale),
-        title: String(s.coverage.totalRows),
+        value: (visibleRowIndices?.length ?? s.coverage.totalRows).toLocaleString(t.locale),
+        title: String(visibleRowIndices?.length ?? s.coverage.totalRows),
         label: t('marivo.presentation.ui-frame-members'),
       },
     ]
@@ -452,6 +504,7 @@ export function FrameShell({
   visibleRowIndices,
   filterSelectionKey,
   filterSummary,
+  filterContext,
 }: FrameShellProps) {
   const s = useMemo<Snapshot>(
     () => (display ? { ...snapshot, frameDisplay: display } : snapshot),
@@ -589,7 +642,7 @@ export function FrameShell({
     c.primaryValues,
     view.chart === 'comparison' || view.chart === 'comparison-grid' ? view.comparison : undefined,
   )
-  const numbers = headerNumbers(t, s, c, view)
+  const numbers = headerNumbers(t, s, c, view, visibleRowIndices)
   // A single-row comparison carries its own header numbers next to the alias control.
   const comparisonNumbers = view.chart === 'comparison' && s.data.rows.length === 1
   const hasNumbers = numbers.length > 0 || comparisonNumbers
@@ -700,12 +753,17 @@ export function FrameShell({
   )
   const dataTable =
     view.chart === 'members' ? (
-      <MembersTable snapshot={referenceSnapshot} />
-    ) : c.class === 'comparison' ? (
+      <MembersTable snapshot={referenceSnapshot} {...{ visibleRowIndices, filterSelectionKey }} />
+    ) : c.class === 'comparison' &&
+      (!visibleRowIndices || view.chart !== 'table' || view.layout) &&
+      visibleRowIndices?.length !== 0 ? (
       s.data.rows.length === 1 ? (
         <ComparisonTable snapshot={referenceSnapshot} classification={c} reference />
       ) : (
-        <ComparisonDetail snapshot={referenceSnapshot} />
+        <ComparisonDetail
+          snapshot={referenceSnapshot}
+          {...{ visibleRowIndices, filterSelectionKey }}
+        />
       )
     ) : (
       <DataTable
@@ -815,29 +873,32 @@ export function FrameShell({
           {numbers.length > 0 && view.chart !== 'correlation' && (
             <Numbers items={numbers} snapshot={s} />
           )}
-          {view.chart === 'comparison' ? (
-            <ComparisonView
-              snapshot={s}
-              classification={c}
-              view={view}
-              height={display?.height}
-              numbers={comparisonNumbers}
-              body={showMain}
-              control={!compactDensity}
-            />
-          ) : (
-            showMain &&
-            (view.chart === 'table' || visibleRowIndices?.length !== 0) && (
-              <MainView
-                snapshot={s}
-                classification={c}
-                view={view}
-                height={display?.height}
-                visibleRowIndices={visibleRowIndices}
-                filterSelectionKey={filterSelectionKey}
-              />
-            )
-          )}
+          {view.chart === 'comparison'
+            ? visibleRowIndices?.length !== 0 && (
+                <ComparisonView
+                  snapshot={s}
+                  classification={c}
+                  view={view}
+                  height={display?.height}
+                  visibleRowIndices={visibleRowIndices}
+                  filterSelectionKey={filterSelectionKey}
+                  numbers={comparisonNumbers}
+                  body={showMain}
+                  control={!compactDensity}
+                />
+              )
+            : showMain &&
+              (view.chart === 'table' || visibleRowIndices?.length !== 0) && (
+                <MainView
+                  snapshot={s}
+                  classification={c}
+                  view={view}
+                  height={display?.height}
+                  visibleRowIndices={visibleRowIndices}
+                  filterSelectionKey={filterSelectionKey}
+                  metricGroups={filterContext?.metricGroups}
+                />
+              )}
           {numbers.length > 0 && view.chart === 'correlation' && (
             <Numbers items={numbers} snapshot={s} />
           )}

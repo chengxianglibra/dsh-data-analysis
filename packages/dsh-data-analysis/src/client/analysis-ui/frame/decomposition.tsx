@@ -93,8 +93,8 @@ export function decompositionChips(facts: DecompositionFacts): Chip[] {
     g.kind === 'fixed' ? [{ label: fixedLabel(g.fixed), title: g.fixed.name }] : [],
   )
 }
-export function parentGroups(s: Snapshot, facts: DecompositionFacts) {
-  return groupRows(s, facts.parents)
+export function parentGroups(s: Snapshot, facts: DecompositionFacts, rows?: readonly number[]) {
+  return groupRows(s, facts.parents, rows)
 }
 
 /** Saved cell at a row; relative targets are fractions shown ×100. */
@@ -115,8 +115,13 @@ function formatter(t: Translator, s: Snapshot, facts: DecompositionFacts) {
 }
 
 /** Header number: the parent's saved `total` (single parent only). */
-export function decompositionTotal(t: Translator, s: Snapshot, facts: DecompositionFacts) {
-  const groups = parentGroups(s, facts)
+export function decompositionTotal(
+  t: Translator,
+  s: Snapshot,
+  facts: DecompositionFacts,
+  rows?: readonly number[],
+) {
+  const groups = parentGroups(s, facts, rows)
   if (!facts.total || groups.length !== 1) return undefined
   const { row } = firstCell(s, groups[0]!.rows, facts.total)
   return {
@@ -128,7 +133,12 @@ export function decompositionTotal(t: Translator, s: Snapshot, facts: Decomposit
 }
 
 /** A relative total belongs to this change only when the saved decomposition identity is unique. */
-export function decompositionRelativeTotal(t: Translator, s: Snapshot, facts: DecompositionFacts) {
+export function decompositionRelativeTotal(
+  t: Translator,
+  s: Snapshot,
+  facts: DecompositionFacts,
+  rows?: readonly number[],
+) {
   const target = facts.item.target
   if (target.kind !== 'absolute') return undefined
   const matching = (interpretationOf(s)?.decompositions ?? []).filter(
@@ -146,7 +156,7 @@ export function decompositionRelativeTotal(t: Translator, s: Snapshot, facts: De
   )
   if (totals.length !== 1) return undefined
   const name = totals[0]!.name
-  const groups = parentGroups(s, facts)
+  const groups = parentGroups(s, facts, rows)
   if (groups.length !== 1 || groups[0]!.rows.length === 0) return undefined
   const values = groups[0]!.rows.map((row) => cellOf(s, row, name))
   const first = values[0]
@@ -169,11 +179,12 @@ export function DecompositionView({
   snapshot: s,
   classification: c,
   view,
+  visibleRowIndices,
 }: MainViewProps<'decomposition'>) {
   const t = useCopy()
   const facts = decompositionOf(s, view.decomposition)
   if (!facts) return null
-  const groups = parentGroups(s, facts)
+  const groups = parentGroups(s, facts, visibleRowIndices)
   const format = formatter(t, s, facts)
   const labelOf = (row: number) => membersLabel(s, facts.details, row)
   return (
@@ -202,7 +213,7 @@ export function DecompositionView({
           const total = facts.total ? firstCell(s, g.rows, facts.total) : undefined
           return (
             <section key={g.key} className="fv-parent" data-parent={g.label}>
-              {groups.length > 1 && (
+              {(groups.length > 1 || (visibleRowIndices && facts.parents.length > 0)) && (
                 <h4>
                   {g.label}
                   {facts.total && total && (

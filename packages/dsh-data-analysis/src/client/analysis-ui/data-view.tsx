@@ -15,11 +15,9 @@ import {
   type DatasetSnapshot,
   isFrameSnapshotV2,
 } from '../../presentation/contracts/snapshot.ts'
-import {
-  type SelectionBinding,
-  snapshotFilterViewIssue,
-} from '../../presentation/contracts/snapshot-filter.ts'
+import type { SelectionBinding } from '../../presentation/contracts/snapshot-filter.ts'
 import type { Cell, DatasetColumn, TypedDataset } from '../../presentation/contracts/types.ts'
+import { snapshotFilterViewIssue } from '../../presentation/contracts/view-filter-admission.ts'
 import {
   type ViewFilterContext,
   viewFilterContext,
@@ -40,6 +38,7 @@ import { ChartSelectionContext, useChartSelection } from './charts/selection-con
 import {
   DataActions,
   MetricGroup,
+  metricGroupLabel,
   ResultCard,
   ResultHeader,
   ResultStatus,
@@ -177,7 +176,7 @@ export function AnalysisDataView({
     snapshot &&
     resolution?.ok &&
     filterState.ready &&
-    (!filters?.length || !snapshotFilterViewIssue(snapshot, resolution)) &&
+    !snapshotFilterViewIssue(snapshot, resolution, view, filterState.filters) &&
     (isFrameSnapshotV2(snapshot)
       ? !validateFrameDisplay(snapshot, resolution.view, display)
       : !validateDatasetDisplay(snapshot, display, resolution.view))
@@ -496,12 +495,9 @@ function DatasetDataView({
     (resolved?.chart === 'table' ? resolved.columns : undefined) ?? data.columns.map((c) => c.id)
   const metricColumn =
     resolved?.chart === 'metric' ? data.columns.find((c) => c.id === resolved.values[0]) : undefined
-  const metricRow = visibleRowIndices ? visibleRowIndices[0] : 0
-  const metric =
-    metricColumn &&
-    snapshot.coverage.complete &&
-    metricRow !== undefined &&
-    (visibleRowIndices ? visibleRowIndices.length === 1 : data.rowCount === 1)
+  const metricGroups = filterContext?.metricGroups
+  const metricRows = visibleRowIndices ?? [0]
+  const metric = metricColumn && metricRows.length > 0
   const titleFields =
     resolved?.chart === 'metric'
       ? resolved.values
@@ -737,35 +733,34 @@ function DatasetDataView({
             ))
           ) : metric ? (
             <MetricGroup
-              items={[
-                {
-                  key: metricColumn.id,
+              key={filterSelectionKey}
+              paginate={!!metricGroups}
+              items={metricRows.map((row) => {
+                const cell = data.rows[row]![data.columns.indexOf(metricColumn)]!
+                const value = formatValue(cell, metricColumn)
+                const label = metricGroups && metricGroupLabel(t, metricGroups, row)
+                return {
+                  key: metricGroups ? `${row}:${metricColumn.id}` : metricColumn.id,
+                  label,
                   value:
-                    selectable &&
-                    data.rows[metricRow!]![data.columns.indexOf(metricColumn)] != null ? (
+                    selectable && cell !== null ? (
                       <button
                         type="button"
                         className="pr-cell-select"
-                        data-frame-point={`${metricRow}:${metricColumn.id}`}
-                        aria-label={`${t('marivo.presentation.ui-frame-select-point')}: ${metricColumn.label}, ${formatValue(data.rows[metricRow!]![data.columns.indexOf(metricColumn)]!, metricColumn)}`}
-                        onClick={() => selectable.select(metricRow!, metricColumn.id)}
+                        data-frame-point={`${row}:${metricColumn.id}`}
+                        aria-label={`${t('marivo.presentation.ui-frame-select-point')}: ${label ? `${label} · ` : ''}${metricColumn.label}, ${value}`}
+                        onClick={() => selectable.select(row, metricColumn.id)}
                       >
-                        {formatValue(
-                          data.rows[metricRow!]![data.columns.indexOf(metricColumn)]!,
-                          metricColumn,
-                        )}
+                        {value}
                       </button>
                     ) : (
-                      formatValue(
-                        data.rows[metricRow!]![data.columns.indexOf(metricColumn)]!,
-                        metricColumn,
-                      )
+                      value
                     ),
                   unit: display?.formats?.some((item) => item.value === metricColumn.id)
                     ? undefined
                     : metricColumn.unit,
-                },
-              ]}
+                }
+              })}
             />
           ) : resolved?.chart === 'metric' ? null : (
             <DatasetDisplayTable

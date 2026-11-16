@@ -4,6 +4,12 @@ import type { ResolvedSnapshotFilter, SnapshotFilterValue } from './snapshot-fil
 export interface ViewFilterContext {
   requiredSingles: readonly (readonly SnapshotFilterValue[])[]
   metricEligible: boolean
+  metricGroups?: readonly FilterTarget[]
+}
+
+export interface FilterTarget {
+  definition: ResolvedSnapshotFilter
+  values: readonly SnapshotFilterValue[]
 }
 
 export function uniqueRowKeys(columns: readonly (readonly unknown[])[], rowCount: number): boolean {
@@ -17,10 +23,7 @@ export function uniqueRowKeys(columns: readonly (readonly unknown[])[], rowCount
 }
 
 export function viewFilterContext(
-  bindings: readonly {
-    definition: ResolvedSnapshotFilter
-    values: readonly SnapshotFilterValue[]
-  }[],
+  bindings: readonly FilterTarget[],
   rowCount: number,
 ): ViewFilterContext {
   const required = bindings.filter(
@@ -29,11 +32,19 @@ export function viewFilterContext(
       definition.declaration.options?.allowAll === false,
   )
   const requiredSingles = required.map(({ values }) => values)
+  const grouped = bindings.some(
+    ({ definition }) =>
+      definition.declaration.mode === 'multiple' || definition.declaration.mode === 'date-range',
+  )
   return {
     requiredSingles,
     metricEligible:
       bindings.length > 0 &&
-      required.length === bindings.length &&
-      uniqueRowKeys(requiredSingles, rowCount),
+      (grouped || required.length === bindings.length) &&
+      uniqueRowKeys(
+        bindings.map(({ values }) => values),
+        rowCount,
+      ),
+    ...(grouped ? { metricGroups: bindings } : {}),
   }
 }

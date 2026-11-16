@@ -1,6 +1,4 @@
 import { z } from 'zod/v4'
-import type { DatasetViewResolution } from './dataset-view.ts'
-import type { FrameViewResolution } from './frame-view.ts'
 import { validatePresentationDate } from './index.ts'
 import type { AnalysisSnapshot } from './snapshot.ts'
 import { PRESENTATION_BUDGETS } from './types.ts'
@@ -28,6 +26,7 @@ export const snapshotFilterSchema = z.strictObject({
     .strictObject({
       allowAll: z.boolean().optional(),
       defaultPolicy: z.literal('latest').optional(),
+      requireTargetCoverage: z.boolean().optional(),
     })
     .optional(),
 })
@@ -75,68 +74,23 @@ export type ResolvedSnapshotFilter = {
   defaultValues: SnapshotFilterValue[]
   type: string
   calendarTimezone?: string
+  calendarGrain?: string
+  sourceComplete: boolean
 }
 export type ResolvedSnapshotFilterBinding = {
   values: SnapshotFilterValue[]
   type: string
   calendarTimezone?: string
-}
-
-export function snapshotFilterViewIssue(
-  snapshot: AnalysisSnapshot,
-  resolution: DatasetViewResolution | FrameViewResolution,
-): string | undefined {
-  const ordinaryHint = 'Use a supported table or ordinary chart.'
-  if (!resolution.ok) return ordinaryHint
-  const { view } = resolution
-  if (snapshot.kind === 'dataset')
-    return ['table', 'metric', 'line', 'area', 'bar'].includes(view.chart)
-      ? undefined
-      : ordinaryHint
-
-  const interpretation = snapshot.frame.sections.interpretation
-  if (
-    interpretation.status !== 'captured' ||
-    !('classification' in resolution) ||
-    resolution.classification.class !== 'observation'
-  )
-    return 'Use an observation table or ordinary chart with captured interpretation.'
-  if (view.chart === 'table') return undefined
-  if (view.chart === 'metric') {
-    return view.values.some((name) => {
-      const context = interpretation.valueContexts[name]
-      return (
-        !context ||
-        context.kind === 'share' ||
-        context.kind === 'pair_statistic' ||
-        resolution.classification.broadcastValues.includes(name)
-      )
-    })
-      ? 'Chart values must not depend on the unfiltered range.'
-      : undefined
-  }
-  if (
-    (view.chart !== 'line' &&
-      view.chart !== 'area' &&
-      view.chart !== 'bar' &&
-      view.chart !== 'hbar') ||
-    !('broadcast' in view)
-  )
-    return ordinaryHint
-  if (
-    view.broadcast.length ||
-    view.values.some((name) => {
-      const context = interpretation.valueContexts[name]
-      return !context || context.kind === 'share' || context.kind === 'pair_statistic'
-    })
-  )
-    return 'Chart values must not depend on the unfiltered range.'
-  return undefined
+  calendarGrain?: string
 }
 
 /** Exact saved cells, without label conversion or numeric coercion. */
 const filterType = (type: string | undefined) =>
-  type === 'string' || type === 'boolean' || type === 'int64' || type === 'date'
+  type === 'string' ||
+  type === 'boolean' ||
+  type === 'int64' ||
+  type === 'date' ||
+  type === 'datetime'
 const rangeType = (type: string | undefined) =>
   type === 'string' || type === 'date' || type === 'datetime'
 
@@ -175,6 +129,7 @@ function readField(
   let type: string
   let nullable: boolean
   let calendarTimezone: string | undefined
+  let calendarGrain: string | undefined
   if (snapshot.kind === 'dataset' && field.kind === 'column') {
     const index = snapshot.data.columns.findIndex((column) => column.id === field.name)
     const column = snapshot.data.columns[index]
@@ -188,13 +143,12 @@ function readField(
     const key = axis.keys[0]!
     const coordinate = snapshot.frame.coordinates[key.slotId]
     if (!coordinate) throw new Error('analysis-filter-field-invalid')
-    if (axis.variant.kind === 'calendar' && mode === 'date-range') {
+    if (axis.variant.kind === 'calendar') {
       const { grain, timezone } = axis.variant
       if (
         key.dtype.type !== 'datetime' ||
-        grain.kind !== 'builtin' ||
-        !['hour', 'day'].includes(grain.unit) ||
-        grain.step !== 1
+        (mode === 'date-range' &&
+          (grain.kind !== 'builtin' || !['hour', 'day'].includes(grain.unit) || grain.step !== 1))
       )
         throw new Error('analysis-filter-calendar-invalid')
       try {
@@ -203,6 +157,7 @@ function readField(
         throw new Error('analysis-filter-calendar-invalid')
       }
       calendarTimezone = timezone
+      calendarGrain = JSON.stringify(grain)
     } else if (axis.variant.kind !== 'ordinary') throw new Error('analysis-filter-field-invalid')
     type = key.dtype.type
     nullable = key.nullable
@@ -217,7 +172,7 @@ function readField(
         ? typeof cell === 'boolean'
         : typeof cell === 'string'
   if (!cells.every(valid)) throw new Error('analysis-filter-field-invalid')
-  if (mode !== 'date-range') return { values: cells, type }
+  if (mode !== 'date-range') return { values: cells, type, calendarTimezone, calendarGrain }
 
   const formatter = calendarTimezone
     ? new Intl.DateTimeFormat('en-US', {
@@ -279,6 +234,7 @@ export function resolveSnapshotFilter(
     ...field,
     options,
     defaultValues: defaults,
+    sourceComplete: snapshot.coverage.complete,
   }
   if (declaration.options?.defaultPolicy === 'latest') {
     if (
@@ -310,9 +266,23 @@ export function resolveSnapshotFilterBinding(
   if (definition.declaration.mode !== 'date-range' && result.type !== definition.type)
     throw new Error('analysis-filter-type-mismatch')
   if (
+    definition.declaration.mode !== 'date-range' &&
+    definition.declaration.options?.requireTargetCoverage
+  ) {
+    const options = new Set(definition.options)
+    if (result.values.some((value) => !options.has(value)))
+      throw new Error('analysis-filter-target-domain-incomplete')
+  }
+  if (
     definition.calendarTimezone &&
     result.calendarTimezone &&
     definition.calendarTimezone !== result.calendarTimezone
+  )
+    throw new Error('analysis-filter-calendar-invalid')
+  if (
+    definition.calendarGrain &&
+    result.calendarGrain &&
+    definition.calendarGrain !== result.calendarGrain
   )
     throw new Error('analysis-filter-calendar-invalid')
   return result

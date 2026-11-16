@@ -246,7 +246,7 @@ export function fixedLabel(item: FrameFixedAxis): string {
   return item.key.map(cellText).join(' · ')
 }
 /** Rows grouped by axis keys in first-appearance (Frame) order. */
-export function groupRows(s: Snapshot, axes: FrameAxis[], rows = rowsOf(s)) {
+export function groupRows(s: Snapshot, axes: FrameAxis[], rows: readonly number[] = rowsOf(s)) {
   const groups = new Map<string, { label: string; rows: number[] }>()
   for (const row of rows) {
     const key = JSON.stringify(axes.map((a) => axisKey(s, a, row)))

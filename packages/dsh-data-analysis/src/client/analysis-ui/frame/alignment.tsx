@@ -33,6 +33,8 @@ export function AlignmentView({
   classification: c,
   view,
   height = 240,
+  visibleRowIndices,
+  filterSelectionKey,
 }: MainViewProps<'alignment'>) {
   const t = useCopy()
   const item = interpretationOf(s)?.alignments[view.alignment]
@@ -49,6 +51,8 @@ export function AlignmentView({
     return (
       <DataTable
         snapshot={s}
+        visibleRowIndices={visibleRowIndices}
+        filterSelectionKey={filterSelectionKey}
         columns={[
           ...s.frame.layout.filter((l) => l.kind === 'coordinate').map((l) => l.name),
           ...item.left.values,
@@ -86,7 +90,7 @@ export function AlignmentView({
     if (!axis) return null
     const { ticks, tickOf } = timeTicks(t, s, axis)
     const memberAxes = s.frame.axes.filter((candidate) => candidate.token !== axis.token)
-    const groups = groupRows(s, memberAxes)
+    const groups = groupRows(s, memberAxes, visibleRowIndices)
     // A duplicate full coordinate cannot be represented by a single line point.
     // Preserve all saved rows in the table rather than silently replacing one.
     if (groups.some((group) => new Set(group.rows.map(tickOf)).size !== group.rows.length)) {
@@ -106,6 +110,8 @@ export function AlignmentView({
       return (
         <DataTable
           snapshot={{ ...s, data: { ...s.data, rows } }}
+          visibleRowIndices={visibleRowIndices}
+          filterSelectionKey={filterSelectionKey}
           columns={Array.from(
             new Set([
               ...s.frame.layout.filter((l) => l.kind === 'coordinate').map((l) => l.name),
@@ -186,7 +192,7 @@ export function AlignmentView({
     })
     return values.sort((a, b) => compareDecimalText(b, a))[0]
   }
-  const rows = rowsOf(s).sort((a, b) => {
+  const rows = [...(visibleRowIndices ?? rowsOf(s))].sort((a, b) => {
     const av = rowValue(a)
     const bv = rowValue(b)
     if (av === undefined || bv === undefined) return av === bv ? a - b : av === undefined ? 1 : -1

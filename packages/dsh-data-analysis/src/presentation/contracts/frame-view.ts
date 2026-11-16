@@ -470,18 +470,17 @@ function distinctKeys(x: Context, token: string) {
     seen.add(JSON.stringify(columns.map((c) => c[i])))
   return seen.size
 }
-/** A heatmap must represent each captured row with a distinct pair of full axis keys. */
-function uniqueHeatmapCells(x: Context, xToken: string, yToken: string) {
-  const columns = [xToken, yToken].map((token) =>
+/** Cells use full axis keys and, for explicit filtered heatmaps, fixed single dimensions. */
+function uniqueHeatmapCells(
+  x: Context,
+  xToken: string,
+  yToken: string,
+  fixed: ViewFilterContext['requiredSingles'] = [],
+) {
+  const columns = [xToken, yToken].flatMap((token) =>
     axisToken(x, token).keys.map((key) => x.snapshot.frame.coordinates[key.slotId]!.values),
   )
-  const seen = new Set<string>()
-  for (let row = 0; row < x.snapshot.data.rows.length; row++) {
-    const key = JSON.stringify(columns.map((axis) => axis.map((column) => column[row])))
-    if (seen.has(key)) return false
-    seen.add(key)
-  }
-  return true
+  return uniqueRowKeys([...fixed, ...columns], x.snapshot.data.rows.length)
 }
 /** Periods of a time axis from `read_periods` when captured, so empty periods count too. */
 function periodCount(x: Context, token: string) {
@@ -939,7 +938,9 @@ function explicit(
           axes
             .filter(
               (a) =>
-                !other || (a.token !== other.token && uniqueHeatmapCells(x, a.token, other.token)),
+                !other ||
+                (a.token !== other.token &&
+                  uniqueHeatmapCells(x, a.token, other.token, x.filters?.requiredSingles)),
             )
             .map((a) => a.name)
         if (!xAxis) return fail('view-name-unknown', '/view/encoding/x', heatmapAxes(yAxis))
@@ -947,7 +948,7 @@ function explicit(
           return fail('view-name-unknown', '/view/encoding/y', heatmapAxes(xAxis))
         const error = drawableValue(x, value, '/view/encoding/value')
         if (error) return error
-        if (!uniqueHeatmapCells(x, xAxis.token, yAxis.token))
+        if (!uniqueHeatmapCells(x, xAxis.token, yAxis.token, x.filters?.requiredSingles))
           return fail('view-target-ambiguous', '/view')
         return { chart: 'heatmap', x: xAxis.token, y: yAxis.token, value }
       }
@@ -961,7 +962,11 @@ function explicit(
         x,
         c.primaryValues.filter((v) => drawable(x, v)),
       ).values
-      if (!grid || values.length !== 1 || !uniqueHeatmapCells(x, grid[0]!, grid[1]!))
+      if (
+        !grid ||
+        values.length !== 1 ||
+        !uniqueHeatmapCells(x, grid[0]!, grid[1]!, x.filters?.requiredSingles)
+      )
         return fail('view-target-ambiguous', '/view')
       return { chart: 'heatmap', x: grid[0]!, y: grid[1]!, value: values[0]! }
     }

@@ -850,6 +850,13 @@ test('heatmaps reject duplicate projected axis keys without aggregating captured
   const duplicate = make(['one', 'one'], ['two', 'two'], ['first', 'second'])
   assert.deepEqual(failure(duplicate, encoding), expected)
   assert.equal(viewOf(duplicate).chart, 'table')
+  assert.equal(
+    resolveFrameView(duplicate, encoding, {
+      requiredSingles: [['first', 'second']],
+      metricEligible: false,
+    }).ok,
+    true,
+  )
   assert.deepEqual(
     failure(duplicate, { chart: 'heatmap', encoding: { ...encoding.encoding, value: 'nope' } }),
     {

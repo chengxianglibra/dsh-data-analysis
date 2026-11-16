@@ -345,6 +345,15 @@ test('required single bindings admit only uniquely identified metric rows and ch
     resolveDatasetView(snapshot, chart, { requiredSingles: [], metricEligible: false }).ok,
     false,
   )
+  const heatmap = {
+    chart: 'heatmap' as const,
+    encoding: { x: 'hour', y: 'cluster', value: 'value' },
+  }
+  assert.equal(resolveDatasetView(snapshot, heatmap).ok, false)
+  assert.equal(
+    resolveDatasetView(snapshot, heatmap, { requiredSingles: [days], metricEligible: false }).ok,
+    true,
+  )
   snapshot.coverage.complete = false
   assert.equal(
     resolveDatasetView(snapshot, metric, {
@@ -427,4 +436,36 @@ test('shared chart lookup retains Frame token precedence over an earlier matchin
   const model = datasetChartModel(datasetSnapshot().data, ['category', 'value'])
   model.axes[0]!.name = 'value'
   assert.equal(axisOf(model, 'value')?.id, 'value')
+})
+
+test('multi-select metrics retain one saved value per unique tuple', () => {
+  const snapshot = datasetSnapshot([
+    ['East', '9'],
+    ['West', '20'],
+    ['North', '41'],
+  ])
+  const resources = {
+    data: {
+      kind: 'snapshot' as const,
+      declaration: { kind: 'dataset-snapshot' as const, snapshotRef: 'data' },
+      snapshot,
+      binding: { workspaceId: 'workspace' },
+    },
+  }
+  const sources = {
+    region: {
+      ref: 'data',
+      field: { kind: 'column' as const, name: 'category' },
+      mode: 'multiple' as const,
+      defaultValues: ['East', 'North'],
+    },
+  }
+  const program = `$region = {}
+root = DatasetView("data", {chart:"metric", encoding:{value:"value"}}, {}, [{source:"region",selection:$region}]);`
+  assert.doesNotThrow(() => validateAnalysisResources(program, resources, sources))
+  snapshot.data.rows[1]![0] = 'East'
+  assert.throws(
+    () => validateAnalysisResources(program, resources, sources),
+    /analysis-metric-requires-complete-single-row/,
+  )
 })

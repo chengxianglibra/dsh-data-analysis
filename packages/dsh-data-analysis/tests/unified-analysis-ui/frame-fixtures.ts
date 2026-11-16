@@ -636,3 +636,34 @@ export const pairedAxis = (count = 3): AxisSpec => ({
   variant: paired,
   keys: labels('p', count),
 })
+
+/** Three saved monthly groups with two different contributions in each group. */
+export function monthlyFilterGroups() {
+  const axes = [
+    { ...timeAxis(3), keys: repeat(months(3), 2) },
+    { ...categoryAxis(2), keys: cycle(['East', 'West'], 3) },
+  ]
+  const groups = axisGroups('month')
+  const contribution = { name: 'contribution', values: [1, 3, 3, 7, 8, 12] }
+  const shares = {
+    name: 'share',
+    values: [0.25, 0.75, 0.3, 0.7, 0.4, 0.6],
+    context: { ...shareOf(axisGroups('region')), groups },
+  }
+  return {
+    shares: frame({ axes, values: [shares] }),
+    attribution: frame({
+      axes,
+      values: [contribution, { name: 'total', values: [4, 4, 10, 10, 20, 20] }],
+      decompositions: [
+        decompositionOf(
+          [
+            ['contribution', 'contribution'],
+            ['total', 'total'],
+          ],
+          { groups },
+        ),
+      ],
+    }),
+  }
+}

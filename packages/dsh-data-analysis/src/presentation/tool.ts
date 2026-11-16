@@ -161,7 +161,7 @@ export function createMarivoPresentTool(
         type: 'object',
         additionalProperties: true,
         description:
-          'Complete map of selection source names to {ref,field:{kind,name},label?,mode?,defaultValues?,options?:{allowAll?,defaultPolicy?}}. Set label in the report locale for filter summaries; omitted labels fall back to the source name. Values come from saved snapshots; OpenUI variables hold the reader selection. Omit to inherit. Do not change during data refresh.',
+          'Complete map of selection source names to {ref,field:{kind,name},label?,mode?,defaultValues?,options?:{allowAll?,defaultPolicy?,requireTargetCoverage?}}. Bind the same business dimension and key encoding. Set requireTargetCoverage for ordinary filters whose options must cover all captured target members. Multiple selection shows separate saved metric values when the target keys are unique. Share, decomposition and correlation require whole saved groups. Set label in the report locale. OpenUI state holds reader selections. Omit to inherit. Do not change during data refresh.',
       },
       labels: {
         type: 'object',

@@ -1,4 +1,8 @@
-import type { ComponentPropsWithoutRef, ReactNode } from 'react'
+import { type ComponentPropsWithoutRef, type ReactNode, useState } from 'react'
+import type { FilterTarget } from '../../../presentation/contracts/view-filter-context.ts'
+import { useCopy } from '../../i18n/context.tsx'
+import type { Translator } from '../../i18n/copy.ts'
+import { Button } from '../../ui/primitives/button.tsx'
 import {
   Card,
   CardAction,
@@ -63,22 +67,74 @@ export interface MetricItem {
 }
 
 /** Values arrive formatted by their owning presenter; no conversion or aggregation. */
-export function MetricGroup({ items }: { items: readonly MetricItem[] }) {
+export function MetricGroup({
+  items,
+  paginate = false,
+}: {
+  items: readonly MetricItem[]
+  paginate?: boolean
+}) {
+  const t = useCopy()
+  const [page, setPage] = useState(0)
+  const pageSize = 24
+  const pages = Math.ceil(items.length / pageSize)
+  const current = Math.min(page, Math.max(0, pages - 1))
+  const shown = paginate ? items.slice(current * pageSize, (current + 1) * pageSize) : items
   return (
-    <div className="fv-cards au-metric-group grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-4">
-      {items.map((item) => (
-        <Card key={item.key} data-value={item.key}>
-          <CardHeader>
-            {item.label && <CardDescription>{item.label}</CardDescription>}
-            <CardTitle className="au-metric-value" title={item.title}>
-              <strong>{item.value}</strong>
-              {item.unit && <span>{item.unit}</span>}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      ))}
-    </div>
+    <>
+      <div className="fv-cards au-metric-group grid grid-cols-[repeat(auto-fit,minmax(min(100%,12rem),1fr))] gap-4">
+        {shown.map((item) => (
+          <Card key={item.key} data-value={item.key}>
+            <CardHeader>
+              {item.label && <CardDescription>{item.label}</CardDescription>}
+              <CardTitle className="au-metric-value" title={item.title}>
+                <strong>{item.value}</strong>
+                {item.unit && <span>{item.unit}</span>}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        ))}
+      </div>
+      {paginate && pages > 1 && (
+        <div className="pr-pagination pr-interactive">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={current === 0}
+            onClick={() => setPage(current - 1)}
+          >
+            {t('marivo.presentation.previous-page')}
+          </Button>
+          <span>
+            {current + 1} / {pages}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={current + 1 === pages}
+            onClick={() => setPage(current + 1)}
+          >
+            {t('marivo.presentation.next-page')}
+          </Button>
+        </div>
+      )}
+    </>
   )
+}
+
+export function metricGroupLabel(t: Translator, groups: readonly FilterTarget[], row: number) {
+  return groups
+    .map(({ definition, values }) => {
+      const value = values[row]
+      const label =
+        value === null
+          ? t('marivo.presentation.missing-value')
+          : value === ''
+            ? t('marivo.presentation.empty-string')
+            : String(value)
+      return `${definition.declaration.label}: ${label}`
+    })
+    .join(' · ')
 }
 
 export function DataActions({ children }: { children: ReactNode }) {

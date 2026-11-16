@@ -117,6 +117,7 @@ export function resolveSelectionBindings(
         id: filter.declaration.filterId,
         label: filter.declaration.label,
         selected: filter.selected,
+        sourceComplete: filter.definition.sourceComplete,
       })),
     selectionKey: references.length ? JSON.stringify(references) : undefined,
     visibleRows(rowCount: number): number[] | undefined {
@@ -160,6 +161,7 @@ export function SelectionSummary({
                 )
                 .join(', ')
             : t('marivo.presentation.ui-filter-all')}
+          {!filter.sourceComplete && <> · {t('marivo.presentation.ui-filter-incomplete-source')}</>}
         </p>
       ))}
     </section>

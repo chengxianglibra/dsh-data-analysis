@@ -234,9 +234,16 @@ test('document admission checks filter bindings on the complete saved snapshot',
     ),
     'analysis-filter-reference-invalid',
   )
-  check(
-    program('sales', undefined, '{chart:"heatmap",encoding:{x:"category",y:"flag",value:"large"}}'),
-    'analysis-filter-view-unsupported',
+  assert.doesNotThrow(() =>
+    validateAnalysisResources(
+      program(
+        'sales',
+        undefined,
+        '{chart:"heatmap",encoding:{x:"category",y:"flag",value:"large"}}',
+      ),
+      resources,
+      sources,
+    ),
   )
   check(program(), 'analysis-filter-default-invalid', {
     category: { ...sources.category, defaultValues: ['absent'] },
@@ -310,11 +317,7 @@ test('real Frame axes and interpretation gate filter admission and auto views', 
   assert.doesNotThrow(() => check(observation, '{chart:"table"}'))
   const missing = structuredClone(observation)
   missing.frame.sections.interpretation = { status: 'unavailable', reason: 'read-failed' }
-  assert.throws(
-    () => check(missing, '{chart:"table"}'),
-    (error) =>
-      error instanceof AnalysisViewError && error.code === 'analysis-filter-view-unsupported',
-  )
+  assert.doesNotThrow(() => check(missing, '{chart:"table"}'))
   const share = await load('share')
   assert.throws(
     () =>
@@ -434,7 +437,7 @@ test('shared day and date ranges project saved rows across resources', () => {
   assert.equal(isSnapshotFilterSelectionValid(day, []), false)
   assert.throws(
     () => resolveSnapshotFilterBinding(hourly, day, { kind: 'column', name: 'timestamp' }),
-    /analysis-filter-field-invalid/,
+    /analysis-filter-type-mismatch/,
   )
 })
 
@@ -559,4 +562,182 @@ test('calendar ranges interpret UTC keys in the axis timezone and reject unsuppo
   assert.throws(() => resolveSnapshotFilter(frame, declaration), /analysis-filter-calendar-invalid/)
   axis.variant.grain = { kind: 'builtin', unit: 'month', step: 1 }
   assert.throws(() => resolveSnapshotFilter(frame, declaration), /analysis-filter-calendar-invalid/)
+})
+
+test('complete share and decomposition groups admit multiple periods but reject a slice of each group', async () => {
+  const { validateAnalysisResources, AnalysisViewError } = await import(
+    '../../src/presentation/contracts/analysis-document.ts'
+  )
+  const { monthlyFilterGroups, months } = await import('./frame-fixtures.ts')
+  for (const grouped of Object.values(monthlyFilterGroups())) {
+    const resources = {
+      grouped: {
+        kind: 'snapshot' as const,
+        declaration: { kind: 'frame-snapshot' as const, snapshotRef: 'grouped' },
+        snapshot: grouped,
+        binding: { workspaceId: 'workspace' },
+      },
+    }
+    const source = (axis: string, defaultValues: string[]) => ({
+      group: {
+        ref: 'grouped',
+        field: { kind: 'axis' as const, name: axis },
+        mode: 'multiple' as const,
+        defaultValues,
+      },
+    })
+    const program = (chart: string) => `$group = {}
+root = AnalysisFrameView("grouped", {chart:"${chart}"}, {}, [{source:"group",selection:$group}]);`
+    const month = months(3)
+    assert.doesNotThrow(() =>
+      validateAnalysisResources(
+        program('auto'),
+        resources,
+        source('month', [month[0]!, month[2]!]),
+      ),
+    )
+    assert.throws(
+      () =>
+        validateAnalysisResources(program('auto'), resources, source('region', ['East', 'West'])),
+      (error) =>
+        error instanceof AnalysisViewError && error.code === 'analysis-filter-view-unsupported',
+    )
+    assert.doesNotThrow(() =>
+      validateAnalysisResources(program('table'), resources, source('region', ['East'])),
+    )
+  }
+})
+
+test('a shared candidate domain can require every target member without requiring identical sets', () => {
+  const source = datasetSnapshot([
+    ['East', '1'],
+    ['West', '2'],
+    ['North', '3'],
+  ])
+  const target = datasetSnapshot([['West', '4']])
+  const filter = resolveSnapshotFilter(source, {
+    ...definition,
+    defaultValues: [],
+    options: { requireTargetCoverage: true },
+  })
+  assert.deepEqual(resolveSnapshotFilterBinding(target, filter, definition.field).values, ['West'])
+  const extra = datasetSnapshot([['South', '5']])
+  assert.throws(
+    () => resolveSnapshotFilterBinding(extra, filter, definition.field),
+    /analysis-filter-target-domain-incomplete/,
+  )
+})
+
+test('comparison endpoint groups and correlation sample scopes gate multi-select views', async () => {
+  const { AnalysisViewError, validateAnalysisResources } = await import(
+    '../../src/presentation/contracts/analysis-document.ts'
+  )
+  const { axisGroups, compareCalendar, frame, pairStatistic, statistic, timeAxis } = await import(
+    './frame-fixtures.ts'
+  )
+  const check = (snapshot: ReturnType<typeof frame>, chart = 'auto') =>
+    validateAnalysisResources(
+      `$period = {};
+root = AnalysisFrameView("data", {chart:"${chart}"}, {}, [{source:"period",selection:$period}]);`,
+      {
+        data: {
+          kind: 'snapshot',
+          declaration: { kind: 'frame-snapshot', snapshotRef: 'data' },
+          snapshot,
+          binding: { workspaceId: 'workspace' },
+        },
+      },
+      { period: { ref: 'data', field: { kind: 'axis', name: 'month' }, mode: 'multiple' } },
+    )
+  const unsupported = (error: unknown) =>
+    error instanceof AnalysisViewError && error.code === 'analysis-filter-view-unsupported'
+  const comparison = compareCalendar(3)
+  const facts = comparison.frame.sections.interpretation
+  assert.equal(facts.status, 'captured')
+  if (facts.status !== 'captured') throw new Error('Captured interpretation required')
+  facts.comparisons[0]!.groups[0]!.baselineContext = statistic('sum', axisGroups('month'))
+  assert.doesNotThrow(() => check(comparison))
+  const sibling = structuredClone(facts.comparisons[0]!)
+  sibling.alias = 'Whole range'
+  sibling.groups[0]!.baselineContext = statistic('sum', [])
+  facts.comparisons.push(sibling)
+  assert.throws(() => check(comparison), unsupported)
+  assert.doesNotThrow(() => check(comparison, 'table'))
+
+  const context = pairStatistic('pearson', axisGroups('month'))
+  if (context.kind !== 'pair_statistic') throw new Error('Pair statistic context required')
+  const correlation = frame({
+    axes: [timeAxis(3)],
+    values: [{ name: 'r', values: [0.1, 0.2, 0.3], context }],
+  })
+  assert.doesNotThrow(() => check(correlation))
+  correlation.coverage.complete = false
+  assert.throws(() => check(correlation), unsupported)
+  correlation.coverage.complete = true
+  const restricted = frame({
+    axes: [timeAxis(3)],
+    values: [
+      { name: 'r', values: [0.1, 0.2, 0.3], context: { ...context, rowScope: 'restricted' } },
+    ],
+  })
+  assert.throws(() => check(restricted), unsupported)
+  assert.doesNotThrow(() => check(restricted, 'table'))
+})
+
+test('exact calendar selections reject mismatched target grains even with a Dataset source', async () => {
+  const { AnalysisViewError, validateAnalysisResources } = await import(
+    '../../src/presentation/contracts/analysis-document.ts'
+  )
+  const { frame, timeAxis } = await import('./frame-fixtures.ts')
+  const monthly = frame({ axes: [timeAxis(2)] })
+  const daily = structuredClone(monthly)
+  const axis = daily.frame.axes[0]!
+  if (axis.variant.kind !== 'calendar') throw new Error('Calendar axis required')
+  axis.variant.grain = { kind: 'builtin', unit: 'day', step: 1 }
+  const field = { kind: 'axis' as const, name: 'month' }
+  const source = resolveSnapshotFilter(monthly, {
+    filterId: 'period',
+    ref: 'monthly',
+    field,
+    label: 'Period',
+    mode: 'multiple',
+  })
+  assert.throws(
+    () => resolveSnapshotFilterBinding(daily, source, field),
+    /analysis-filter-calendar-invalid/,
+  )
+  const candidates = datasetSnapshot(monthly.data.rows, monthly.data.columns)
+  assert.throws(
+    () =>
+      validateAnalysisResources(
+        `$period = {};
+root = Stack([a,b]);
+a = AnalysisFrameView("monthly", {chart:"table"}, {}, [{source:"period",field:{kind:"axis",name:"month"},selection:$period}]);
+b = AnalysisFrameView("daily", {chart:"table"}, {}, [{source:"period",field:{kind:"axis",name:"month"},selection:$period}]);`,
+        {
+          candidates: {
+            kind: 'snapshot',
+            declaration: { kind: 'dataset-snapshot', snapshotRef: 'candidates' },
+            snapshot: candidates,
+            binding: { workspaceId: 'workspace' },
+          },
+          ...Object.fromEntries(
+            Object.entries({ monthly, daily }).map(([name, snapshot]) => [
+              name,
+              {
+                kind: 'snapshot' as const,
+                declaration: { kind: 'frame-snapshot' as const, snapshotRef: name },
+                snapshot,
+                binding: { workspaceId: 'workspace' },
+              },
+            ]),
+          ),
+        },
+        {
+          period: { ref: 'candidates', field: { kind: 'column', name: 'month' }, mode: 'multiple' },
+        },
+      ),
+    (error) =>
+      error instanceof AnalysisViewError && error.code === 'analysis-filter-calendar-invalid',
+  )
 })

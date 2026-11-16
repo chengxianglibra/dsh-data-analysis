@@ -17,8 +17,8 @@ import {
   selectionBindingSchema,
   selectionSourcesSchema,
   snapshotFilterFieldNames,
-  snapshotFilterViewIssue,
 } from './snapshot-filter.ts'
+import { snapshotFilterViewIssue } from './view-filter-admission.ts'
 import { type ViewFilterContext, viewFilterContext } from './view-filter-context.ts'
 
 export type { AnalysisResourceDeclaration } from './resource-declaration.ts'
@@ -177,7 +177,7 @@ export class AnalysisViewError extends Error {
 const viewHints: Record<string, string> = {
   'analysis-columns-invalid': 'table columns must be distinct column IDs of this resource.',
   'analysis-metric-requires-complete-single-row':
-    'metric needs a complete single-row snapshot and an existing value name.',
+    'metric needs a complete snapshot and an existing value name. Use one saved row, or bind filters whose target key tuple identifies each saved row.',
   'analysis-view-invalid': 'view or display does not match the component signature.',
   'analysis-view-name-unknown': 'use a value or axis name from this snapshot.',
   'analysis-view-dtype-not-drawable': 'this chart requires a drawable numeric value.',
@@ -365,6 +365,7 @@ export function validateSelectionSources(
   const contexts = new Map<ElementNode, ViewFilterContext>()
   const definitions = new Map<string, ReturnType<typeof resolveSnapshotFilter>>()
   const timezones = new Map<string, string>()
+  const grains = new Map<string, string>()
   const consumed = new Set<string>()
   function failNode(node: ElementNode, code: string, path: string, hint: string): never {
     throw new AnalysisViewError(
@@ -543,14 +544,28 @@ export function validateSelectionSources(
             )
           timezones.set(binding.source, target.calendarTimezone)
         }
+        if (target.calendarGrain) {
+          const previous = grains.get(binding.source)
+          if (previous && previous !== target.calendarGrain)
+            failNode(
+              node,
+              'analysis-filter-calendar-invalid',
+              `filters/${index}`,
+              'Use the same calendar grain when matching exact period keys.',
+            )
+          grains.set(binding.source, target.calendarGrain)
+        }
         resolvedBindings.push({ definition, values: target.values })
       } catch (error) {
         if (error instanceof AnalysisViewError) throw error
+        const code = error instanceof Error ? error.message : 'analysis-filter-field-invalid'
         failNode(
           node,
-          error instanceof Error ? error.message : 'analysis-filter-field-invalid',
+          code,
           `filters/${index}`,
-          'Use a compatible saved field for this filter.',
+          code === 'analysis-filter-target-domain-incomplete'
+            ? 'Use a source whose options cover the saved target keys, or restrict the candidate domain explicitly.'
+            : 'Use a compatible saved field for this filter.',
         )
       }
     }
@@ -563,18 +578,9 @@ export function validateSelectionSources(
       snapshot.kind === 'dataset'
         ? resolveDatasetView(snapshot, parsedView.data, context)
         : resolveFrameView(snapshot, parsedView.data, context)
-    if (
-      resolution.ok &&
-      resolution.view.chart === 'metric' &&
-      (parsedView.data?.chart !== 'metric' || !context.metricEligible)
-    )
-      failNode(
-        node,
-        'analysis-filter-view-unsupported',
-        'filters',
-        'Use an explicit metric with only required single filters whose combined values identify each row.',
-      )
-    const issue = resolution.ok ? snapshotFilterViewIssue(snapshot, resolution) : undefined
+    const issue = resolution.ok
+      ? snapshotFilterViewIssue(snapshot, resolution, parsedView.data, resolvedBindings)
+      : undefined
     if (issue) failNode(node, 'analysis-filter-view-unsupported', 'filters', issue)
   }
   return contexts

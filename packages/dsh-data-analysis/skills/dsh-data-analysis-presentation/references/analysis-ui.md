@@ -2,59 +2,84 @@
 
 ## 选择数据来源与刷新契约
 
-governed 输入和受支持的类型化分析优先保留 AnalysisFrame，用 AnalysisFrameView，不为画图或表格转成 DataFrame。纯文件、合法外部计算或合适的表格明细用 DatasetView，不为更换视图强行建模。同一结果的趋势图和明细表可共享资源，各自声明字段和样式。分批与草稿见[边分析边更新](../SKILL.md#边分析边更新)，结果复用与来源见[结果导出](capture.md)。
+governed 输入和受支持的类型化分析用 AnalysisFrameView，保留原 AnalysisFrame。纯文件、合法外部计算和表格明细可用 DatasetView。同一结果的图表和明细可共享资源。分批见[边分析边更新](../SKILL.md#边分析边更新)，复用与来源见[结果导出](capture.md)。
 
-新建可刷新的分析视图时，按已核验字段尽量显式选择 chart 和 encoding；table 可明确 columns，避免列随数据变化。auto 适合探索草稿或只能由 Frame 结构判定的视图，不承诺刷新后形态固定。部分 comparison/decomposition 视图也会按结构调整布局。保持分析粒度、角色和字段契约并核对形态；不能新增空值、伪造行或改变业务口径来维持外观。
-
-刷新已保存视图时锁定 view/display 和布局。数据不满足旧视图时修复输入或说明阻塞，不改图。以下建议用于新建或明确授权的页面编辑。
+新建可刷新的视图时，按已核验字段显式声明 chart、encoding 和必要的 columns。auto 按原始快照选图，筛选不会改变图种。刷新时锁定 view、display、筛选和页面布局。解析出的图种变化会拒绝刷新，比较或分解内部布局可随结果结构变化。数据不合约时修复输入或说明阻塞，保留原粒度和口径，不能伪造行或空值来维持外观。
 
 ## Marivo Frame
 
-`AnalysisFrameView("result")` 根据 Frame 结构选图。单行单组比较适合读本期值与变化；单行多组比较（单一比较、最多 8 个指标）默认每个指标一个数字块，依次展示本期、基期、Δ、Δ%；更多指标或多个 alias 回退为“指标 × 本期/基期/Δ/Δ%”对比表。省略 `columns` 的显式 `{chart:"table"}` 仅在有比较目标的完整单行比较时转置；指定 `columns` 显示选定列，多行比较按时间或类别组织。柱图可用于时间轴或普通类别轴（按保存行首次出现顺序等距排布），折线图和面积图要求时间轴。用 `{chart:"comparison", encoding:{value:"输出列名"}}` 可突出该组公开值。分解图使用 Frame 已有结果。
+图表 encoding 用公开轴名和值名，table 的 columns 和 metric 的 encoding.value 用保存列 ID。折线和面积图要求时间轴，柱图可用时间轴或普通类别轴。类别按保存行首次出现排序。
 
-饼图适合观察型 Frame 的构成比较：快照完整、仅一个分类轴且类别键唯一；选非广播数值列，值非空、有限、非负且至少一个正值。用 `{chart:"pie", encoding:{axis:"轴名", value:"值名"}}` 指定字段，目标唯一时可省略映射。
+完整单行比较可显示本期、基期、Δ、Δ%。同一比较最多 8 个指标时可各用一个数字块，更多指标或多个 alias 回退为对比表。完整单行比较有比较目标时，省略 columns 的 table 可转置。显式 columns 展示选定列。用 comparison 的 encoding.value 选择比较组中的公开值。分解使用保存的分解事实。
 
-堆叠构成条用 pie 的 `style:"stacked"`；比例按已展示的完整分类值计算并标记为计算值。原始数值和点选仍对应保存行，未指定 style 时为饼图。
+饼图要求完整的观察型 Frame、唯一分类轴与类别键，以及非广播的数值列。值须有限、非空、非负且至少一个为正。用 pie 的 encoding.axis/value 指定字段，目标唯一时可省略。style:"stacked" 显示堆叠构成条。
 
-作者按已核验口径声明 `display`：
+Frame 的 display 可用以下选项：
 
-- `title`、`subtitle` 用于说明图表；`formats:[{value:"已保存值名",format:"percent"|"number"|"currency",decimals:1}]` 只改变主视图显示，不改变原始值、复制或数据详情。百分比按保存比例乘以 100。
-- 比较端点确有明确名称时，具名比较可用 `comparisonLabels:[{alias:"比较别名",current:"本期名称",baseline:"基期名称"}]`；匿名比较省略 `alias`，例如 `comparisonLabels:[{current:"本期 11-10",baseline:"基期 11-09"}]`。指定名称必须在快照中唯一匹配，省略 `alias` 只匹配唯一的匿名比较，不代表第一个比较；`reference` 列前缀不代表匿名比较的具名 alias。名称由作者负责核实，不能从字段名称或数值猜测。
-- 时间柱图可用 `highlight:{axis:"轴名",key:[已保存的完整原始键]}` 强调特定期间；键必须逐项匹配快照。横向分类条和普通表格可用 `rowLimit` 预览前 N 条保存行；表格先应用筛选再按保存顺序截取，数据入口显示筛选范围内全部已捕获行，清除筛选后可查看全部已捕获行。转置比较表及其他图形不支持该选项。
-- 表格可用 `recordPreview:{coordinates:["坐标列1","坐标列2"],values:["数值列"],limit:6,label:"组合坐标标题"}` 将坐标按声明顺序连接，数值和点选仍指向原行；完整结果见数据入口。`recordPreview.limit` 与 `rowLimit` 不能同时指定。
-- 已核实分解的两期 level total 与所选变化属于同一分组和范围时，可用 `decompositionTotals:{current:"本期总量列",baseline:"基期总量列",currentLabel:"本期标题",baselineLabel:"基期标题"}` 展示保存总量。仅在每个总量在保存行中一致且非空时显示；不要自行求和替代缺失总量。
+- title、subtitle 说明结果。formats 示例见下方。
+- comparisonLabels 用 `[{alias:"比较别名",current:"本期名称",baseline:"基期名称"}]` 标记核验过的两端。alias 必须唯一匹配已保存的比较，省略只匹配唯一匿名比较。reference 列前缀不代表 alias。
+- 时间柱图用 `highlight:{axis:"轴名",key:[已保存的完整原始键]}`。普通表格和横向条形图可用 rowLimit 预览。表格先筛选再按保存顺序截取，数据入口显示全部匹配行。
+- 普通表格用 `recordPreview:{coordinates:["坐标列1","坐标列2"],values:["数值列"],limit:6,label:"组合坐标标题"}`。坐标按声明顺序连接，详情见数据入口。recordPreview 与 rowLimit 互斥。
+- 已核实分解两期 level total 同组同范围时，用 `decompositionTotals:{current:"本期总量列",baseline:"基期总量列",currentLabel:"本期标题",baselineLabel:"基期标题"}`。总量在保存行中一致且非空才展示，缺失时保留缺失。
 
 ## DataFrame
 
-`DatasetView` 按保存的列 ID 映射字段。表格可用 `{chart:"table", columns:["category", "amount"]}` 选择读者需要核对的列。指标卡使用完整单行结果中的一个标量，或按必选单选唯一定位完整快照中的保存行，支持文本；图表的数值映射仍须符合对应类型约束。折线图、面积图和柱图用 `{axis, values, series?}`，热力图用 `{x, y, value}`。这些图要求完整快照、数值列和唯一坐标组合，按快照中首次出现的顺序展示。趋势图应使用原分析已经按时间排好的数据。
+DatasetView 按保存列 ID 配置。table 用 columns，metric 用 encoding.value 且支持文本。未绑定的 metric 要求完整单行。折线、面积、柱图用 `{axis,values,series?}`，热力图用 `{x,y,value}`。图表要求完整快照及可绘制数值，坐标按保存顺序首次出现。时间趋势应先在分析中按时间排序。
 
-`display.title` 和 `display.subtitle` 可说明表格、指标卡或图表；`display.formats` 按保存的数值列 ID 声明，如 `formats:[{value:"share",format:"percent",decimals:1}]`。支持 `percent`、`number`、`currency`，小数位 0–6；百分比把保存的比例乘以 100。货币单位来自列的 `unit`，不得猜测币种或将百分数再次标成比例。格式只改变主视图显示，排序、筛选、点选和数据详情仍用保存值；未显式格式化的列保持精确显示。不要仅依赖 Tab 标签说明表格内容。
+两类视图均可用 title、subtitle 和 `display.formats:[{value:"share",format:"percent",decimals:1}]`。格式支持 percent、number、currency，小数位 0–6。percent 按保存比例乘以 100，currency 使用保存单位。格式只改主视图，排序、筛选、点选和详情基于保存原值。用视图标题说明表格内容。
 
 ## 固定快照筛选
 
-读者筛选已保存行时，在 `marivo_report_write` 的 `selectionSources` 声明来源，见[示例](examples.md#跨资源日期筛选)。`label` 与控件一致并使用报告语言；缺省时摘要显示来源 ID。ID 以字母开头，只含字母、数字和下划线，不能以 `source_` 开头。program 使用官方 `Select`、`CheckBoxGroup` 或 `DatePicker` 绑定 `$region` 等状态；视图用 `filters:[{source:"region",selection:$region}]`，跨资源或不同字段时加 `field:{kind:"column"|"axis",name:"目标字段"}`。普通模式两端类型须相同。Dataset 使用保存列 ID，Frame 使用公开轴名。普通 single/multiple 匹配保存的 string、boolean、int64 或 date 原值，`null`、空字符串和精确 int64 保持各自身份。多选内部为 OR，多个筛选器之间为 AND。
+`marivo_report_write.selectionSources` 声明来源，提供时整体替换，省略则继承。数据视图的第四个参数 filters 显式绑定 `[{source:"region",selection:$region}]`。来源 ID 以字母开头，只用字母、数字和下划线，不能以 `source_` 开头；label 用报告语言且与控件一致，省略时用来源 ID。跨资源或换字段时显式声明 `field:{kind:"column"|"axis",name:"目标字段"}`。Dataset 用列 ID，Frame 用公开轴名。
 
-来源 `region` 的候选为 `$source_6_region_options`，含 `id`、`label`；6 是 ID 长度。用 `@Each` 生成选项，不手写或猜测成员。单选的全部为 `"a"`，其他 ID 为 `"v:"` 加原值的 JSON；多选状态以候选 ID 为键、boolean 为值，空对象表示全部。`$source_6_region_default` 是当前 Build 的默认状态；用 `@Set` 恢复，不假设固定成员或 `@Reset` 能表达 `latest`。多选和日期范围使用 `$source_<长度>_<ID>_draft` 草稿与 `$<ID>` 已应用状态；通过官方按钮用 `@SelectionOrCurrent(current,draft,items,mode,allowAll)` 校验并 `@Set` 应用，无效时保留现有值。选择不写入报告。
+- single/multiple 匹配保存原值，支持 string、boolean、int64、date、datetime 和允许的 null。Frame 使用 ordinary 单键轴或 calendar 单键轴。两端须为同一业务维度、同类型同编码；datetime 按完整保存文本匹配。多个 calendar 轴的时区、精确匹配粒度须一致。可用 `options.requireTargetCoverage:true` 要求候选覆盖各目标的已捕获成员。目标可以缺少来源成员，零匹配显示无数据。筛选摘要标注部分快照的候选来源。
+- date-range 包含两端 `YYYY-MM-DD`，可选同日，也可选超出捕获范围的边界。支持严格日期字符串、date、datetime 和 builtin hour/day、step=1 的 calendar 单键轴。datetime 用保存文本的日期，calendar 用轴的业务时区，绑定的 calendar 轴须同一时区。DatePicker 导航为 1900–2100 年。见[跨资源日期示例](examples.md#跨资源日期筛选)。
+- 多选内部为 OR，多个筛选器之间为 AND。allowAll:false 要求有效默认值。single 的 defaultPolicy:"latest" 适用于 date 或非空值均为严格日期的 string 字段；date-range 的 latest 选最新的一天。刷新重新解析 latest，失效的显式普通默认值会拒绝新版本。
 
-`single` 的 `options:{allowAll:false,defaultPolicy:"latest"}` 选择最新保存日期：来源须为 date 或非 null 值均为严格有效日期字符串的字段。它仍按原值匹配；小时等资源须已有同类型 day 字段，不能从 datetime 或 calendar 自动派生日，也不要为控件强制转换 Frame。
+用官方 Select、CheckBoxGroup 或 DatePicker。用 `@Each` 从 `$source_<ID长度>_<ID>_options` 的 id 和 label 生成候选。单选全部为 `"a"`；普通成员 ID 为 `"v:"` 加原值的 JSON。多选以成员 ID 为键、boolean 为值，允许全部时空对象清除条件。多选和日期范围编辑对应的 `_draft`，用 `@SelectionOrCurrent(current,draft,items,mode,allowAll)` 校验后 `@Set` 应用。恢复默认时将 `_default` 写入已应用值和草稿，不用 `@Reset` 推断 latest。
 
-`date-range` 的两个 `YYYY-MM-DD` 边界包含两端，可绑定严格日期字符串、date、已保存 datetime，或 builtin hour/day、step=1 的 Frame calendar 轴；后者按轴的业务时区解释日期。可指定同日、超出捕获范围的边界或 `defaultPolicy:"latest"`；选择只投影已保存数据。官方 DatePicker 导航为 1900–2100 年，并非数据契约范围。`allowAll:false` 要求有效非空默认值。刷新时 latest 按新 Build 捕获数据解析；显式普通默认成员失效则拒绝新版本。
+### 各视图的筛选准入
 
-普通表格和支持的 line/area/bar 观察视图可筛选。显式 metric 要求完整快照、所有绑定均为必选 single 且字段元组唯一，显示唯一保存行；零匹配显示无数据。multiple 和 date-range 不能绑定 metric 或让浏览器重算范围指标。auto 按原始快照选视图，饼图、热力图、比较和分解等限制不变。静态结论和未绑定视图不随选择变化；覆盖范围按原快照披露，离线 HTML 包含完整已保存数据并从默认值开始。
+| 视图 | 绑定条件与多选结果 |
+| --- | --- |
+| 普通表格、记录预览、成员 | 筛选已捕获行，可用部分快照。统计列保留原保存口径。 |
+| 折线、面积、柱图、区间柱图、横向条形图、热力图 | 图点用 axis/series，热力格用 x/y，可加必选单选目标字段共同构成唯一键。多选或范围字段不会固定维度，必要时补 series 或调整上游粒度。 |
+| 显式 metric | 完整快照，全部目标字段的匹配键元组唯一（范围模式按日）。纯单选绑定须全部必选。含多选或日期范围时，每个匹配键显示一个保存结果。 |
+| 饼图、堆叠构成条 | 按匹配类别展示保存数值，比例以匹配项合计为分母。合计为零时比例无定义。 |
+| 比较、对齐 | 按保存行保留两端及 presence。比较的统计端点要求整组，趋势或小多图要求完整坐标唯一。单行比较数字块仍要求单行。 |
+| 已保存份额、分解、相关性 | 快照完整且所用事实为完整组范围。每个绑定的目标键在每组内必须一致，涵盖所有允许的选择。保留原分母、总量与贡献、相关系数与样本。 |
+
+筛选使用原始行索引，图表、详情和点选共用匹配行。业务聚合与指标重算由原分析负责。Frame 除普通表格和成员视图外要求捕获 interpretation。普通图表、metric 和饼图使用有明确值上下文的独立值。广播值可用普通表格核对。份额、配对统计及比较、对齐、分解的专用输出按相应视图的规则准入。不能用默认值刚好唯一或碰巧选中整组来通过准入。
+
+每日每地区一行的趋势用 day 作 axis、region 作 series，地区多选可同时展示多条趋势。控件与明细绑定见[地区多选示例](examples.md#多选维度筛选)。
+
+### 月度指标与完整统计组多选示例
+
+`monthly` 保存每月唯一一行的 total，month 为 datetime。`regionalShare` 是 Frame，每月包含全部地区，份额按 month 分组、沿 region 归一化。两端 month 采用相同保存键。将下列来源和 program 一起提交。
+
+```json
+{"month":{"ref":"monthly","field":{"kind":"column","name":"month"},"label":"月份","mode":"multiple","options":{"requireTargetCoverage":true}}}
+```
+
+```openui
+$month = {};
+root = Stack([monthInput, applyMonth, resetMonth, totals, shares, details]);
+monthInput = FormControl("月份", CheckBoxGroup("month", @Each($source_5_month_options, "item", CheckBoxItem(item.label, "", item.id)), null, $source_5_month_draft));
+applyMonth = Button("应用", @Set($month, @SelectionOrCurrent($month, $source_5_month_draft, $source_5_month_options, "multiple", true)));
+resetMonth = Button("恢复默认", Action([@Set($month, $source_5_month_default), @Set($source_5_month_draft, $source_5_month_default)]));
+totals = DatasetView("monthly", {chart:"metric",encoding:{value:"total"}}, {}, [{source:"month",selection:$month}]);
+shares = AnalysisFrameView("regionalShare", {chart:"auto"}, {}, [{source:"month",field:{kind:"axis",name:"month"},selection:$month}]);
+details = AnalysisFrameView("regionalShare", {chart:"table"}, {}, [{source:"month",field:{kind:"axis",name:"month"},selection:$month}]);
+```
+
+选一月和三月时显示两个月各自的指标和份额组。地区键在一个月内变化，因此地区控件可筛普通明细，不能绑定该份额视图来切掉分母内的部分地区。保存的月度分解若也以 month 为完整父组，可用相同绑定配 `{chart:"decomposition"}`。
 
 ### 筛选范围与布局
 
-新建或编辑时按每个筛选器的绑定展示范围：只影响部分视图时，用默认 Card 框住控件、应用/重置操作和受影响视图，其余放框外；只有一个受影响视图也要框住。影响所有数据视图且其他内容不会被误认为联动时，控件放页面开头，以分析视图为范围，无需再套 Card。静态标题和一般说明不必变化。
-
-相同范围可共用框，不同范围分别表达；交叉且无法准确嵌套时，用文字标明各自影响的视图，不画误导性的共同框或重复展示。Card 只提供视觉分组；须在受影响视图显式声明 `filters`，保存前核对绑定与展示一致。静态结论、图片和未绑定视图不会联动，不要暗示它们会变化。仅刷新数据时保持原布局。
-
+只影响部分视图时，用默认 Card 框住控件、应用和恢复默认操作以及所有受影响视图。影响全部数据视图且其余内容不会被误认为联动时，控件放页面开头。相同范围可共用框，交叉范围无法准确嵌套时，用文字标明各自影响的视图。联动由显式 filters 决定。静态结论、图片和未绑定视图保持固定。选择属于阅读状态，离线 HTML 携带保存的快照并从默认值开始。
 
 ## OpenUI Lang 布局
 
-从 `root` 组合页面，组件按[签名](analysis-catalog.md)接受位置参数。初始草稿可仅含标题、问题与范围，不使用未就绪资源。每个数据视图用独立命名语句，结果就绪后连同 root/父布局 patch 加入草稿，保留其他组件。结论和必要范围说明也用命名语句，便于增量更新。数据视图已有卡片，不要只为单个视图添加装饰性 Card；Card 可组织共同主题。控制看板列宽用 DashboardGrid 与 DashboardGridItem，按阅读顺序排列，窄容器自动减少列数。简单并排可用带 row 和 wrap 的 Stack。
+用 root 组合页面，参数位置见[组件签名](analysis-catalog.md)。初始草稿可先写标题、问题和范围；数据就绪后用独立命名语句加入视图，同一 patch 更新父布局并保留其他组件。结论和范围说明也用独立语句。DashboardGrid 配 DashboardGridItem 控制列宽，简单并排用可换行 Stack。删除语句时用 `name = null;` 并移除父引用；删除资源用 resourcePatch.remove，同时移除程序引用。marivo_report_delete 删除整个报告及历史。
 
-编辑时以 `name = null;` 删除命名语句，同一 program patch 须改写父语句移除引用，如 `root = Stack([heading]); chart = null;`；页面仍需合法 root。删除资源声明用 `resourcePatch.remove`，并移除程序中的引用；`marivo_report_delete` 永久删除整个已保存视图及历史。失败时按错误阶段和修复信息处理语法、引用或草稿状态；失败不会应用 patch。
-
-TextCallout 说明已核实的范围、假设或限制；Accordion 用于补充内容，重要限制须直接可见。二者文本是静态叙述，不随数据刷新。数据视图仍引用已保存结果，不把数值复制进静态提示充当可刷新指标。
-
-已有图片或数据视图不支持的图形用 Image 资源名引用，提供说明内容的替代文字；需要核对原值时配数据视图。不满足数据视图条件时选择合适表格或说明限制，不用图片或文字掩盖缺失或不完整数据。
+TextCallout 放已核实的静态说明，Accordion 放补充内容，重要限制应直接可见。可刷新指标直接引用保存结果。Image 引用已存图片并提供替代文字。需要核对原值时配数据视图。图种达不到要求时用表格或说明限制。

@@ -55,7 +55,9 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 与 `dataset-snapshot` 一样绑定 codeRef、Session 与 call。保存前分别用 `resolveFrameView` 和 `resolveDatasetView` 校验 Frame 与 Dataset 数据视图：
 未绑定筛选的 metric 要求完整单行快照，table 的 `columns` 使用互异的快照列 ID。Frame 图表 encoding 使用公开轴名和值名，Dataset 图表 encoding 使用列 ID，要求完整快照和数值列。坐标唯一性在没有必选 single 时检查完整快照，有必选 single 时在其所有目标字段原值元组的每个分组内检查。
 
-`selectionSources` 按来源 ID 声明资源、字段、模式和默认策略；数据视图的 `filters` 绑定来源和 OpenUI 状态变量，可显式指定消费资源的目标字段。省略来源表时继承基版本，提供时整体替换。来源最多 64 项，且必须绑定视图；准入在读取来源字段前检查数量和消费关系。完整文档准入校验字段、类型、日期、候选默认值、唯一 ID、消费关系与原始视图。`allowAll:false` 要求非空默认值。single 和 date-range 可以使用 `latest` 按对应 Build 的捕获日期解析默认值。绑定的显式 metric 要求完整快照、所有绑定都是必选 single，且这些目标字段的原值元组在完整快照中唯一；零匹配显示无数据，不进行聚合。auto 按原始资源选图。刷新后显式默认成员消失或其他准入失败时拒绝新版本，保留最后成功的草稿和正式版本；latest 在新 Build 上重新解析。筛选选择只属于阅读状态，不进入更新请求或保存数据。
+`selectionSources` 按来源 ID 声明资源、字段、模式和默认策略；数据视图的 `filters` 绑定来源和 OpenUI 状态变量，可显式指定消费资源的目标字段。省略来源表时继承基版本，提供时整体替换。来源最多 64 项，且必须绑定视图；准入在读取来源字段前检查数量和消费关系。文档准入校验字段、类型、日历、候选默认值、消费关系和原始视图。`allowAll:false` 要求有效非空默认值；single 和 date-range 可以使用 `latest` 按对应 Build 的捕获日期解析。跨资源使用同一业务维度及键编码，存在别名或异构编码时由分析先输出统一的键。各目标可缺少某些成员，选中时对应视图显示无数据；如要求共享候选覆盖全部目标的已捕获成员，普通模式设置 `options.requireTargetCoverage:true`。
+
+显式 metric 需要完整快照。只绑定单选时，所有绑定均须必选；包含多选或日期范围时，按绑定字段元组展示各自的保存值。两种情况均要求目标字段元组唯一定位一行，覆盖所有可选状态。零匹配显示无数据。普通表格筛已捕获行；比较保留已保存的两端；份额、分解和相关性验证组内各行具有相同的筛选键，确保每个筛选器能保留或移除完整组。详见[展示阅读](presentation-reader.md#固定快照筛选)。auto 按原始资源选图。刷新后显式默认成员消失或其他准入失败时拒绝新版本，保留最后成功的草稿和正式版本；latest 在新 Build 上重新解析。筛选选择属于阅读状态。
 
 来源 ID 以字母开头，只能包含字母、数字和下划线，保留 `source_` 前缀避免与注入状态冲突。来源 `region` 的候选、默认值和草稿变量分别命名为 `$source_6_region_options`、`$source_6_region_default`、`$source_6_region_draft`；数字为 ID 的字符长度。控件通过官方 `@Each` 使用候选，数据视图通过对应 `$region` 状态消费已应用选择。
 

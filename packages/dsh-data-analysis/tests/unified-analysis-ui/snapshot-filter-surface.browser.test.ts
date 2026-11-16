@@ -16,7 +16,18 @@ import {
   parseAnalysisDocument,
 } from '../../src/presentation/contracts/analysis-document.ts'
 import { datasetSnapshot } from './dataset-fixtures.ts'
-import { frame, observed } from './frame-fixtures.ts'
+import {
+  align,
+  axisGroups,
+  compareCalendar,
+  frame,
+  monthlyFilterGroups,
+  months,
+  observed,
+  ordinary,
+  pairStatistic,
+  timeAxis,
+} from './frame-fixtures.ts'
 
 test('one filter state synchronizes bound views without changing an unbound view or calling Host', async () => {
   const snapshot = datasetSnapshot(
@@ -112,7 +123,7 @@ window.renderReport=(stage='saved')=>{
   const useReplacement=stage==='replacement' || stage==='unsupported';
   let program=doc.program;
   const sources = candidate ? {...doc.selectionSources,category:{...doc.selectionSources.category,defaultValues:useReplacement?['']:[null]}} : doc.selectionSources;
-  if(stage==='unsupported') program=program.replace('first = DatasetView("sales", {chart:"table"}', 'first = DatasetView("sales", {chart:"heatmap",encoding:{x:"category",y:"large",value:"large"}}');
+  if(stage==='unsupported') program=program.replace('first = DatasetView("sales", {chart:"table"}', 'first = DatasetView("sales", {chart:"heatmap",encoding:{x:"large",y:"large",value:"large"}}');
   root.render(h('div',{'data-stage':stage},h(AnalysisRenderer,{
     program,title:doc.title,locale:doc.locale,resources:useReplacement?replacement:doc.resources,recordId:doc.recordId,
     viewId:'reader',candidate,isStreaming:candidate,selectionSources:sources,
@@ -469,6 +480,194 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{
     await range.locator('[data-frame-point="120:value"]').first().waitFor()
     assert.equal(await range.locator('[data-frame-point$=":value"]').count(), 38)
     assert.deepEqual(errors, [])
+  } finally {
+    await browser.close()
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('one multi-select keeps the same saved periods in indicators, heatmap and complete statistical groups', async () => {
+  const periods = months(3)
+  const { shares, attribution } = monthlyFilterGroups()
+  const periodAxis = timeAxis(3)
+  const domainSnapshots = {
+    comparison: compareCalendar(3),
+    alignment: align({ ...periodAxis, variant: ordinary }),
+    correlation: frame({
+      axes: [periodAxis],
+      values: [
+        {
+          name: 'r',
+          values: [0.1, 0.2, 0.3],
+          context: pairStatistic('pearson', axisGroups('month')),
+        },
+        {
+          name: 'samples',
+          values: [6, 10, 20],
+          context: pairStatistic('pair_count', axisGroups('month')),
+        },
+      ],
+    }),
+    members: frame({ axes: [periodAxis] }),
+  }
+  const metric = datasetSnapshot(
+    periods.map((period, i) => [period, 'All regions', String([4, 10, 20][i])]),
+    [
+      { id: 'period', label: 'Period', type: 'datetime', nullable: false },
+      { id: 'region', label: 'Region', type: 'string', nullable: false },
+      { id: 'total', label: 'Total', type: 'decimal', nullable: false },
+    ],
+  )
+  const binding = {
+    workspaceId: 'workspace',
+    sessionId: 'session',
+    callId: 'call',
+    codeRef: { executionId: '12345678-1234-4123-8123-123456789abc', sha256: 'a'.repeat(64) },
+  }
+  const report = parseAnalysisDocument({
+    schemaVersion: ANALYSIS_UI_FORMAT,
+    workspaceId: 'workspace',
+    reportId: 'groups',
+    buildId: 'build',
+    recordId: analysisRecordId('groups', 'build'),
+    title: 'Saved periods',
+    locale: 'en-US',
+    generatedAt: '2026-11-16T00:00:00Z',
+    catalog: { id: analysisCatalogId, build: analysisCatalogBuild },
+    selectionSources: {
+      period: {
+        ref: 'metric',
+        field: { kind: 'column', name: 'period' },
+        label: 'Period',
+        mode: 'multiple',
+        options: { requireTargetCoverage: true },
+      },
+    },
+    program: `$period = {};
+root = Stack([period, apply, metric, heatmap, shares, attribution, comparison, alignment, correlation, members]);
+period = CheckBoxGroup("period", @Each($source_6_period_options, "i", CheckBoxItem(i.label,"",i.id)), null, $source_6_period_draft);
+apply = Button("Apply periods", @Set($period, @SelectionOrCurrent($period, $source_6_period_draft, $source_6_period_options, "multiple", true)));
+metric = DatasetView("metric", {chart:"metric",encoding:{value:"total"}}, {}, [{source:"period",selection:$period}]);
+heatmap = DatasetView("metric", {chart:"heatmap",encoding:{x:"period",y:"region",value:"total"}}, {}, [{source:"period",selection:$period}]);
+shares = AnalysisFrameView("shares", {chart:"auto"}, {dataTable:"visible"}, [{source:"period",field:{kind:"axis",name:"month"},selection:$period}]);
+attribution = AnalysisFrameView("attribution", {chart:"decomposition"}, {dataTable:"visible"}, [{source:"period",field:{kind:"axis",name:"month"},selection:$period}]);
+${Object.keys(domainSnapshots)
+  .map(
+    (name) =>
+      `${name} = AnalysisFrameView("${name}", {chart:"auto"}, {dataTable:"visible"}, [{source:"period",field:{kind:"axis",name:"month"},selection:$period}]);`,
+  )
+  .join('\n')}`,
+    resources: {
+      ...Object.fromEntries(
+        Object.entries(domainSnapshots).map(([name, snapshot]) => [
+          name,
+          {
+            kind: 'snapshot',
+            declaration: { kind: 'frame-snapshot', snapshotRef: name },
+            snapshot,
+            binding,
+          },
+        ]),
+      ),
+      metric: {
+        kind: 'snapshot',
+        declaration: { kind: 'dataset-snapshot', snapshotRef: 'metric' },
+        snapshot: metric,
+        binding,
+      },
+      shares: {
+        kind: 'snapshot',
+        declaration: { kind: 'frame-snapshot', snapshotRef: 'shares' },
+        snapshot: shares,
+        binding,
+      },
+      attribution: {
+        kind: 'snapshot',
+        declaration: { kind: 'frame-snapshot', snapshotRef: 'attribution' },
+        snapshot: attribution,
+        binding,
+      },
+    },
+  })
+  const directory = await mkdtemp(path.join(tmpdir(), 'dsh-filter-groups-'))
+  const browser = await chromium.launch()
+  try {
+    await build({
+      stdin: {
+        resolveDir: fileURLToPath(new URL('../..', import.meta.url)),
+        contents: `import {createElement as h} from 'react';
+import {createRoot} from 'react-dom/client';
+import {AnalysisRenderer} from './src/client/analysis-ui/surface.tsx';
+const doc=${JSON.stringify(report)};
+createRoot(document.getElementById('root')).render(h(AnalysisRenderer, {
+  program:doc.program,title:doc.title,locale:doc.locale,resources:doc.resources,
+  recordId:doc.recordId,selectionSources:doc.selectionSources,
+  askPoint:async () => true,askDataset:async () => true
+}));`,
+      },
+      outfile: path.join(directory, 'page.js'),
+      bundle: true,
+      platform: 'browser',
+      format: 'iife',
+      jsx: 'automatic',
+      define: { 'process.env.NODE_ENV': '"production"' },
+      logLevel: 'silent',
+    })
+    await writeFile(
+      path.join(directory, 'index.html'),
+      '<!doctype html><div id="root"></div><script src="page.js"></script>',
+    )
+    const page = await browser.newPage()
+    await page.goto(pathToFileURL(path.join(directory, 'index.html')).href)
+    for (const period of [periods[0], periods[2]])
+      await page.getByRole('checkbox', { name: JSON.stringify(period), exact: true }).check()
+    await page.getByRole('button', { name: 'Apply periods' }).click()
+    const ids = (selector: string, attribute: string) =>
+      page
+        .locator(selector)
+        .evaluateAll((nodes, name) => nodes.map((node) => node.getAttribute(name)), attribute)
+    await page.waitForFunction(
+      () => document.querySelectorAll('.au-metric-group [data-value]').length === 2,
+    )
+    assert.deepEqual(await page.locator('.au-metric-group strong').allTextContents(), ['4', '20'])
+    assert.deepEqual(await ids('.au-metric-group [data-frame-point]', 'data-frame-point'), [
+      '0:total',
+      '2:total',
+    ])
+    const heatmap = page.locator('[data-resource="metric"]').nth(1)
+    await heatmap.locator('[data-frame-point="2:total"]').first().waitFor()
+    await heatmap.locator('[data-frame-point="1:total"]').waitFor({ state: 'detached' })
+    for (const name of ['shares', 'attribution']) {
+      assert.deepEqual(await ids(`[data-resource="${name}"] tbody tr`, 'data-row-index'), [
+        '0',
+        '1',
+        '4',
+        '5',
+      ])
+      assert.equal(await page.locator(`[data-resource="${name}"] .fv-parents > section`).count(), 2)
+    }
+    const share = page.locator('[data-resource="shares"] .fv-parents')
+    assert.match(await share.innerText(), /25(?:\.0+)?%/)
+    assert.match(await share.innerText(), /60(?:\.0+)?%/)
+    for (const name of Object.keys(domainSnapshots)) {
+      assert.deepEqual(await ids(`[data-resource="${name}"] tbody tr`, 'data-row-index'), [
+        '0',
+        '2',
+      ])
+    }
+    for (const [name, field] of [
+      ['comparison', 'sales'],
+      ['alignment', 'left.revenue'],
+      ['correlation', 'r'],
+    ]) {
+      const card = page.locator(`[data-resource="${name}"]`)
+      await card.locator(`svg [data-frame-point="2:${field}"]`).first().waitFor()
+      await card
+        .locator(`svg [data-frame-point="1:${field}"]`)
+        .first()
+        .waitFor({ state: 'detached' })
+    }
+    assert.equal(await page.locator('[data-resource="members"] .fv-members-key').count(), 2)
   } finally {
     await browser.close()
     await rm(directory, { recursive: true, force: true })

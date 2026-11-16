@@ -153,3 +153,30 @@ test('stacked composition rejects missing, negative, all-zero and truncated sour
   assert.equal(resolved.ok, false)
   if (!resolved.ok) assert.equal(resolved.code, 'view-requires-complete-snapshot')
 })
+
+test('a filtered composition uses the selected saved amounts and keeps their original row identities', async (t) => {
+  if (skipBrowserTest(t)) return
+  const snapshot = frame({
+    axes: [categoryAxis(4)],
+    values: [{ name: 'v', values: [2, 5, 3, 0] }],
+  })
+  for (const style of [undefined, 'stacked'] as const) {
+    const resolution = resolveFrameView(snapshot, { chart: 'pie', style })
+    assert.ok(resolution.ok)
+    const html = await renderer.shell(
+      snapshot,
+      resolution.classification,
+      resolution.view,
+      { dataTable: 'visible' },
+      [0, 2],
+    )
+    assert.match(html, /40\.00%/)
+    assert.match(html, /60\.00%/)
+    assert.match(html, /data-row-index="2"/)
+    assert.doesNotMatch(html, /data-row-index="1"/)
+    if (!style) assert.match(html, /data-pie-row="2"[^>]*>[\s\S]*?stroke="var\(--chart-3\)"/)
+    const zero = await renderer.shell(snapshot, resolution.classification, resolution.view, {}, [3])
+    assert.doesNotMatch(zero, /data-chart="(?:category-composition|pie)"/)
+    assert.match(zero, /role="status"/)
+  }
+})

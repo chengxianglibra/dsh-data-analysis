@@ -518,7 +518,11 @@ function ComparisonKpi({
 }
 
 /** Saved comparison roles grouped by metric and endpoint, with coordinates retained. */
-export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
+export function ComparisonDetail({
+  snapshot: s,
+  visibleRowIndices,
+  filterSelectionKey,
+}: Pick<MainViewProps<'comparison'>, 'snapshot' | 'visibleRowIndices' | 'filterSelectionKey'>) {
   const t = useCopy()
   const selection = useFrameSelection()
   const selectablePoint = useSelectableFramePoint(s)
@@ -559,6 +563,8 @@ export function ComparisonDetail({ snapshot: s }: { snapshot: Snapshot }) {
               <h4>{`${valueName(s, undefined, roles.current!)} · ${ends.current} ⇄ ${ends.baseline}`}</h4>
               <DatasetTable
                 data={{ ...s.data, columns, rows }}
+                visibleRowIndices={visibleRowIndices}
+                filterSelectionKey={filterSelectionKey}
                 caption=""
                 selectCell={selection?.select}
                 selectableColumns={new Set(fields.filter((field): field is string => !!field))}
@@ -703,6 +709,8 @@ function ComparisonBody({
   height,
   roles,
   index,
+  visibleRowIndices,
+  filterSelectionKey,
 }: MainViewProps<'comparison'> & { roles: ComparisonRoles; index: number }) {
   switch (view.style) {
     case 'numbers':
@@ -714,20 +722,29 @@ function ComparisonBody({
           roles={roles}
           index={index}
           axis={c.timeAxis}
-          rows={rowsOf(s)}
+          rows={visibleRowIndices ?? rowsOf(s)}
           height={height}
         />
       )
     case 'rows':
     case 'delta':
-      return <CompareDelta key={index} s={s} roles={roles} index={index} axes={c.categoryAxes} />
+      return (
+        <CompareDelta
+          key={index}
+          s={s}
+          roles={roles}
+          index={index}
+          axes={c.categoryAxes}
+          rows={visibleRowIndices}
+        />
+      )
     case 'small-multiples': {
       const category = c.categoryAxes
         .map((token) => axisOf(s, token))
         .filter((a) => a !== undefined)
       return (
         <div className="fv-multiples">
-          {groupRows(s, category).map((g) => (
+          {groupRows(s, category, visibleRowIndices).map((g) => (
             <section key={g.key} data-multiple={g.label}>
               <h4>{g.label}</h4>
               <CompareLine
@@ -751,7 +768,14 @@ function ComparisonBody({
           (n): n is string => !!n,
         ),
       ]
-      return <DataTable snapshot={s} columns={names} />
+      return (
+        <DataTable
+          snapshot={s}
+          columns={names}
+          visibleRowIndices={visibleRowIndices}
+          filterSelectionKey={filterSelectionKey}
+        />
+      )
     }
   }
 }
@@ -770,7 +794,7 @@ function CompareLine({
   roles: ComparisonRoles
   index: number
   axis?: string
-  rows: number[]
+  rows: readonly number[]
   height?: number
   compact?: boolean
 }) {
@@ -872,11 +896,13 @@ function CompareDelta({
   roles,
   index,
   axes: tokens,
+  rows: visibleRowIndices,
 }: {
   s: Snapshot
   roles: ComparisonRoles
   index: number
   axes: string[]
+  rows?: readonly number[]
 }) {
   const t = useCopy()
   const selection = useFrameSelection()
@@ -888,7 +914,7 @@ function CompareDelta({
   const axes = tokens.map((token) => axisOf(s, token)).filter((axis) => axis !== undefined)
   const ends = endpointLabels(t, s, index)
   const fields = [roles.current, roles.baseline, roles.absolute, roles.relative]
-  const rows = rowsOf(s)
+  const rows = [...(visibleRowIndices ?? rowsOf(s))]
   const sortName = sort && sort.key !== 'metric' ? roles[sort.key] : undefined
   if (sort) {
     rows.sort((a, b) => {

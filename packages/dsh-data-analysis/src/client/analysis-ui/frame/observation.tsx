@@ -77,14 +77,22 @@ export function HBarChart(props: MainViewProps<'hbar'>) {
         view={props.view}
         height={props.height}
       />
-      {limit !== undefined && limit < props.snapshot.data.rows.length && (
-        <p className="fv-records-more">
-          {t('marivo.presentation.ui-frame-records-preview', {
-            shown: limit.toLocaleString(t.locale),
-            total: props.snapshot.data.rows.length.toLocaleString(t.locale),
-          })}
-        </p>
-      )}
+      {limit !== undefined &&
+        limit < (props.visibleRowIndices?.length ?? props.snapshot.data.rows.length) && (
+          <p className="fv-records-more">
+            {t(
+              props.visibleRowIndices
+                ? 'marivo.presentation.ui-frame-filtered-records-preview'
+                : 'marivo.presentation.ui-frame-records-preview',
+              {
+                shown: limit.toLocaleString(t.locale),
+                total: (
+                  props.visibleRowIndices?.length ?? props.snapshot.data.rows.length
+                ).toLocaleString(t.locale),
+              },
+            )}
+          </p>
+        )}
     </>
   )
 }
@@ -163,30 +171,38 @@ function categoryPercent(locale: PresentationLocale, share: number, exact: Cell)
 }
 
 /** A complete categorical distribution, using saved cells without aggregating rows. */
-export function PieChart({ snapshot: s, classification: c, view }: MainViewProps<'pie'>) {
+export function PieChart({
+  snapshot: s,
+  classification: c,
+  view,
+  visibleRowIndices,
+}: MainViewProps<'pie'>) {
   const t = useCopy()
   const [active, setActive] = useState<number | null>(null)
   const axis = axisOf(s, view.axis)
   if (!axis) return null
   const column = columnOf(s, view.value)?.column
-  const rows = rowsOf(s).map((row) => ({
+  const rows = (visibleRowIndices ?? rowsOf(s)).map((row) => ({
     row,
     label: memberLabel(s, axis, row),
     exact: cellOf(s, row, view.value),
   }))
   const shares = categoryShares(rows.map((item) => item.exact))
-  if (!shares) return null
+  if (!shares) return <p role="status">{t('marivo.presentation.ui-filter-composition-zero')}</p>
   let angle = -Math.PI / 2
   const entries = rows.map((item, index) => {
     const share = shares[index]!
     const start = angle
     angle += (share ?? 0) * 2 * Math.PI
     const text = `${item.label} · ${column ? categoryValueText(s, t.locale, item.exact, column) : '—'}`
-    return { ...item, index, share, start, end: angle, text }
+    return { ...item, index: item.row, share, start, end: angle, text }
   })
   const point = (a: number) => `${150 + 92 * Math.cos(a)},${150 + 92 * Math.sin(a)}`
   return (
     <figure className="fv-chart" data-chart="pie">
+      {visibleRowIndices && (
+        <figcaption>{t('marivo.presentation.ui-filter-composition-scope')}</figcaption>
+      )}
       <div className="fv-pie-layout">
         <svg viewBox="0 0 300 300" aria-label={valueName(s, c, view.value)} className="fv-pie-svg">
           {entries.map((item) => {
@@ -266,6 +282,7 @@ export function CategoricalComposition({
   snapshot: s,
   classification: c,
   view,
+  visibleRowIndices,
 }: MainViewProps<'pie'>) {
   const t = useCopy()
   const selection = useFrameSelection()
@@ -281,19 +298,27 @@ export function CategoricalComposition({
     groupRows(s, [axis]).length !== s.data.rows.length
   )
     return null
-  const source = rowsOf(s).map((row) => ({
+  const source = (visibleRowIndices ?? rowsOf(s)).map((row) => ({
     row,
     exact: cellOf(s, row, view.value),
     label: memberLabel(s, axis, row),
   }))
   const sourceShares = categoryShares(source.map((item) => item.exact))
-  if (!sourceShares) return null
-  const entries = source.map((item, index) => ({ ...item, index, share: sourceShares[index]! }))
+  if (!sourceShares)
+    return <p role="status">{t('marivo.presentation.ui-filter-composition-zero')}</p>
+  const entries = source.map((item, index) => ({
+    ...item,
+    index: item.row,
+    share: sourceShares[index]!,
+  }))
   entries.sort((a, b) => compareDecimalText(String(b.exact), String(a.exact)) || a.row - b.row)
   let offset = 0
   const shareLabel = t('marivo.presentation.ui-frame-calculated-share')
   return (
     <figure className="fv-share-composition" data-chart="category-composition">
+      {visibleRowIndices && (
+        <figcaption>{t('marivo.presentation.ui-filter-composition-scope')}</figcaption>
+      )}
       <svg
         className="fv-share-stack"
         viewBox="0 0 1000 20"
@@ -385,17 +410,19 @@ export function CorrelationPlot({
   snapshot: s,
   classification: c,
   view,
+  visibleRowIndices,
 }: MainViewProps<'correlation'>) {
   const t = useCopy()
   const scaleId = `fv-correlation-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
-  const rows = rowsOf(s)
+  const rows = visibleRowIndices ?? rowsOf(s)
   const labels = rows.map((row) => membersLabel(s, s.frame.axes, row))
+  const positions = new Map(rows.map((row, index) => [row, index]))
   const formatted = (row: number, name: string) => {
     const column = columnOf(s, name)?.column
     return column ? displayFrameCell(s, t.locale, cellOf(s, row, name), column) : '—'
   }
   const tip = (row: number, name: string) =>
-    `${labels[row] ?? ''} · ${valueName(s, c, name)}: ${formatted(row, name)}${view.counts[name] ? ` · n ${formatted(row, view.counts[name]!)}` : ''}`
+    `${labels[positions.get(row)!] ?? ''} · ${valueName(s, c, name)}: ${formatted(row, name)}${view.counts[name] ? ` · n ${formatted(row, view.counts[name]!)}` : ''}`
   const label = summary(
     t,
     view.values.map((name) => valueName(s, c, name)).join(' · '),
@@ -489,7 +516,7 @@ export function CorrelationPlot({
           type="number"
           dataKey="y"
           domain={[-0.5, Math.max(0.5, rows.length - 0.5)]}
-          ticks={rows}
+          ticks={rows.map((_, index) => index)}
           tick={<MemberTick labels={labels} />}
           reversed
           width={140}
@@ -501,9 +528,9 @@ export function CorrelationPlot({
           <Scatter
             key={name}
             name={valueName(s, c, name)}
-            data={rows.flatMap((index) => {
+            data={rows.flatMap((index, y) => {
               const value = valueAt(s, index, name)
-              return value === null ? [] : [{ index, x: value, y: index }]
+              return value === null ? [] : [{ index, x: value, y }]
             })}
             isAnimationActive={false}
             shape={(input) => {
@@ -533,7 +560,7 @@ export function ShareTrack({
   labelOf,
 }: Omit<MainViewProps<'share'>, 'view'> & {
   values: string[]
-  rows?: number[]
+  rows?: readonly number[]
   labelOf?: (row: number) => string
 }) {
   const t = useCopy()
@@ -785,7 +812,7 @@ export function ShareView(props: MainViewProps<'share'>) {
     const { ticks, tickOf } = timeTicks(t, s, time)
     return (
       <div className="fv-parents">
-        {groupRows(s, [time]).map((g) => (
+        {groupRows(s, [time], props.visibleRowIndices).map((g) => (
           <section key={g.key} className="fv-parent" data-parent={ticks[tickOf(g.rows[0]!)]?.label}>
             <h4>{ticks[tickOf(g.rows[0]!)]?.label ?? g.label}</h4>
             <ShareTrack
@@ -803,6 +830,7 @@ export function ShareView(props: MainViewProps<'share'>) {
     <ShareTrack
       {...props}
       values={props.view.values}
+      rows={props.visibleRowIndices ?? rowsOf(s)}
       labelOf={axes.length ? (row) => membersLabel(props.snapshot, axes, row) : undefined}
     />
   )
