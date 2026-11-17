@@ -21,7 +21,16 @@ import {UI_STYLES} from './src/client/ui/theme.ts';
 import {IconButton} from './src/client/ui/controls.tsx';
 import {DetailsDialog} from './src/client/ui/overlays.tsx';
 import {Card,CardContent} from './src/client/ui/primitives/card.tsx';
-const program = 'root = Stack([tabs,row]);\\ntabs = Tabs([a,b]);\\na = TabItem("a","Alpha",[TextContent("Alpha content")]);\\nb = TabItem("b","Beta",[TextContent("Beta content")]);\\nrow = Stack([Card([TextContent("Long saved business label that wraps across narrow cards")]),Card([TextContent("Second card")])],"row","m","stretch","start",true);';
+const program = [
+ 'root = Stack([tabs,row]);',
+ 'tabs = Tabs([a,b,c,d,e]);',
+ 'a = TabItem("a","Alpha",[TextContent("Alpha content")]);',
+ 'b = TabItem("b","Beta",[TextContent("Beta content")]);',
+ 'c = TabItem("c","Gamma details",[TextContent("Gamma content")]);',
+ 'd = TabItem("d","Delta breakdown",[TextContent("Delta content")]);',
+ 'e = TabItem("e","Epsilon relationships",[TextContent("Epsilon content")]);',
+ 'row = Stack([Card([TextContent("Long saved business label that wraps across narrow cards")]),Card([TextContent("Second card")])],"row","m","stretch","start",true);',
+].join('\\n');
 const dashboard = 'root = DashboardGrid([first,second,third],4,"s");\\nfirst = DashboardGridItem([Card([TextContent("First")])],2);\\nsecond = DashboardGridItem([Card([TextContent("Second")])],1);\\nthird = DashboardGridItem([Card([TextContent("Third")])],1);';
 function App(){
  const [build,setBuild] = useState('build-1'),[locale,setLocale]=useState('en-US'),[open,setOpen]=useState(false);
@@ -85,6 +94,29 @@ createRoot(document.getElementById('root')).render(h(App));`,
       await alpha.getAttribute('id'),
     )
     assert.equal(await report.locator('[role=tab][tabindex="0"]').count(), 1)
+    const tablist = report.getByRole('tablist')
+    assert.ok(await tablist.evaluate((node) => node.scrollWidth > node.clientWidth))
+    const last = report.getByRole('tab', { name: 'Epsilon relationships' })
+    await page.keyboard.press('End')
+    await page.waitForFunction(
+      (id) => {
+        const focused = document.activeElement
+        const list = focused?.closest('[role="tablist"]')
+        if (focused?.id !== id || !list) return false
+        const tab = focused.getBoundingClientRect()
+        const bounds = list.getBoundingClientRect()
+        return tab.left >= bounds.left - 1 && tab.right <= bounds.right + 1
+      },
+      await last.getAttribute('id'),
+    )
+    assert.equal(await alpha.getAttribute('aria-selected'), 'true')
+    assert.notEqual(await last.evaluate((node) => getComputedStyle(node).outlineStyle), 'none')
+    await page.keyboard.press('Enter')
+    assert.equal(await last.getAttribute('aria-selected'), 'true')
+    assert.equal(
+      await report.getByRole('tabpanel', { name: 'Epsilon relationships' }).isVisible(),
+      true,
+    )
     await beta.click()
     await page.getByRole('button', { name: 'Switch locale' }).click()
     assert.equal(await beta.getAttribute('aria-selected'), 'true')

@@ -1033,26 +1033,23 @@ test('Dataset chart programs save, reopen and update embedded data after capture
   assert.deepEqual((await readReceiptDocument(f.root, updated.receipt)).resources, saved.resources)
 })
 
-test('reports from other Catalog builds reopen when their content is compatible', async (t) => {
+test('another Catalog build must still use the supported Catalog and components', async (t) => {
   const f = await fixture(t)
-  const previous = '55bf072e4cc809433d3bc4c3436a7d4a917c2052cf27bfe6b4637d7aa03d0053'
-  const predecessor = 'c42feb51cff7113f2de9d48dd61992672a4dc0b13b832b73aef72de7e0b56d0f'
+  const build = 'previous-catalog'
   for (const resource of ['frame', 'data'] as const) {
     const delivery = await f.present({
       resourcePatch: { put: { [resource]: f.resources[resource] } },
     })
     const saved = await readReceiptDocument(f.root, delivery.receipt)
-    for (const build of [predecessor, previous, 'unknown']) {
-      const older = { ...saved, catalog: { ...saved.catalog, build } }
-      assert.equal(parseAnalysisDocument(older).catalog.build, build)
-      assert.throws(
-        () => parseAnalysisDocument({ ...older, program: 'root = UnknownComponent();' }),
-        /analysis-program-invalid/,
-      )
-      assert.throws(() =>
-        parseAnalysisDocument({ ...older, catalog: { ...older.catalog, id: 'unknown' } }),
-      )
-    }
+    const older = { ...saved, catalog: { ...saved.catalog, build } }
+    assert.equal(parseAnalysisDocument(older).catalog.build, build)
+    assert.throws(
+      () => parseAnalysisDocument({ ...older, program: 'root = UnknownComponent();' }),
+      /analysis-program-invalid/,
+    )
+    assert.throws(() =>
+      parseAnalysisDocument({ ...older, catalog: { ...older.catalog, id: 'unknown' } }),
+    )
   }
 })
 

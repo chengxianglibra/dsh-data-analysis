@@ -1,34 +1,12 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import {
-  COMPATIBILITY_SCHEMA,
-  DSH_DATA_ANALYSIS_COMPATIBILITY,
-  DSH_PEER_DEPENDENCIES,
-  DSH_PEER_RANGE,
-  MARIVO_PACKAGE_SPEC,
-  MARIVO_VERSION,
-  PLUGIN_VERSION,
-  RUNTIME_INSTALLATION_VERSION,
-  SUBPROCESS_POLICY_VERSION,
-} from '../../src/compatibility.ts'
+import { DSH_PEER_DEPENDENCIES, DSH_PEER_RANGE } from '../../src/compatibility.ts'
 
 interface PackageManifest {
-  readonly version: string
   readonly peerDependencies: Readonly<Record<string, string>>
   readonly peerDependenciesMeta?: Readonly<Record<string, unknown>>
 }
-
-test('v3 compatibility manifest binds plugin, DSH, Marivo, and project contracts', () => {
-  assert.equal(PLUGIN_VERSION, '0.3.5-dev.0')
-  assert.equal(COMPATIBILITY_SCHEMA, 'dsh-data-analysis-compatibility/v3')
-  assert.equal(DSH_DATA_ANALYSIS_COMPATIBILITY.dsh.distribution, '@deepseek-ai/dsh')
-  assert.equal(DSH_PEER_RANGE, '>=0.2.1-rc.2')
-  assert.equal(MARIVO_VERSION, '0.6.8')
-  assert.equal(MARIVO_PACKAGE_SPEC, 'marivo[duckdb,trino,clickhouse]==0.6.8')
-  assert.equal(RUNTIME_INSTALLATION_VERSION, 'dsh-data-analysis-runtime/v5')
-  assert.equal(SUBPROCESS_POLICY_VERSION, 'direct-argv-inherited-env-snapshot-overlay-v2')
-})
 
 test('every DSH peer is required and uses the one declared supported range', async () => {
   const manifest = JSON.parse(

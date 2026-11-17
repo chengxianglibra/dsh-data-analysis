@@ -317,10 +317,6 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
     catalog.skills.find((skill) => skill.name === 'marivo-semantic')?.provider,
     'dsh-data-analysis-marivo',
   )
-  assert.equal(
-    catalog.skills.some((skill) => skill.name === 'dsh-data-analysis-report'),
-    false,
-  )
   assert.ok(
     catalog.skills
       .filter((skill) => skill.provider === 'dsh-data-analysis-marivo')

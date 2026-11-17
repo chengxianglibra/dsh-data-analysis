@@ -459,34 +459,30 @@ try {
     assert.equal(await readFile(path.join(snapshot, reference), 'utf8'), originalReference)
     assert.deepEqual((await skillContext.skills.snapshot()).skills, [])
     const root = await import('@chengxianglibra/dsh-data-analysis')
-    assert.equal(Object.hasOwn(root, 'chartSeriesFields'), false, 'obsolete chart helper must not be exported')
     const compatibility = await import('@chengxianglibra/dsh-data-analysis/compatibility')
     const integration = await import('@chengxianglibra/dsh-data-analysis/integration')
-    if (integration.INTEGRATION_CONTRACT_VERSION !== 'dsh-data-analysis-integration/v1' || typeof integration.applyWithIntegration !== 'function') throw new Error('packed integration contract invalid')
-    if (typeof integration.withDatasourceDefaults !== 'function') throw new Error('packed live defaults validator unavailable')
     assert.deepEqual(Object.keys(root).sort(), ['Config', 'apply', 'inject', 'installMarivoPlugin', 'name'])
     for (const subpath of ['environment', 'disclosure', 'datasource']) {
       await assert.rejects(import('@chengxianglibra/dsh-data-analysis/' + subpath), { code: 'ERR_PACKAGE_PATH_NOT_EXPORTED' })
     }
-    assert.equal(typeof integration.ensureSharedMarivoRuntime, 'function')
-    assert.equal(typeof integration.createWorkspaceDatasourceAuthoring, 'function')
-    assert.equal(typeof integration.marivoCredentialStorageRef, 'function')
-    assert.equal(Object.hasOwn(integration, 'MarivoCredentialService'), false)
-    assert.equal(Object.hasOwn(integration, 'MarivoDatasourceBridge'), false)
-    for (const removed of ['buildPresentation', 'parsePresentationDraft', 'parsePresentationDocument', 'lintPresentationDraft', 'registerMarivoExportHtmlTool', 'registerReportPublishTool', 'HostPresentationReader']) {
-      if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed legacy report surface ' + removed)
+    const integrationFunctions = [
+      'applyWithIntegration',
+      'createWorkspaceDatasourceAuthoring',
+      'ensureSharedMarivoRuntime',
+      'marivoCredentialStorageRef',
+      'registerPluginRpc',
+      'withDatasourceDefaults',
+    ]
+    assert.deepEqual(Object.keys(integration).sort(), ['INTEGRATION_CONTRACT_VERSION', ...integrationFunctions])
+    assert.equal(integration.INTEGRATION_CONTRACT_VERSION, 'dsh-data-analysis-integration/v1')
+    for (const name of integrationFunctions) {
+      assert.equal(typeof integration[name], 'function', name)
     }
     if (compatibility.PLUGIN_VERSION !== ${JSON.stringify(sourceManifest.version)}) throw new Error('packed plugin semver mismatch')
     if (compatibility.DSH_PEER_RANGE !== ${JSON.stringify(dshPeerRange)}) throw new Error('packed DSH range mismatch')
     if (compatibility.MARIVO_VERSION !== ${JSON.stringify(compatibility.marivo.version)}) throw new Error('packed Marivo version mismatch')
     if (compatibility.MARIVO_PACKAGE_SPEC !== ${JSON.stringify(compatibility.marivo.packageSpec)}) throw new Error('packed Marivo package spec mismatch')
     if (typeof root.apply !== 'function') throw new Error('packed root entry is not loadable')
-    for (const removed of ['MARIVO_DATASOURCE_ACCESS_TOOL_NAME', 'createMarivoDatasourceAccessTool', 'registerMarivoDatasourceAccessTool']) {
-      if (Object.hasOwn(root, removed) || Object.hasOwn(integration, removed)) throw new Error('packed plugin still exports removed datasource access surface ' + removed)
-    }
-    for (const removed of ['REPORT_DOCUMENT_VERSION', 'MARIVO_REPORT_RENDER_TOOL_NAME', 'createMarivoReportRenderTool', 'MARIVO_REPORT_PROMPT', 'MARIVO_EVIDENCE_SOURCES_TOOL_NAME', 'registerMarivoEvidenceSourcesTool', 'MARIVO_EVIDENCE_SOURCES_PROMPT']) {
-      if (Object.hasOwn(root, removed)) throw new Error('packed root still exports removed report surface ' + removed)
-    }
   `
   run(process.execPath, ['--input-type=module', '--eval', smokeProgram], { cwd: consumer })
 

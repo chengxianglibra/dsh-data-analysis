@@ -32,7 +32,7 @@ Harness 0.2.1-rc.2 的 execute 只返回 canonical JSON，presentationMeta 为 a
 
 ## 根导出逐项迁移
 
-按根 tsconfig 编译选项创建 TypeScript Program，通过 checker.getExportsOfModule 解析 re-export，按名称去重；类型和值同名计一次。基线 154，当前 6。本表中的 tests/scripts 为本仓库静态引用文件数，不能证明外部使用全貌。实际包验证会检查承诺入口、被移除 subpath 拒绝、声明消费与浏览器构建边界。
+按根 tsconfig 编译选项创建 TypeScript Program，通过 checker.getExportsOfModule 解析 re-export 并按名称去重。类型和值同名时计一次。基线 154，当前 6。本表记录迁移时的 tests/scripts 静态引用文件数。实际包验证会检查根入口和 ./integration 的运行时导出清单、被移除 subpath 拒绝、声明消费与浏览器构建边界。
 
 | 原名称 | 已核消费者 | 处理与目标 | 验证 |
 | --- | --- | --- | --- |

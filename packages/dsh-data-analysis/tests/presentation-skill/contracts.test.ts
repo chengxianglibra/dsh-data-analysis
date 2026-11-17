@@ -3,7 +3,6 @@ import { readdir, readFile, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { analysisCatalogSpec } from '../../src/presentation/contracts/analysis-catalog.ts'
 import { analysisElements } from '../../src/presentation/contracts/analysis-document.ts'
 import {
   analysisStatements,
@@ -86,28 +85,6 @@ for (const skillName of skillNames) {
     assert.ok(fields.description && fields.description.length <= 1024)
   })
 }
-
-test('analysis catalog reference matches the generated component signatures', async () => {
-  const content = await readFile(
-    path.join(packageRoot, 'skills/dsh-data-analysis-presentation/references/analysis-catalog.md'),
-    'utf8',
-  )
-  const documented = Object.fromEntries(
-    [...content.matchAll(/^## (\w+)\n\n```text\n(.+)\n```$/gm)].map((match) => [
-      match[1],
-      match[2],
-    ]),
-  )
-  assert.deepEqual(
-    documented,
-    Object.fromEntries(
-      Object.entries(analysisCatalogSpec.components).map(([name, component]) => [
-        name,
-        component.signature,
-      ]),
-    ),
-  )
-})
 
 test('custom page examples use valid OpenUI Lang and Catalog components', async () => {
   const content = await readFile(

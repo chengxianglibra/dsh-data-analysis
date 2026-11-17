@@ -214,8 +214,8 @@ npm run validate:presentation-integration:real
 
 日常 `npm run check` 与发布门禁均不运行浏览器用例；发布层 `npm run test:release` 保留可用时的真实
 Catalog 测试，并运行文件分析验收脚本的 Git 和 PTC 护栏。日常测试还排除真实 Catalog。
-CI、发布检查与 `pack:plugin` 使用发布层；浏览器用例及 CSV 浏览器护栏可通过 `npm run test:full`、
-单独的 `test:<suite>` 或 `test:validation-guards` 显式运行。真实 Runtime、Host 和模型验证仍按各入口
+CI、发布检查与 `pack:plugin` 使用发布层。浏览器用例由 `npm run test:full` 或对应的 `test:<suite>` 运行，
+CSV 浏览器护栏由 `npm run test:full` 或 `npm run test:validation-guards` 运行。真实 Runtime、Host 和模型验证仍按各入口
 的前提单独运行，不能由这些测试替代。
 
 单套件使用 `npm run test:<suite>` 准备自己的构建产物。`node scripts/test-suite.mjs right-tabs --plan`

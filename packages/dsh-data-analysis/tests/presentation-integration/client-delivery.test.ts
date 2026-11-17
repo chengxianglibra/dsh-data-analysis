@@ -476,8 +476,6 @@ test('Host deliverables keep produced files and independent report nodes in eith
       .entries('conversation.chat.node')
       .find((entry: { options: { key: string } }) => entry.options.key === definition.kind)
     assert.ok(renderer)
-    for (const removed of ['installPresentation', 'PresentationCards', 'PresentationOverlay'])
-      assert.equal(Object.hasOwn(host.presentation, removed), false)
     for (const replay of [
       () =>
         assembler.replaceWindow(

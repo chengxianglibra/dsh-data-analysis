@@ -68,6 +68,7 @@ test('default client is a valid Cordis effect and registers native resources wit
       name: 'shell.overlay',
       id: 'locale-test',
       children: {
+        'conversation.session.header.actions': { kind: 'list', scope: 'session' },
         'sidebar.right.pane.tab.title': { kind: 'keyed', scope: 'session' },
         'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session' },
         'tool.call.toolview': { kind: 'keyed', scope: 'session' },
@@ -92,6 +93,14 @@ test('default client is a valid Cordis effect and registers native resources wit
     host.slots.entries('tool.call.toolview').map((entry) => entry.options.key),
     [...nativeToolViews, 'marivo_report_write', 'marivo_python'],
   )
+  const credentialSlots = [
+    ['conversation.session.header.actions', 'marivo-credential-requests'],
+    ['shell.overlay', 'marivo-credential-observer'],
+  ] as const
+  for (const [slot, id] of credentialSlots) {
+    const entry = host.slots.entries(slot).find((item) => item.options.id === id)
+    assert.equal(typeof entry?.component, 'function', id)
+  }
   const directoryTitles = [
     ['marivo-datasources', '数据源与凭证', 'Datasources and credentials'],
     ['marivo-semantic', '语义层', 'Semantic layer'],
@@ -131,6 +140,12 @@ test('default client is a valid Cordis effect and registers native resources wit
   assert.equal(controller.audit.changes.length, 0)
   await host.dispose()
   assert.equal(host.slots.entries('tool.call.toolview').length, 0)
+  for (const [slot, id] of credentialSlots)
+    assert.equal(
+      host.slots.entries(slot).some((entry) => entry.options.id === id),
+      false,
+      id,
+    )
 })
 
 async function installed(t, browserStorage) {

@@ -8,7 +8,7 @@ const preparationBySuite = new Map([
   ['presentation-surface', 'source'],
   ['presentation-skill', 'source'],
   ['right-tabs', 'client'],
-  ['datasource-credentials', 'client'],
+  ['datasource-credentials', 'source'],
   ['semantic-reference-input', 'client'],
   ['semantic-browser', 'client'],
   ['presentation-integration', 'client'],
