@@ -16,6 +16,7 @@ import { FILTER_CHIPS_STYLES } from './filter-chips.tsx'
 import { FRAME_STYLES } from './frame/styles.ts'
 import { LAYOUT_STYLES } from './layout.tsx'
 import { analysisLibrary } from './library.tsx'
+import { openUIDarkTheme, openUILightTheme } from './openui-theme.ts'
 import { useReportReading } from './reading-state.tsx'
 import { ReportMotion, type ReportProgress } from './report-motion.tsx'
 import { prepareSelectionSources } from './selection-data.tsx'
@@ -229,7 +230,12 @@ export function AnalysisRenderer({
   return (
     <ReportCopyProvider locale={locale}>
       <AnalysisResources.Provider value={resources} key={viewId ?? recordId}>
-        <ThemeProvider mode={openUIMode} cssSelector={`[data-openui-scope="${themeId}"]`}>
+        <ThemeProvider
+          mode={openUIMode}
+          cssSelector={`[data-openui-scope="${themeId}"]`}
+          lightTheme={openUILightTheme}
+          darkTheme={openUIDarkTheme}
+        >
           <article
             ref={themeSource}
             data-openui-scope={themeId}
