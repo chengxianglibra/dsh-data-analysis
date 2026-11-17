@@ -38,10 +38,11 @@
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。验证命令以根目录 `package.json` 的 scripts 为准；
 `docs/testing/` 中的验证指南和验收记录是本地工作材料，不纳入版本控制。
 
-统一分析 UI 通过 `marivo_report_write` 保存并读取 `dsh.analysis-ui/v4` 文档。Frame 和 DataFrame 都通过 Marivo 公开持久引用，在绑定 Python Runtime 中直接读取；不启动 HTTP 服务。快照内嵌不可变 Build，AnalysisSurface
-统一在右侧 Tab 呈现候选、草稿与正式版本，Chat 保留分析视图入口。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
-并可在 Catalog 范围内显式指定图形。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。旧格式报告不进入报告目录；
-新格式支持离线 HTML 导出和按配置启用的 S3 发布。详细契约见本目录中的投影、交付与 reader 模块文档。
+统一分析 UI 使用 `marivo_report_write` 保存 `dsh.analysis-ui/v4` 文档。插件按 Marivo 公开持久引用在绑定的 Python Runtime 中读取
+Frame 和 DataFrame，将有界快照内嵌到不可变 Build。AnalysisSurface 在右侧 Tab 呈现候选、草稿与正式版本，Chat 保留分析视图入口。
+保存校验与呈现共用 `resolveFrameView` 和 `resolveDatasetView`。Frame v2 按结构选择视图，并可在 Catalog 范围内显式指定图形。
+DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。已保存的 v4 Build 支持离线 HTML 导出和按配置启用的 S3 发布。
+详细契约见本目录中的投影、交付与 reader 模块文档。
 
 ## 运行与数据流
 
@@ -54,12 +55,13 @@ flowchart TD
   A[Agent / Skills] --> T[Help / Datasource / Python Tools]
   T --> E
   E --> M[Marivo public contracts]
-  E --> C[DataFrame capture receipt]
-  M --> P[Bounded snapshots / admitted resources]
-  C --> P
-  P --> B[Immutable Report Build JSON]
+  E -->|marivo_python resultVariables| F[Persisted Frame / DataFrame references]
+  A --> S[marivo_report_write]
+  F -->|resource| S
+  S -->|Read fixed results in bound Runtime| P[Bounded snapshots]
+  P -->|save| B[Immutable Report Build JSON]
   B --> U[Current pointer and receipt]
-  U --> V[Tool view / Report tab: AnalysisSurface]
+  U --> V[Report tab / AnalysisSurface]
   U --> K[Report catalog / version history]
   M --> Q[Read-only Catalog projection]
   Q --> I[Semantic browser / Input reference]
@@ -112,7 +114,8 @@ Native 的公开 PartialArguments 提供真实 program 前缀；
 DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。Frame 和 Dataset 均支持选择已保存图点或支持的单元格后“就此提问”。
 两种数据视图使用 shadcn/ui 结果外壳与 Recharts 图形，领域层保留事实解释与原始行字段绑定；OpenUI Lang / Renderer 负责分析视图编排，
 报告组件的私有布局、主题和交互由[插件 UI 基础层](modules/custom-ui-components.md)统一承载。
-全局筛选、页面编辑及旧报告 cell 的“加入提问”接口均不提供。
+`FilterChips` 与日期范围 `DatePicker` 根据 `selectionSources` 在已保存快照上筛选，作用于显式绑定该来源的视图。
+筛选契约见[固定快照筛选](modules/presentation-reader.md#固定快照筛选)。
 
 ## 生命周期与失败原则
 
