@@ -2,7 +2,7 @@
 
 ## 离线下载
 
-对象存储发布关闭时，分析视图 Tab 的三点菜单显示「导出 HTML」。导出使用当前显示且已校验的 `dsh.analysis-ui/v4` Build，支持当前版本和同格式的历史版本。浏览器直接使用 Build 内嵌的快照生成并下载单个 HTML 文件。
+对象存储发布关闭时，分析视图 Tab 的三点菜单显示「导出 HTML」。导出使用当前显示且通过 [Reader 校验](presentation-reader.md#分析视图目录版本历史与旧格式)的 Build，支持当前版本和同格式的历史版本。浏览器直接使用 Build 内嵌的快照生成并下载单个 HTML 文件。
 
 浏览器发起下载后显示短暂提示；生成或发起下载失败时显示可关闭的错误提示。下载提示不代表文件已成功保存。
 
@@ -41,7 +41,7 @@ Web 用户在「数据源与凭证 → 凭证管理 → 报告发布凭证」录
 
 开启发布后，报告三点菜单显示「发布到对象存储」以替换「导出 HTML」。菜单每次打开时读取发布配置和凭据状态。选中发布会上传当前显示的固定 Build，成功后提供访问链接。缺少凭据时，「前往凭证管理」直接打开「数据源与凭证」页面内的对应标签。补齐后返回报告，从菜单重新发起发布。
 
-开启后注册 `marivo_publish_report({ ref })`，接受当前 Session 所属 Workspace 的准确 saved ref。Agent 仅在用户明确要求发布时调用。服务端从已保存历史读取指定 Build，验证 Workspace、文件摘要和文档契约，再用离线下载的同一渲染器生成自包含 HTML。当前及历史的 `dsh.analysis-ui/v4` Build 均可发布。结构化回执包含 URL、对象键、Workspace/Report/Build ID、HTML SHA-256、字节数和上传时间。
+开启后注册 `marivo_publish_report({ ref })`，接受当前 Session 所属 Workspace 的准确 saved ref。Agent 仅在用户明确要求发布时调用。服务端从已保存历史读取指定 Build，验证 Workspace、文件摘要和[文档契约](presentation-reader.md#分析视图目录版本历史与旧格式)，再用离线下载的同一渲染器生成自包含 HTML。通过校验的当前及历史 Build 均可发布。结构化回执包含 URL、对象键、Workspace/Report/Build ID、HTML SHA-256、字节数和上传时间。
 
 认证 RPC channel `/dsh-report-publishing` 使用 Harness 精确 POST 路由。请求载荷和返回值如下。
 

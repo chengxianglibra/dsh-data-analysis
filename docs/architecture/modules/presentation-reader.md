@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-本模块把已保存的分析文档（新保存为 `dsh.analysis-ui/v4`）呈现在原生右侧 Tab 中，并在真实 Turn 的 Chat 节点保留入口。
+本模块把已保存的分析文档呈现在原生右侧 Tab 中，并在真实 Turn 的 Chat 节点保留入口。
 插件拥有 Catalog/Renderer、阅读状态、分析视图目录与版本历史视图；Marivo 拥有分析语义与来源事实，
 Harness 拥有 Workspace、Session、右侧 tab 生命周期与交付。reader 消费已保存文档及交付链路提供的当前 Turn 草稿和候选，
 不调用 Python、凭据、observe 或 revalidation，也不执行分析、查询或保存。
@@ -170,9 +170,9 @@ Host 内入口要求已有 Session，只访问该 Session 所属 Workspace，不
 
 删除操作在确认后删除整个已保存分析视图及其历史；服务端核验 Workspace 和当前版本，冲突时不删除。删除后目录不再列出该视图，旧入口重新读取时不可用；不删除 Marivo 结果、数据源或已导出的 HTML。文件清理未完成时明确提示，不把视图已移除等同于文件已全部清除。连接或 Workspace 绑定在请求期间变化时，迟到响应不改变新绑定的阅读状态，结果按未确认处理。删除契约见[展示交付](presentation-delivery.md)。
 
-Reader 接受 current v4 历史指针、受支持的文档和快照格式。读取时保留保存的 Catalog build 作为来源信息，不要求它与当前 build 相同；仍检查 Catalog ID、文档身份、资源和当前 Catalog 的程序与视图契约。当前 reader 无法支持的内容明确报错，不静默丢弃。通过校验表示当前 reader 可以呈现，不保证旧版组件的默认值或渲染语义与保存时完全一致。基于旧文档保存的新版本使用当前 Catalog，旧 Build 文件不改写。
+Reader 接受 schemaVersion 4 的 current 历史指针和 `dsh.analysis-ui/v4` 文档，见 [current 指针校验](../../../packages/dsh-data-analysis/src/presentation/reports.ts)与[文档解析](../../../packages/dsh-data-analysis/src/presentation/contracts/analysis-document.ts)。保存的 Catalog build 用于记录来源，读取跨 build 文档时按当前契约校验 Catalog ID、文档身份、资源、程序与视图。文档或快照与当前契约不兼容时明确报错。组件的默认值和渲染语义以当前 Catalog 为准，新保存使用当前 Catalog 并生成独立 Build。
 
-current v2/v3 指针、Frame v1 和不受支持的旧报告格式仍被拒绝；文件保留但不可继续读取或更新。目录将不可读指针计入 unavailable，不猜测缺失的发布时间、Session 或 surface；可读指针对应的文档仍可能在打开时发现不兼容。需要相同内容时，从实际结果重新 `marivo_report_write` 新格式。
+current v2/v3 指针、`dsh.analysis-ui/v3` 文档和 Frame v1 会被拒绝，文件保留供排查。目录将不可读指针计入 `unavailable`，打开报告时进一步验证指针对应的文档。需要相同内容时，用实际结果调用 `marivo_report_write` 重新生成。
 
 ## 界面语言与报告语言
 

@@ -2,7 +2,7 @@
 
 ## 责任与入口
 
-分析视图是右侧 Tab 中的整页分析结果，可包含一个或多个数据视图和说明。内部使用 `AnalysisDocument` 保存 OpenUI Lang program、元数据和资源。报告与看板是用户可要求的编排方式。`marivo_report_write` 预览草稿或保存不可变版本（`dsh.analysis-ui/v4`），Chat 保留打开入口。
+分析视图是右侧 Tab 中的整页分析结果，可包含一个或多个数据视图和说明。内部使用 `AnalysisDocument` 保存 OpenUI Lang program、元数据和资源。报告与看板是用户可要求的编排方式。`marivo_report_write` 预览草稿或按 [Reader 支持的格式](presentation-reader.md#分析视图目录版本历史与旧格式)保存不可变版本，Chat 保留打开入口。
 
 Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 Session/Turn、Workspace 成员关系和事件存储。插件拥有快照读取、文件完整提交、receipt、交付事件与分析视图目录。
 
@@ -63,7 +63,7 @@ Marivo 拥有分析、AnalysisFrame、Artifact 与来源事实。Harness 拥有 
 
 日期范围来源 `period` 的默认值和草稿变量分别为 `$source_6_period_default` 和 `$source_6_period_draft`；数字为 ID 字符长度。完整范围在校验后写到 `$period`。
 
-读取按当前 Catalog 验证保存程序。`dsh.analysis-ui/v3` 和引用已移除筛选控件的程序需要重新生成报告。
+读取按当前 Catalog 验证保存程序。旧格式或引用已移除筛选控件的报告按 [Reader 兼容约定](presentation-reader.md#分析视图目录版本历史与旧格式)重新生成。
 
 program、Catalog id/build、资源声明、实际快照和来源绑定全部保存在 Build 的 `presentation.json` 内。
 模型使用 [report-ref.ts](../../../packages/dsh-data-analysis/src/presentation/contracts/report-ref.ts) 编码的版本化 ReportRef（上限 4096 字符），不构造或拆分。`report-ref-invalid` 提示准确复制成功回执，或通过 `marivo_report_list` 检索已保存报告，再读取选中的 ref 确认目标；不解码、修补引用或自动选择最新报告。`marivo_report_read({draft:true})` 仅恢复尚未保存的当前 Turn 草稿，成功保存会立即清除草稿。保存 ref 编码后执行解析自检；提交证明与 canonical 回执复用同一个 ref，文本回执核对其与持久化 receipt 的身份一致。saved ref 只有稳定 Workspace/report/build 定位，不含 Turn、进程 token 或连接 generation，可跨 Session/Host 重启读取；每次仍重新核验当前 Workspace 权限与磁盘边界。draft ref 另绑定 Session/Turn/草稿/revision，仅在原进程与活动 Turn 有效。内部 `marivo-ui:<reportId>:<buildId>` 仅供 receipt、RPC 和存储定位。
@@ -135,9 +135,8 @@ Tab 与报告视图身份由客户端和原生地址管理，不写入报告内�
 ```
 
 receipt 保存 Workspace/report/build 身份、标题、摘要及已保存 JSON 的精确路径、SHA-256 和字节数。
-`presentations/<reportId>/current.json` 使用 schemaVersion 4，保存当前 receipt 及按发布顺序排列的版本记录；
-每项必须包含有效 publishedAt、Agent Session 和 surface，不包含旧历史缺失标记。
-current v2/v3 均不再接受，包含此前新格式报告的旧指针；不自动迁移或修改磁盘文件。
+`presentations/<reportId>/current.json` 使用 [Reader 支持的指针格式](presentation-reader.md#分析视图目录版本历史与旧格式)，
+保存当前 receipt 及按发布顺序排列的版本记录。每项必须包含有效 publishedAt、Agent Session 和 surface。
 
 磁盘上已有的旧格式报告（Presentation Document v3 及更早）不删除、不迁移；分析视图目录不再列出它们，
 打开旧报告地址时显示“不支持的报告”错误。需要相同内容时从实际结果重新 present。
@@ -193,7 +192,7 @@ current 更新由直接 peer `@deepseek-ai/dsh-atomic-write` 的 `withFileLock` 
 默认 client 从 Workspace 会话头部的「分析视图」入口打开当前 Workspace 的原生目录 Tab。列表按 Report ID 去重，
 只显示「分析视图标题」「生成对话」「更新时间」三列；搜索框随输入筛选标题，列表按成功保存时间降序，
 同时间以 Report ID 稳定排序。统一列出所有已保存的分析视图，不按生成时的 surface 分类或过滤；
-发布历史中的 `source.surface` 保留旧格式兼容，不决定当前阅读位置。列表包含支持的 `dsh.analysis-ui/v4` 和可转换的 `dsh.analysis-ui/v3` 记录，其他旧格式报告被隐藏。
+`source.surface` 记录发布来源，当前阅读位置由 Host 决定。目录验证发布指针并汇总不可用记录，打开报告时检查文档兼容性。见 [Reader 兼容约定](presentation-reader.md#分析视图目录版本历史与旧格式)。
 
 来源会话使用发布时记录的 Harness Session ID，通过 Host 当前会话列表解析标题和导航；不可用时明确披露，不猜测来源。
 历史版本从报告正文的「历史版本」入口打开，版本切换读取精确 receipt，历史只读；返回当前版本显式重新 resolve。

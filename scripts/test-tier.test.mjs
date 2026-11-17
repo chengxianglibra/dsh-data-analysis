@@ -5,16 +5,24 @@ import path from 'node:path'
 import { test } from 'node:test'
 
 /** @param {string} suite @param {'daily' | 'release' | 'full'} tier */
-function list(suite, tier) {
-  const result = spawnSync(process.execPath, ['scripts/test-suite.mjs', suite, '--list'], {
+function plan(suite, tier) {
+  const result = spawnSync(process.execPath, ['scripts/test-suite.mjs', suite, '--plan'], {
     encoding: 'utf8',
     env: { ...process.env, DSH_DATA_ANALYSIS_TEST_TIER: tier },
   })
   assert.equal(result.status, 0, result.stderr)
-  /** @type {string[]} */
-  const paths = JSON.parse(result.stdout)
-  return paths
+  /** @type {{ preparation: 'client' | 'source' | null, paths: string[] }} */
+  const selected = JSON.parse(result.stdout)
+  return selected
 }
+
+test('the standalone right-tabs suite prepares the client bundle used by its Host fixture', () => {
+  const { preparation, paths } = plan('right-tabs', 'full')
+  assert.equal(preparation, 'client')
+  assert.ok(
+    paths.includes(path.join('packages/dsh-data-analysis/tests/right-tabs', 'install.test.ts')),
+  )
+})
 
 test('release excludes browser files while retaining mixed contracts and real catalog tests', () => {
   for (const suite of [
@@ -28,9 +36,9 @@ test('release excludes browser files while retaining mixed contracts and real ca
       .filter((name) => name.endsWith('.test.ts'))
       .map((name) => path.join(directory, name))
       .sort()
-    const full = list(suite, 'full')
-    const release = list(suite, 'release')
-    const daily = list(suite, 'daily')
+    const { paths: full } = plan(suite, 'full')
+    const { paths: release } = plan(suite, 'release')
+    const { paths: daily } = plan(suite, 'daily')
     assert.deepEqual(full, all)
     for (const file of release) assert.ok(full.includes(file), file)
     for (const file of daily) assert.ok(release.includes(file), file)
@@ -55,7 +63,7 @@ test('release excludes browser files while retaining mixed contracts and real ca
     }
   }
   assert.ok(
-    list('presentation-integration', 'release').some(
+    plan('presentation-integration', 'release').paths.some(
       (file) => path.basename(file) === 'report-data-update.test.ts',
     ),
   )

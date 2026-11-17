@@ -2,25 +2,21 @@ import { spawnSync } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
-const sourceSuites = new Set([
-  'help-disclosure',
-  'plugin-integration-delivery',
-  'presentation-surface',
-  'presentation-skill',
-  'right-tabs',
-])
-const clientSuites = new Set([
-  'datasource-credentials',
-  'semantic-reference-input',
-  'semantic-browser',
-  'presentation-integration',
-  'unified-analysis-ui',
-])
-const unpreparedSuites = new Set([
-  'runtime-workspace',
-  'environment-execution',
-  'presentation-projection',
-  'python-tool',
+const preparationBySuite = new Map([
+  ['help-disclosure', 'source'],
+  ['plugin-integration-delivery', 'source'],
+  ['presentation-surface', 'source'],
+  ['presentation-skill', 'source'],
+  ['right-tabs', 'client'],
+  ['datasource-credentials', 'client'],
+  ['semantic-reference-input', 'client'],
+  ['semantic-browser', 'client'],
+  ['presentation-integration', 'client'],
+  ['unified-analysis-ui', 'client'],
+  ['runtime-workspace', null],
+  ['environment-execution', null],
+  ['presentation-projection', null],
+  ['python-tool', null],
 ])
 
 // Older browser tests predate the .browser.test.ts suffix. Keep the explicit list
@@ -47,8 +43,10 @@ const mixedBrowserFiles = new Set([
   'unified-analysis-ui/frame-display-metadata.test.ts',
   'unified-analysis-ui/frame-presentation-integration.test.ts',
 ])
-const suite = process.argv[2]
-if (!suite || ![sourceSuites, clientSuites, unpreparedSuites].some((group) => group.has(suite))) {
+const [suite, mode] = process.argv.slice(2)
+if (!suite) throw new Error('Expected a test suite')
+const preparation = preparationBySuite.get(suite)
+if (preparation === undefined) {
   throw new Error(`Unknown test suite: ${suite}`)
 }
 
@@ -59,11 +57,8 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 
-const listOnly = process.argv[3] === '--list'
-if (!listOnly && sourceSuites.has(suite))
-  run(process.execPath, ['scripts/prepare-test.mjs', 'source'])
-if (!listOnly && clientSuites.has(suite))
-  run(process.execPath, ['scripts/prepare-test.mjs', 'client'])
+const dryRun = mode === '--list' || mode === '--plan'
+if (!dryRun && preparation) run(process.execPath, ['scripts/prepare-test.mjs', preparation])
 
 const directory = path.join('packages/dsh-data-analysis/tests', suite)
 const files = readdirSync(directory)
@@ -112,8 +107,8 @@ if (suite === 'plugin-integration-delivery') {
     'scripts/typecheck-config.test.mjs',
   )
 }
-if (listOnly) {
-  console.log(JSON.stringify(paths))
+if (dryRun) {
+  console.log(JSON.stringify(mode === '--plan' ? { preparation, paths } : paths))
   process.exit(0)
 }
 if (daily || release) {

@@ -38,10 +38,10 @@
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。验证命令以根目录 `package.json` 的 scripts 为准；
 `docs/testing/` 中的验证指南和验收记录是本地工作材料，不纳入版本控制。
 
-统一分析 UI 使用 `marivo_report_write` 保存 `dsh.analysis-ui/v4` 文档。插件按 Marivo 公开持久引用在绑定的 Python Runtime 中读取
+统一分析 UI 使用 `marivo_report_write` 保存 `AnalysisDocument`。插件按 Marivo 公开持久引用在绑定的 Python Runtime 中读取
 Frame 和 DataFrame，将有界快照内嵌到不可变 Build。AnalysisSurface 在右侧 Tab 呈现候选、草稿与正式版本，Chat 保留分析视图入口。
 保存校验与呈现共用 `resolveFrameView` 和 `resolveDatasetView`。Frame v2 按结构选择视图，并可在 Catalog 范围内显式指定图形。
-DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。已保存的 v4 Build 支持离线 HTML 导出和按配置启用的 S3 发布。
+DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。已保存的 [Reader 可读 Build](modules/presentation-reader.md#分析视图目录版本历史与旧格式)支持离线 HTML 导出和按配置启用的 S3 发布。
 详细契约见本目录中的投影、交付与 reader 模块文档。
 
 ## 运行与数据流
@@ -135,7 +135,7 @@ Harness 拥有设置持久化、配置分层和 revision 冲突检测。插件�
 
 ## Marivo 0.6 接缝
 
-当前安装使用 pip 固定 Marivo `0.6.8` 正式版；pip 默认从 PyPI 获取，也遵循本机配置的包索引。安装与升级见 [Runtime 安装](modules/runtime-workspace.md#正式版安装与升级)。
+插件通过 pip 安装兼容清单锁定的 Marivo，遵循本机配置的包索引。版本和安装方式见 [Runtime 安装](modules/runtime-workspace.md#当前安装来源)。
 数据源读取统一使用绑定 Workspace 的 `md.load()`；凭据请求只有身份与字段，取消由 Harness 执行边界负责。
 Catalog 改用公共分页搜索和 captured definition，允许 Marivo 写入搜索分页缓存；已有文件保持不变。
 Frame/DataFrame 展示使用准确持久引用和 Python 公开读取 API。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。
