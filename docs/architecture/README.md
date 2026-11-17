@@ -38,7 +38,7 @@
 模块文档承载具体协议和失败边界；本文只描述跨模块关系。验证命令以根目录 `package.json` 的 scripts 为准；
 `docs/testing/` 中的验证指南和验收记录是本地工作材料，不纳入版本控制。
 
-统一分析 UI 通过 `marivo_report_write` 保存 `dsh.analysis-ui/v4` 文档，并可读取兼容的 `dsh.analysis-ui/v3` 文档。Frame 和 DataFrame 都通过 Marivo 公开持久引用，在绑定 Python Runtime 中直接读取；不启动 HTTP 服务。快照内嵌不可变 Build，AnalysisSurface
+统一分析 UI 通过 `marivo_report_write` 保存并读取 `dsh.analysis-ui/v4` 文档。Frame 和 DataFrame 都通过 Marivo 公开持久引用，在绑定 Python Runtime 中直接读取；不启动 HTTP 服务。快照内嵌不可变 Build，AnalysisSurface
 统一在右侧 Tab 呈现候选、草稿与正式版本，Chat 保留分析视图入口。保存校验与呈现分别共用 `resolveFrameView` 与 `resolveDatasetView`；Frame v2 按结构选择视图，
 并可在 Catalog 范围内显式指定图形。DatasetView 支持 auto/table/metric 及显式列映射的 line/area/bar/heatmap。旧格式报告不进入报告目录；
 新格式支持离线 HTML 导出和按配置启用的 S3 发布。详细契约见本目录中的投影、交付与 reader 模块文档。
@@ -71,7 +71,7 @@ flowchart TD
 
 Help 使用启动时验证的 shared Runtime，不为读取 API Help 初始化 Workspace。涉及数据源、分析和展示来源的操作使用所属 Workspace 的同一 bound Runtime。Workspace ID 与 Runtime fingerprint 共同约束浏览和引用身份；同路径重新注册的 Workspace 不能接收旧引用。
 
-每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，报告或看板在准备组件数据之前加载 `dsh-data-analysis-presentation`；已有普通单结果可直接展示。需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。可选 Runtime Skill 以实际安装为准，当前 Marivo 0.6.7 包未提供 `marivo-service`。
+每个 Agent 独立持有 Skill 激活、Help 可见性和操作生命周期。普通问题使用文字；文件任务加载 `dsh-data-analysis-files`，报告或看板在准备组件数据之前加载 `dsh-data-analysis-presentation`；已有普通单结果可直接展示。需要 Marivo 分析或语义编写时加载 Runtime 的 `marivo-analysis` 或 `marivo-semantic` 并查询 live Help。可选 Runtime Skill 以实际安装为准。
 
 默认跨边界 Tool 为 `marivo_help`、`marivo_datasource_test`、`marivo_python`、`marivo_report_write`、`marivo_report_list`、`marivo_report_read`、`marivo_report_delete` 和 `marivo_next_steps`。启用对象存储发布时提供 `marivo_publish_report`。Session resume、readiness 和 source inspection 由 Agent 使用 Marivo 公开 API。
 
@@ -132,7 +132,7 @@ Harness 拥有设置持久化、配置分层和 revision 冲突检测。插件�
 
 ## Marivo 0.6 接缝
 
-当前安装使用 pip 固定 Marivo `0.6.7` 正式版；pip 默认从 PyPI 获取，也遵循本机配置的包索引。安装与升级见 [Runtime 安装](modules/runtime-workspace.md#正式版安装与升级)。
+当前安装使用 pip 固定 Marivo `0.6.8` 正式版；pip 默认从 PyPI 获取，也遵循本机配置的包索引。安装与升级见 [Runtime 安装](modules/runtime-workspace.md#正式版安装与升级)。
 数据源读取统一使用绑定 Workspace 的 `md.load()`；凭据请求只有身份与字段，取消由 Harness 执行边界负责。
 Catalog 改用公共分页搜索和 captured definition，允许 Marivo 写入搜索分页缓存；已有文件保持不变。
 Frame/DataFrame 展示使用准确持久引用和 Python 公开读取 API。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。

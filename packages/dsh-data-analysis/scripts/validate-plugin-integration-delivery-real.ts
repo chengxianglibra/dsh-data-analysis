@@ -8,6 +8,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
+import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import LlmRuntime, {
   type ContentBlock,
@@ -19,7 +20,9 @@ import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-j
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineContentToolFixture, defineTool } from '@deepseek-ai/dsh-tools'
+import { apply as installSkillTool } from '@deepseek-ai/dsh-tool-skill'
+import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
 import {
   bindMarivoEnvironment,
@@ -248,6 +251,9 @@ await ctx.plugin(TestShellEnv)
 await ctx.plugin(ToolRuntime)
 await ctx.plugin(AgentRegistry)
 await ctx.plugin(SessionProjectionRegistry)
+await ctx.plugin(LocalFileSystem, { cwd: workspaceRoot })
+await ctx.plugin(WorkingDirectory, { defaultDirectory: workspaceRoot })
+installSkillTool(ctx)
 await ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
 
 ctx.systemPrompt.section({
@@ -255,39 +261,6 @@ ctx.systemPrompt.section({
   order: 100,
   text: `Available skills:\n- marivo-analysis: trusted governed data analysis\n- marivo-semantic: datasource and reusable semantic authoring or repair\nLoad the matching skill before Marivo work. Ordinary computation needs neither skill.`,
 })
-ctx.tools.register(
-  defineTool({
-    name: 'skill',
-    description: 'Load the full instructions for one exact available skill.',
-    parameters: { name: { type: 'string', required: true } },
-    output: {
-      schema: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          name: { type: 'string', required: true },
-          provider: { type: 'string', required: true },
-          content: { type: 'string', required: true },
-        },
-      },
-      render: (_args, value) => [
-        {
-          type: 'text',
-          text: `<skill_content name="${value.name}">${value.content}</skill_content>`,
-        },
-      ],
-    },
-    async execute({ name }, exec) {
-      const skill = await ctx.skills.get(name, {
-        cwd: exec.agent?.session.header.cwd ?? workspaceRoot,
-        scope: exec.agent,
-        signal: exec.signal,
-      })
-      if (skill === undefined) throw new Error(`unknown skill ${name}`)
-      return { name: skill.name, provider: skill.provider, content: skill.content }
-    },
-  }),
-)
 ctx.tools.register(
   defineContentToolFixture({
     name: 'bound_python',

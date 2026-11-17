@@ -6,16 +6,10 @@
     "schemaVersion": 1,
     "columns": [
       {
-        "id": "calendar:month.start",
-        "label": "calendar:month.start",
+        "id": "calendar:month",
+        "label": "calendar:month",
         "type": "datetime",
-        "nullable": true
-      },
-      {
-        "id": "calendar:month.end",
-        "label": "calendar:month.end",
-        "type": "datetime",
-        "nullable": true
+        "nullable": false
       },
       {
         "id": "revenue",
@@ -26,9 +20,9 @@
       }
     ],
     "rows": [
-      ["2026-07-01T00:00:00+00:00", "2026-08-01T00:00:00+00:00", "250"],
-      ["2026-08-01T00:00:00+00:00", "2026-09-01T00:00:00+00:00", "210"],
-      ["2026-09-01T00:00:00+00:00", "2026-10-01T00:00:00+00:00", "240"]
+      ["2026-07-01T00:00:00+00:00", "250"],
+      ["2026-08-01T00:00:00+00:00", "210"],
+      ["2026-09-01T00:00:00+00:00", "240"]
     ],
     "rowCount": 3,
     "limit": 5000,
@@ -39,7 +33,7 @@
     "totalRows": 3,
     "capturedRows": 3,
     "complete": true,
-    "columns": ["calendar:month.start", "calendar:month.end", "revenue"],
+    "columns": ["calendar:month", "revenue"],
     "business": "unknown"
   },
   "source": {
@@ -52,12 +46,7 @@
     "description": "Q3 monthly revenue",
     "fields": [
       {
-        "id": "calendar:month.start",
-        "role": "coordinate",
-        "axisToken": "axis.0"
-      },
-      {
-        "id": "calendar:month.end",
+        "id": "calendar:month",
         "role": "coordinate",
         "axisToken": "axis.0"
       },
@@ -70,17 +59,10 @@
     "layout": [
       {
         "kind": "coordinate",
-        "name": "calendar:month.start",
+        "name": "calendar:month",
         "axisToken": "axis.0",
         "endpoint": "self",
-        "part": "start"
-      },
-      {
-        "kind": "coordinate",
-        "name": "calendar:month.end",
-        "axisToken": "axis.0",
-        "endpoint": "self",
-        "part": "end"
+        "part": "key"
       },
       {
         "kind": "field",
@@ -157,7 +139,7 @@
     "readStats": {
       "dataRowsRead": 3,
       "coordinateRowsRead": 3,
-      "receiptBytesHashed": 5473
+      "receiptBytesHashed": 2858
     },
     "sections": {
       "semantics": {
@@ -254,31 +236,25 @@
                 "kind": "calendar",
                 "key": ["2026-07-01T00:00:00+00:00"],
                 "timezone": "UTC",
-                "start": "2026-07-01T00:00:00+00:00",
-                "end": "2026-08-01T00:00:00+00:00",
                 "label": "2026-07-01",
-                "nominalStart": "2026-07-01T00:00:00+00:00",
-                "nominalEnd": "2026-08-01T00:00:00+00:00"
+                "selection": "full",
+                "cutoff": null
               },
               {
                 "kind": "calendar",
                 "key": ["2026-08-01T00:00:00+00:00"],
                 "timezone": "UTC",
-                "start": "2026-08-01T00:00:00+00:00",
-                "end": "2026-09-01T00:00:00+00:00",
                 "label": "2026-08-01",
-                "nominalStart": "2026-08-01T00:00:00+00:00",
-                "nominalEnd": "2026-09-01T00:00:00+00:00"
+                "selection": "full",
+                "cutoff": null
               },
               {
                 "kind": "calendar",
                 "key": ["2026-09-01T00:00:00+00:00"],
                 "timezone": "UTC",
-                "start": "2026-09-01T00:00:00+00:00",
-                "end": "2026-10-01T00:00:00+00:00",
                 "label": "2026-09-01",
-                "nominalStart": "2026-09-01T00:00:00+00:00",
-                "nominalEnd": "2026-10-01T00:00:00+00:00"
+                "selection": "full",
+                "cutoff": null
               }
             ]
           }

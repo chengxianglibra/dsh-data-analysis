@@ -6,26 +6,14 @@
     "schemaVersion": 1,
     "columns": [
       {
-        "id": "calendar:month.left.start",
-        "label": "calendar:month.left.start",
+        "id": "calendar:month.left",
+        "label": "calendar:month.left",
         "type": "datetime",
         "nullable": true
       },
       {
-        "id": "calendar:month.left.end",
-        "label": "calendar:month.left.end",
-        "type": "datetime",
-        "nullable": true
-      },
-      {
-        "id": "calendar:month.right.start",
-        "label": "calendar:month.right.start",
-        "type": "datetime",
-        "nullable": true
-      },
-      {
-        "id": "calendar:month.right.end",
-        "label": "calendar:month.right.end",
+        "id": "calendar:month.right",
+        "label": "calendar:month.right",
         "type": "datetime",
         "nullable": true
       },
@@ -56,18 +44,7 @@
         "nullable": false
       }
     ],
-    "rows": [
-      [
-        "2026-09-01T00:00:00+00:00",
-        "2026-10-01T00:00:00+00:00",
-        "2026-08-01T00:00:00+00:00",
-        "2026-09-01T00:00:00+00:00",
-        "240",
-        "210",
-        true,
-        true
-      ]
-    ],
+    "rows": [["2026-09-01T00:00:00+00:00", "2026-08-01T00:00:00+00:00", "240", "210", true, true]],
     "rowCount": 1,
     "limit": 5000,
     "truncated": false
@@ -78,10 +55,8 @@
     "capturedRows": 1,
     "complete": true,
     "columns": [
-      "calendar:month.left.start",
-      "calendar:month.left.end",
-      "calendar:month.right.start",
-      "calendar:month.right.end",
+      "calendar:month.left",
+      "calendar:month.right",
       "left.revenue",
       "right.revenue",
       "left_present",
@@ -99,22 +74,12 @@
     "description": null,
     "fields": [
       {
-        "id": "calendar:month.left.start",
+        "id": "calendar:month.left",
         "role": "coordinate",
         "axisToken": "frame.paired.0"
       },
       {
-        "id": "calendar:month.left.end",
-        "role": "coordinate",
-        "axisToken": "frame.paired.0"
-      },
-      {
-        "id": "calendar:month.right.start",
-        "role": "coordinate",
-        "axisToken": "frame.paired.0"
-      },
-      {
-        "id": "calendar:month.right.end",
+        "id": "calendar:month.right",
         "role": "coordinate",
         "axisToken": "frame.paired.0"
       },
@@ -142,31 +107,17 @@
     "layout": [
       {
         "kind": "coordinate",
-        "name": "calendar:month.left.start",
+        "name": "calendar:month.left",
         "axisToken": "frame.paired.0",
         "endpoint": "left",
-        "part": "start"
+        "part": "key"
       },
       {
         "kind": "coordinate",
-        "name": "calendar:month.left.end",
-        "axisToken": "frame.paired.0",
-        "endpoint": "left",
-        "part": "end"
-      },
-      {
-        "kind": "coordinate",
-        "name": "calendar:month.right.start",
+        "name": "calendar:month.right",
         "axisToken": "frame.paired.0",
         "endpoint": "right",
-        "part": "start"
-      },
-      {
-        "kind": "coordinate",
-        "name": "calendar:month.right.end",
-        "axisToken": "frame.paired.0",
-        "endpoint": "right",
-        "part": "end"
+        "part": "key"
       },
       {
         "kind": "field",
@@ -490,21 +441,17 @@
                   "kind": "calendar",
                   "key": ["2026-09-01T00:00:00+00:00"],
                   "timezone": "UTC",
-                  "start": "2026-09-01T00:00:00+00:00",
-                  "end": "2026-10-01T00:00:00+00:00",
                   "label": "2026-09-01",
-                  "nominalStart": "2026-09-01T00:00:00+00:00",
-                  "nominalEnd": "2026-10-01T00:00:00+00:00"
+                  "selection": "full",
+                  "cutoff": null
                 },
                 "right": {
                   "kind": "calendar",
                   "key": ["2026-08-01T00:00:00+00:00"],
                   "timezone": "UTC",
-                  "start": "2026-08-01T00:00:00+00:00",
-                  "end": "2026-09-01T00:00:00+00:00",
                   "label": "2026-08-01",
-                  "nominalStart": "2026-08-01T00:00:00+00:00",
-                  "nominalEnd": "2026-09-01T00:00:00+00:00"
+                  "selection": "full",
+                  "cutoff": null
                 }
               }
             ]

@@ -88,7 +88,7 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:$
       await table
         .locator('tbody tr')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
-      ['3', '4', '5'],
+      ['1', '3', '5'],
     )
     assert.equal(await chart.locator('[data-frame-point="0:revenue"]').count(), 0)
     await table.getByRole('button', { name: 'Sort by revenue', exact: true }).click()
@@ -96,7 +96,7 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:$
       await table
         .locator('tbody tr')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
-      ['5', '4', '3'],
+      ['5', '3', '1'],
     )
     await table.locator('tbody tr[data-row-index="5"] [data-column-id="revenue"] button').click()
     await page.getByRole('menuitem', { name: 'Ask about this' }).click()
@@ -111,11 +111,11 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:$
       await dialog
         .locator('tbody tr')
         .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-row-index'))),
-      ['3', '4', '5'],
+      ['1', '3', '5'],
     )
     await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     await dialog.waitFor({ state: 'hidden' })
-    const chartPoint = chart.locator('[data-frame-point="4:revenue"]').first()
+    const chartPoint = chart.locator('[data-frame-point="3:revenue"]').first()
     await chartPoint.focus()
     assert.equal(await chartPoint.evaluate((node) => node === document.activeElement), true)
     await page.keyboard.press('Enter')
@@ -126,7 +126,7 @@ createRoot(document.getElementById('root')).render(h(AnalysisRenderer,{program:$
     await action.click()
     assert.deepEqual((await page.evaluate(() => Reflect.get(window, 'requests'))).at(-1), {
       resourceName: 'frame',
-      row: 4,
+      row: 3,
       field: 'revenue',
     })
     assert.deepEqual(errors, [])

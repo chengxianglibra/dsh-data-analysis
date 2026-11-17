@@ -1,6 +1,7 @@
 """Real Marivo Runtime acceptance; runs only with DSH_FRAME_REAL_PYTHON set to an isolated interpreter.
 
-The interpreter must have the Marivo wheel and this kit installed. The test regenerates
+The interpreter must have the pinned Marivo release installed. The script loads the
+repository's internal presentation adapter directly. The test regenerates
 every Frame fixture and compares it with the checked-in copy, ignoring identities that
 differ per run (input, artifact and definition identities).
 """
@@ -33,6 +34,8 @@ def test_real_frames_match_the_checked_in_fixtures(tmp_path: Path):
                             cwd=tmp_path, capture_output=True, text=True, timeout=600)
     assert result.returncode == 0, result.stderr[-4000:]
     index = json.loads(result.stdout)
+    package = json.loads((KIT.parents[1] / "package.json").read_text())
+    assert index["marivo"] == package["dshDataAnalysisCompatibility"]["marivo"]["version"]
     produced = sorted(p.name for p in output.glob("*.json"))
     assert produced == sorted(p.name for p in FIXTURES.glob("*.json"))
     for item in index["fixtures"]:

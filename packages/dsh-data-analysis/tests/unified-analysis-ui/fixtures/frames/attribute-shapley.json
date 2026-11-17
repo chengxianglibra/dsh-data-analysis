@@ -6,16 +6,10 @@
     "schemaVersion": 1,
     "columns": [
       {
-        "id": "calendar:month.start",
-        "label": "calendar:month.start",
+        "id": "calendar:month",
+        "label": "calendar:month",
         "type": "datetime",
-        "nullable": true
-      },
-      {
-        "id": "calendar:month.end",
-        "label": "calendar:month.end",
-        "type": "datetime",
-        "nullable": true
+        "nullable": false
       },
       {
         "id": "channel",
@@ -95,7 +89,6 @@
     "rows": [
       [
         "2026-09-01T00:00:00+00:00",
-        "2026-10-01T00:00:00+00:00",
         "app",
         -45900.0,
         "13500",
@@ -110,7 +103,6 @@
       ],
       [
         "2026-09-01T00:00:00+00:00",
-        "2026-10-01T00:00:00+00:00",
         "web",
         59400.0,
         "13500",
@@ -134,8 +126,7 @@
     "capturedRows": 2,
     "complete": true,
     "columns": [
-      "calendar:month.start",
-      "calendar:month.end",
+      "calendar:month",
       "channel",
       "contribution.change",
       "total.change",
@@ -160,12 +151,7 @@
     "description": null,
     "fields": [
       {
-        "id": "calendar:month.start",
-        "role": "coordinate",
-        "axisToken": "axis.0"
-      },
-      {
-        "id": "calendar:month.end",
+        "id": "calendar:month",
         "role": "coordinate",
         "axisToken": "axis.0"
       },
@@ -228,17 +214,10 @@
     "layout": [
       {
         "kind": "coordinate",
-        "name": "calendar:month.start",
+        "name": "calendar:month",
         "axisToken": "axis.0",
         "endpoint": "self",
-        "part": "start"
-      },
-      {
-        "kind": "coordinate",
-        "name": "calendar:month.end",
-        "axisToken": "axis.0",
-        "endpoint": "self",
-        "part": "end"
+        "part": "key"
       },
       {
         "kind": "coordinate",
@@ -1088,11 +1067,9 @@
                 "kind": "calendar",
                 "key": ["2026-09-01T00:00:00+00:00"],
                 "timezone": "UTC",
-                "start": "2026-09-01T00:00:00+00:00",
-                "end": "2026-10-01T00:00:00+00:00",
                 "label": "2026-09-01",
-                "nominalStart": "2026-09-01T00:00:00+00:00",
-                "nominalEnd": "2026-10-01T00:00:00+00:00"
+                "selection": "full",
+                "cutoff": null
               }
             ]
           },
@@ -1111,21 +1088,17 @@
                   "kind": "calendar",
                   "key": ["2026-09-01T00:00:00+00:00"],
                   "timezone": "UTC",
-                  "start": "2026-09-01T00:00:00+00:00",
-                  "end": "2026-10-01T00:00:00+00:00",
                   "label": "2026-09-01",
-                  "nominalStart": "2026-09-01T00:00:00+00:00",
-                  "nominalEnd": "2026-10-01T00:00:00+00:00"
+                  "selection": "full",
+                  "cutoff": null
                 },
                 "baseline": {
                   "kind": "calendar",
                   "key": ["2026-08-01T00:00:00+00:00"],
                   "timezone": "UTC",
-                  "start": "2026-08-01T00:00:00+00:00",
-                  "end": "2026-09-01T00:00:00+00:00",
                   "label": "2026-08-01",
-                  "nominalStart": "2026-08-01T00:00:00+00:00",
-                  "nominalEnd": "2026-09-01T00:00:00+00:00"
+                  "selection": "full",
+                  "cutoff": null
                 },
                 "absentReason": null
               }

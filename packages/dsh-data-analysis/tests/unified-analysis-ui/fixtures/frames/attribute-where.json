@@ -6,16 +6,10 @@
     "schemaVersion": 1,
     "columns": [
       {
-        "id": "calendar:month.start",
-        "label": "calendar:month.start",
+        "id": "calendar:month",
+        "label": "calendar:month",
         "type": "datetime",
-        "nullable": true
-      },
-      {
-        "id": "calendar:month.end",
-        "label": "calendar:month.end",
-        "type": "datetime",
-        "nullable": true
+        "nullable": false
       },
       {
         "id": "region",
@@ -66,72 +60,12 @@
       }
     ],
     "rows": [
-      [
-        "2026-07-01T00:00:00+00:00",
-        "2026-08-01T00:00:00+00:00",
-        "east",
-        "200",
-        "250",
-        "250",
-        0.8,
-        "200",
-        true
-      ],
-      [
-        "2026-07-01T00:00:00+00:00",
-        "2026-08-01T00:00:00+00:00",
-        "south",
-        "50",
-        "250",
-        "250",
-        0.2,
-        "50",
-        true
-      ],
-      [
-        "2026-08-01T00:00:00+00:00",
-        "2026-09-01T00:00:00+00:00",
-        "east",
-        "180",
-        "210",
-        "210",
-        0.8571428571428571,
-        "180",
-        true
-      ],
-      [
-        "2026-08-01T00:00:00+00:00",
-        "2026-09-01T00:00:00+00:00",
-        "south",
-        "30",
-        "210",
-        "210",
-        0.14285714285714285,
-        "30",
-        true
-      ],
-      [
-        "2026-09-01T00:00:00+00:00",
-        "2026-10-01T00:00:00+00:00",
-        "east",
-        "230",
-        "240",
-        "240",
-        0.9583333333333334,
-        "230",
-        true
-      ],
-      [
-        "2026-09-01T00:00:00+00:00",
-        "2026-10-01T00:00:00+00:00",
-        "south",
-        "10",
-        "240",
-        "240",
-        0.041666666666666664,
-        "10",
-        true
-      ]
+      ["2026-07-01T00:00:00+00:00", "east", "200", "250", "250", 0.8, "200", true],
+      ["2026-07-01T00:00:00+00:00", "south", "50", "250", "250", 0.2, "50", true],
+      ["2026-08-01T00:00:00+00:00", "east", "180", "210", "210", 0.8571428571428571, "180", true],
+      ["2026-08-01T00:00:00+00:00", "south", "30", "210", "210", 0.14285714285714285, "30", true],
+      ["2026-09-01T00:00:00+00:00", "east", "230", "240", "240", 0.9583333333333334, "230", true],
+      ["2026-09-01T00:00:00+00:00", "south", "10", "240", "240", 0.041666666666666664, "10", true]
     ],
     "rowCount": 6,
     "limit": 5000,
@@ -143,8 +77,7 @@
     "capturedRows": 6,
     "complete": true,
     "columns": [
-      "calendar:month.start",
-      "calendar:month.end",
+      "calendar:month",
       "region",
       "contribution.revenue",
       "total.revenue",
@@ -165,12 +98,7 @@
     "description": null,
     "fields": [
       {
-        "id": "calendar:month.start",
-        "role": "coordinate",
-        "axisToken": "axis.0"
-      },
-      {
-        "id": "calendar:month.end",
+        "id": "calendar:month",
         "role": "coordinate",
         "axisToken": "axis.0"
       },
@@ -213,17 +141,10 @@
     "layout": [
       {
         "kind": "coordinate",
-        "name": "calendar:month.start",
+        "name": "calendar:month",
         "axisToken": "axis.0",
         "endpoint": "self",
-        "part": "start"
-      },
-      {
-        "kind": "coordinate",
-        "name": "calendar:month.end",
-        "axisToken": "axis.0",
-        "endpoint": "self",
-        "part": "end"
+        "part": "key"
       },
       {
         "kind": "coordinate",
@@ -1093,31 +1014,25 @@
                 "kind": "calendar",
                 "key": ["2026-07-01T00:00:00+00:00"],
                 "timezone": "UTC",
-                "start": "2026-07-01T00:00:00+00:00",
-                "end": "2026-08-01T00:00:00+00:00",
                 "label": "2026-07-01",
-                "nominalStart": "2026-07-01T00:00:00+00:00",
-                "nominalEnd": "2026-08-01T00:00:00+00:00"
+                "selection": "full",
+                "cutoff": null
               },
               {
                 "kind": "calendar",
                 "key": ["2026-08-01T00:00:00+00:00"],
                 "timezone": "UTC",
-                "start": "2026-08-01T00:00:00+00:00",
-                "end": "2026-09-01T00:00:00+00:00",
                 "label": "2026-08-01",
-                "nominalStart": "2026-08-01T00:00:00+00:00",
-                "nominalEnd": "2026-09-01T00:00:00+00:00"
+                "selection": "full",
+                "cutoff": null
               },
               {
                 "kind": "calendar",
                 "key": ["2026-09-01T00:00:00+00:00"],
                 "timezone": "UTC",
-                "start": "2026-09-01T00:00:00+00:00",
-                "end": "2026-10-01T00:00:00+00:00",
                 "label": "2026-09-01",
-                "nominalStart": "2026-09-01T00:00:00+00:00",
-                "nominalEnd": "2026-10-01T00:00:00+00:00"
+                "selection": "full",
+                "cutoff": null
               }
             ]
           }

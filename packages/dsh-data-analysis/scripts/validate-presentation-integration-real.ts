@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import { type Browser, chromium, type Page } from 'playwright'
+import { canonicalPythonExecutable } from '../src/environment/identity.ts'
 import { readReceiptDocument } from '../src/presentation/reports.ts'
 import { validatePresentationHost } from './presentation-s4/host.ts'
 import { preparePresentationInputs } from './presentation-s4/runtime.ts'
@@ -37,7 +38,7 @@ const inputs: Pick<
   Awaited<ReturnType<typeof preparePresentationInputs>>,
   'binding' | 'requests' | 'generated'
 > = resumedInputs ?? (await preparePresentationInputs(workspaceRoot, pythonExecutable))
-assert.equal(inputs.binding.pythonExecutable, pythonExecutable)
+assert.equal(inputs.binding.pythonExecutable, canonicalPythonExecutable(pythonExecutable))
 await writeFile(
   path.join(outputRoot, 'runtime-inputs.json'),
   JSON.stringify({ ...inputs, workspaceRoot }, null, 2),
@@ -151,7 +152,8 @@ try {
     })
     const surface = analysisSurface(report)
     assert.equal(await surface.getAttribute('data-analysis-record'), document.recordId)
-    await surface.getByRole('heading', { name: document.title, exact: true }).waitFor()
+    await surface.waitFor({ state: 'visible' })
+    assert.equal(await surface.getAttribute('aria-label'), document.title)
     const resources = Object.keys(document.resources).sort()
     assert.deepEqual(
       (
@@ -290,9 +292,9 @@ try {
     })
     assert.equal(await restartPage.locator('[data-presentation-card]').count(), 0)
     assert.equal(await restartedReport.getAttribute('data-rt-build'), latest.buildId)
-    await analysisSurface(restartedReport)
-      .getByRole('heading', { name: latest.title, exact: true })
-      .waitFor()
+    const restartedSurface = analysisSurface(restartedReport)
+    await restartedSurface.waitFor({ state: 'visible' })
+    assert.equal(await restartedSurface.getAttribute('aria-label'), latest.title)
     await restartPage.screenshot({
       path: path.join(outputRoot, 'restarted-current-tab.png'),
     })

@@ -3,8 +3,8 @@
 Usage: python real_frames.py WORK_DIR OUTPUT_DIR
 
 WORK_DIR is a fresh directory outside the repository; it receives a small DuckDB
-project modelled on Marivo's DSL test fixture. Only the selected interpreter's
-installed Marivo and presentation kit are used. Each fixture is a read_frame
+project modelled on Marivo's DSL test fixture. The selected interpreter loads
+its installed Marivo and this repository's internal presentation adapter. Each fixture is a read_frame
 snapshot with the Session id and fetch time replaced by stable placeholders.
 """
 from __future__ import annotations
@@ -35,6 +35,7 @@ ROWS = {
 }
 
 MODELS = """\
+import marivo.analysis as mv
 import marivo.datasource as md
 import marivo.semantic as ms
 
@@ -76,7 +77,7 @@ def order_count():
 
 @ms.metric()
 def line_revenue():
-    return line_amount_value.sum(time=time_value.via((line_order_value,)))
+    return line_amount_value.sum(time=time_value.via(mv.path(line_order_value)))
 
 @ms.metric()
 def aov():
