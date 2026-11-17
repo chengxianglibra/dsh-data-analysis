@@ -306,8 +306,9 @@ for (const skill of explicitSkills) {
   }
 }
 
-// Exercise the actual DSH project-root precedence with isolated symlinks. Never
-// mutate a user's Workspace skill or override the Host's selection rules.
+// Exercise the actual DSH project-root precedence with isolated symlinks. Both
+// the selected project Skill and live Runtime Help remain available regardless
+// of whether their instruction bodies match.
 const skillConflictRoot = await mkdtemp(path.join(tmpdir(), 'dsh-skill-identity-real-'))
 try {
   const runtimeSkill = path.join(
@@ -353,8 +354,7 @@ try {
         source: { kind: 'skill-invocation', name: 'marivo-analysis', form: 'instructions' },
       })
       const pending = controller.prepareStep([message], new AbortController().signal)
-      if (mode === 'conflicting') await assert.rejects(pending, /different instructions/)
-      else assert.equal((await pending).length, 1)
+      assert.equal((await pending).length, 1)
     } finally {
       await controller.close()
     }
@@ -385,7 +385,7 @@ process.stdout.write(
         rootHelp: telemetry.rootHelp.map((item) => item.target),
         explicitActivations,
       },
-      projectSkillSymlink: { conflicting: 'rejected', matching: 'accepted' },
+      projectSkillSymlink: { conflicting: 'accepted', matching: 'accepted' },
     },
     null,
     2,

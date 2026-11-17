@@ -11,6 +11,7 @@ import CredentialProvider, {
   type CredentialRecord,
   type CredentialRef,
 } from '@deepseek-ai/dsh-credentials'
+import { FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
 import LlmRuntime, {
   createUserMessage,
   type GenerateOptions,
@@ -19,6 +20,7 @@ import LlmRuntime, {
   type StreamChunk,
   ToolCallId,
 } from '@deepseek-ai/dsh-llm'
+import { bindScopeParent, createScope, scopeTarget } from '@deepseek-ai/dsh-scope'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SkillRuntime from '@deepseek-ai/dsh-skill'
@@ -190,19 +192,33 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   await mkdir(secondRoot)
   await mkdir(path.dirname(packagePath), { recursive: true })
   await writeFile(packagePath, '__version__ = "0.6.8"\n')
-  for (const skill of ['marivo-analysis', 'marivo-semantic']) {
+  for (const skill of ['marivo-analysis', 'marivo-semantic', 'marivo-service']) {
     const directory = path.join(path.dirname(packagePath), 'skills', skill)
     await mkdir(directory, { recursive: true })
     await writeFile(
       path.join(directory, 'SKILL.md'),
       `---\nname: ${skill}\ndescription: shared ${skill}\n---\nshared body\n`,
     )
+    await mkdir(path.join(directory, 'references'))
+    await writeFile(path.join(directory, 'references', 'proof.md'), `resource for ${skill}\n`)
   }
   const projectSkill = path.join(firstRoot, '.dsh', 'skills', 'marivo-analysis')
   await mkdir(projectSkill, { recursive: true })
   await writeFile(
     path.join(projectSkill, 'SKILL.md'),
     '---\nname: marivo-analysis\ndescription: project override\n---\nproject body\n',
+  )
+  const projectSemantic = path.join(secondRoot, '.agents', 'skills', 'marivo-semantic')
+  await mkdir(projectSemantic, { recursive: true })
+  await writeFile(
+    path.join(projectSemantic, 'SKILL.md'),
+    '---\nname: marivo-semantic\ndescription: project semantic\n---\nproject body\n',
+  )
+  const unrelatedSkill = path.join(firstRoot, '.dsh', 'skills', 'project-extra')
+  await mkdir(unrelatedSkill, { recursive: true })
+  await writeFile(
+    path.join(unrelatedSkill, 'SKILL.md'),
+    '---\nname: project-extra\ndescription: project extra\n---\nproject body\n',
   )
   await writeFile(python, runtimePython(packagePath, doctorRecord))
   await chmod(python, 0o755)
@@ -237,6 +253,14 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
     { provider: 'mock', model: 'mock' },
     { cwd: firstRoot },
   )
+  const presetKey = {}
+  const presetScope = createScope(ctx, presetKey)
+  t.after(() => presetScope.dispose())
+  await presetScope.ctx.plugin(
+    { name: 'preset-skill-filesystem', inject: skillFilesystemInject, apply: applySkillFilesystem },
+    { includeDefaultRoots: true, watch: false },
+  )
+  const firstParent = bindScopeParent(first, presetKey)
   const plugin = await ctx.plugin(
     { name: 'dsh-data-analysis-test', inject, apply },
     {
@@ -261,6 +285,8 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
     { provider: 'mock', model: 'mock' },
     { cwd: secondRoot },
   )
+  const secondParent = bindScopeParent(second, presetKey)
+  ctx.emit('tools/change')
 
   for (const agent of [first, second]) {
     assert.deepEqual(
@@ -285,7 +311,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   const catalog = await ctx.skills.snapshot({ cwd: firstRoot, scope: first })
   assert.equal(
     catalog.skills.find((skill) => skill.name === 'marivo-analysis')?.description,
-    'project override',
+    'shared marivo-analysis',
   )
   assert.equal(
     catalog.skills.find((skill) => skill.name === 'marivo-semantic')?.provider,
@@ -298,8 +324,151 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   assert.ok(
     catalog.skills
       .filter((skill) => skill.provider === 'dsh-data-analysis-marivo')
-      .every((skill) => ['marivo-analysis', 'marivo-semantic'].includes(skill.name)),
+      .every((skill) =>
+        ['marivo-analysis', 'marivo-semantic', 'marivo-service'].includes(skill.name),
+      ),
   )
+  assert.equal(
+    catalog.skills.find((skill) => skill.name === 'project-extra')?.source,
+    'project-dsh',
+  )
+  for (const [workspace, agent] of [
+    [firstRoot, first],
+    [secondRoot, second],
+  ] as const) {
+    for (const name of ['marivo-analysis', 'marivo-semantic', 'marivo-service']) {
+      const skill = await ctx.skills.get(name, { cwd: workspace, scope: agent })
+      assert.equal(skill?.provider, 'dsh-data-analysis-marivo')
+      assert.equal(skill.resourceBase?.kind, 'directory')
+      if (skill.resourceBase?.kind !== 'directory') assert.fail('Missing Runtime skill directory')
+      assert.equal(skill.resourceBase.path, path.join(runtimeRoot, 'skills', name))
+      assert.equal(
+        await readFile(path.join(skill.resourceBase.path, 'references', 'proof.md'), 'utf8'),
+        `resource for ${name}\n`,
+      )
+    }
+  }
+
+  const nextPresetKey = {}
+  const nextPresetScope = createScope(ctx, nextPresetKey)
+  t.after(() => nextPresetScope.dispose())
+  await nextPresetScope.ctx.plugin(
+    {
+      name: 'next-preset-skill-filesystem',
+      inject: skillFilesystemInject,
+      apply: applySkillFilesystem,
+    },
+    { includeDefaultRoots: true, watch: false },
+  )
+  secondParent.rebind(nextPresetKey)
+  ctx.emit('tools/change')
+  assert.equal(
+    (await ctx.skills.get('marivo-analysis', { cwd: firstRoot, scope: first }))?.provider,
+    'dsh-data-analysis-marivo',
+  )
+  assert.equal(
+    (await ctx.skills.get('marivo-semantic', { cwd: secondRoot, scope: second }))?.provider,
+    'dsh-data-analysis-marivo',
+  )
+
+  // A filesystem mutation dispatched within one Agent's scope must also
+  // invalidate cached Runtime catalog metadata in another preset.
+  const runtimeSkillFile = path.join(runtimeRoot, 'skills', 'marivo-semantic', 'SKILL.md')
+  const originalRuntimeSkill = await readFile(runtimeSkillFile, 'utf8')
+  assert.equal(
+    (await ctx.skills.snapshot({ cwd: secondRoot, scope: second })).skills.find(
+      (skill) => skill.name === 'marivo-semantic',
+    )?.description,
+    'shared marivo-semantic',
+  )
+  await writeFile(
+    runtimeSkillFile,
+    originalRuntimeSkill.replace('shared marivo-semantic', 'updated runtime semantic'),
+  )
+  const signalRuntimeWrite = () =>
+    ctx.events.emit(
+      scopeTarget(ctx, first),
+      'fs/observed',
+      { targetKey: FsTargetKey(runtimeSkillFile), displayPath: runtimeSkillFile },
+      { kind: 'present', version: FsVersion('runtime-skill-write') },
+      { name: 'write' },
+    )
+  signalRuntimeWrite()
+  assert.equal(
+    (await ctx.skills.snapshot({ cwd: secondRoot, scope: second })).skills.find(
+      (skill) => skill.name === 'marivo-semantic',
+    )?.description,
+    'updated runtime semantic',
+  )
+  await writeFile(runtimeSkillFile, originalRuntimeSkill)
+  signalRuntimeWrite()
+
+  firstParent.rebind(nextPresetKey)
+  ctx.emit('tools/change')
+  assert.equal(
+    (await ctx.skills.get('marivo-analysis', { cwd: firstRoot, scope: presetKey }))?.description,
+    'project override',
+  )
+
+  const stronger = await nextPresetScope.ctx.plugin({
+    name: 'higher-priority-fixture-plugin',
+    inject: ['skills'],
+    apply(scopedCtx) {
+      scopedCtx.skills.registerProvider(() => ({
+        name: 'higher-priority-fixture',
+        list: async () => [
+          {
+            name: 'marivo-analysis',
+            description: 'higher priority',
+            source: 'custom',
+            provider: 'higher-priority-fixture',
+            rank: 25,
+            locator: null,
+            invocation: { userInvocable: true, modelInvocable: true },
+          },
+        ],
+        get: async () => ({
+          name: 'marivo-analysis',
+          description: 'higher priority',
+          source: 'custom',
+          provider: 'higher-priority-fixture',
+          content: 'higher priority body',
+          invocation: { userInvocable: true, modelInvocable: true },
+        }),
+      }))
+    },
+  })
+  assert.equal(
+    (await ctx.skills.get('marivo-analysis', { cwd: firstRoot, scope: first }))?.content,
+    'higher priority body',
+  )
+  await stronger.dispose()
+  assert.equal(
+    (await ctx.skills.get('marivo-analysis', { cwd: firstRoot, scope: first }))?.provider,
+    'dsh-data-analysis-marivo',
+  )
+
+  const scoped = await first.ctx.plugin({
+    name: 'scoped-skill-fixture',
+    inject: ['skills'],
+    apply(scopedCtx) {
+      scopedCtx.skills.register({
+        name: 'marivo-analysis',
+        description: 'scoped override',
+        source: 'custom',
+        content: 'scoped body',
+      })
+    },
+  })
+  assert.equal(
+    (await ctx.skills.get('marivo-analysis', { cwd: firstRoot, scope: first }))?.content,
+    'scoped body',
+  )
+  assert.equal(
+    (await ctx.skills.get('marivo-analysis', { cwd: secondRoot, scope: second }))?.provider,
+    'dsh-data-analysis-marivo',
+  )
+  await scoped.dispose()
   assert.deepEqual(
     catalog.skills
       .filter((skill) => skill.provider === 'dsh-data-analysis-presentation')
@@ -368,6 +537,14 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   assert.equal(
     await ctx.skills.get('dsh-data-analysis-files', { cwd: firstRoot, scope: first }),
     undefined,
+  )
+  assert.equal(
+    (await ctx.skills.get('marivo-analysis', { cwd: firstRoot, scope: first }))?.description,
+    'project override',
+  )
+  assert.equal(
+    (await ctx.skills.get('marivo-semantic', { cwd: secondRoot, scope: second }))?.description,
+    'project semantic',
   )
   assert.deepEqual(
     first.ctx.tools.schemas(first).filter((tool) => tool.name.startsWith('marivo_')),

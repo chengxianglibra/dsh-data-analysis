@@ -136,4 +136,4 @@ Harness 拥有设置持久化、配置分层和 revision 冲突检测。插件�
 数据源读取统一使用绑定 Workspace 的 `md.load()`；凭据请求只有身份与字段，取消由 Harness 执行边界负责。
 Catalog 改用公共分页搜索和 captured definition，允许 Marivo 写入搜索分页缓存；已有文件保持不变。
 Frame/DataFrame 展示使用准确持久引用和 Python 公开读取 API。新 SQL 来源暂不可用，不读私有接口；已保存 Build 与旧 Store 保留。
-Skill 激活使用 Harness 当前选择的正文，并在注入 Runtime Help 前核对绑定包正文；冲突与无法验证的情况见 [Help 披露](modules/help-disclosure.md#skill-激活式根-help)。
+Skill 激活使用 Harness 当前选择的正文，并注入绑定 Runtime 的实时 Help；同名 Skill 的优先级与恢复行为见 [Help 披露](modules/help-disclosure.md#skill-激活式根-help)。

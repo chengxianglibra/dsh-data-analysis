@@ -30,6 +30,7 @@
     "validate:runtime-workspace:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-runtime-workspace-real.ts",
     "validate:environment-execution:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-environment-execution-real.ts",
     "validate:help-disclosure:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-help-disclosure-real.ts",
+    "validate:runtime-skill-priority:real": "npm run prepare:source && node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-runtime-skill-priority-real.ts",
     "validate:datasource-configuration:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-configuration-real.ts",
     "validate:datasource-credentials:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-credentials-real.ts",
     "validate:datasource-execution:real": "node --experimental-strip-types packages/dsh-data-analysis/scripts/validate-datasource-execution-real.ts",

@@ -3,7 +3,7 @@
 ## 作用
 
 本模块让 Agent 从当前绑定的 Marivo 安装获取实时、可归因的 API Help。它同时提供显式 focused
-`marivo_help` Tool，以及由绑定 Runtime 提供的 Marivo Skill 激活的根 Help 注入。
+`marivo_help` Tool，以及由 Harness 选中的 Marivo Skill 激活的根 Help 注入。
 
 模块不维护 Help target registry、不解析 Marivo Help 内容、不做 fuzzy replacement，也不通过工具
 门禁强迫 Agent 先请求 Help。target 语义和正文由真实 `marivo.help(target)` 唯一拥有。
@@ -31,8 +31,8 @@ marivo-service   -> analysis
 ```
 
 实时 `marivo.help()` 提供导航根。Agent 可用 `marivo_help({targets:["root"]})` 查入口，按 `analysis` 或 `authoring` 的链接找到注册目标。
-`marivo-service` 仅在绑定 Runtime 提供该 Skill 时可用。若它与 `marivo-analysis` 同时激活，
-两者分别保留可核验的 Skill 身份，共用一个当前可见的 `analysis` 根 Help 正文。
+绑定 Runtime 提供 `marivo-service` 时也注册该 Skill；Harness 也可从其他来源选择同名 Skill。
+若它与 `marivo-analysis` 同时激活，两者共用一个当前可见的 `analysis` 根 Help 正文。
 
 ## `marivo_help` 读取流程
 
@@ -65,17 +65,15 @@ marivo-service   -> analysis
 只有真实 inherited 全局 `skill` Tool 被观察；若 Agent scope 覆盖了同名 Tool，插件不把其结果当成
 可信 Skill 激活。普通文本、bash 命令和 Python 内容不会被猜测为 Skill 激活。
 
-根 Help 注入前，插件核对实际加载的 Skill 正文与绑定 Runtime 包的同名 Skill 正文。不同 provider
-但正文相同可以通过；正文不一致或来源无法验证时明确拒绝，提示对齐并重新加载。用户显式 invocation
-通过 Harness 公开 Skill registry 与实际消息内容核对；模型调用同时核对最终呈现内容。若冲突正文
-仍在 Session 的 model-visible surface 中，即使重新加载也不能混用，需开启新 Session 或由 Host
-管理上下文后再继续；插件不删除旧记录。插件不更改 Harness 的同名 Skill 优先级，也不修改 Workspace
-Skill。该检查不验证 Skill 附带的其他资源。
-冲突诊断给出绑定 Runtime 中的 `skills/<name>/SKILL.md` 相对位置；已观察的注册结果附来源身份摘要与 resource kind，历史可见冲突附 Session event 序号。
-恢复历史后无法证明 provider 时明确标为 unavailable，不从同名 Skill 猜测来源；诊断不包含正文、provider 原文、Host 绝对路径、URL 或 opaque 资源值。
+Harness 决定最终选中的 Skill。插件的 Runtime provider 为内置 Marivo Skill 提供较高的同 scope
+优先级；如果更小 rank 或更近 scope 的同名 Skill 胜出，插件接受该选择。根 Help 始终从已绑定的
+Runtime 实时读取；插件不再比较 Skill 正文或来源，也不因会话中仍可见旧正文而中止。不同来源的
+Skill 和绑定 Runtime 可能描述不同版本的行为，插件不保证两者的说明或附属资源相互兼容，也不修改
+Workspace Skill 或删除会话历史。
 
 激活后，controller 在 `agent/pre-step` 中等待 Harness 先生成原 decision，再为进入模型的消息追加
-根 Help。多个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付。读取失败时保留原子性和 failure telemetry；已核验 Skill 身份、且 Runtime 未发生绑定错误时，注入一条有界恢复提示，模型可查询 focused Help 或继续独立工作。Skill/Runtime 身份失败仍中止该步。
+根 Help。多个 Skill 同时待披露时按稳定顺序读取，并以一个批次交付。普通读取失败时保留原子性和
+failure telemetry，注入一条有界恢复提示，模型可查询 focused Help 或继续独立工作。Runtime 绑定身份失败和取消仍中止该步。
 
 公开的 `installMarivoDisclosure` 仅安装 Help。完整插件另行注册常驻任务路由，该 section 在首次请求、显式 Skill invocation 和会话恢复时均可见。
 
@@ -104,17 +102,11 @@ surface 时，controller 生成 replacement/recovery 消息。插件不跨 promp
 editable source 即使版本和 package path 未变，重新读取仍能产生新 digest。
 
 根 Help message 带结构化 source：Skill、target、Environment fingerprint、body digest 和是否更新。
-Session 恢复时 controller 从已有 events 恢复激活 Skill，但仍按当前 surface 决定是否需要再次披露。
-新产生的披露事件另记录已核验的 Skill 正文 digest；恢复时重新核对当前绑定 Runtime 的正文。
-旧事件缺少 digest、后续成功加载的 Skill 身份未知，或正文已变化时，要求重新加载对应 Skill，
-保留历史 Session；不会将当前 registry 的选择推断为历史加载的正文。
+Session 恢复时 controller 从已有的可信披露和激活事件恢复激活 Skill，但仍按当前 surface 决定是否
+需要再次披露。历史中的 Skill 正文和身份摘要不再作为继续执行的前提；旧披露事件继续可读。
 Harness 的历史 Tool 事件不包含注册身份。没有可信激活记录时，插件不能仅凭名为 `skill` 的历史调用
-推断激活，因为它可能是 Agent 自有的同名 Tool。因而首次 Skill 调用成功后、插件记录核验结果前若中断，
+推断激活，因为它可能是 Agent 自有的同名 Tool。因而首次 Skill 调用成功后、插件记录披露或激活事件前若中断，
 恢复时无法从旧事件判断该调用来源；此窗口需要 Harness 提供可持久化的 Tool 身份才能彻底消除。
-已有可信激活记录后再次出现无法归因的同名成功调用时，插件保守地要求重新加载；若该调用实际来自
-Agent 自有的同名 Tool，也可能出现一次不必要的重载提示。
-已有可信激活后的 canonical Skill 渲染可按正文检测可见冲突，但被改写为非 canonical 格式、且缺少可信注册身份的
-历史结果无法可靠归因；不能将此校验宣称为对任意历史结果的完整验证。
 Code Mode 中嵌套 Skill 使用 log-only 的 `tool/ptc-dispatch`，外层 `run_code` 可以重新投影结果；
 现有事件不足以恢复哪些正文进入外层消息，也不能完整验证单次 PTC 内多次载入的所有正文。
 嵌套 Help dispatch 同样只有外层代码输出后才进入模型，因此子调用不计入可见正文去重。
@@ -145,8 +137,7 @@ controller dispose 时 abort 未完成读取，注销 Tool 与 hooks，并清空
 - Marivo target、timeout、cancel 或普通子进程错误：`target-failed`；
 - 空 stdout：`empty-help`；批次总输出越界：`combined-output-limit`；
 - Environment identity mismatch：保持原 `MarivoEnvironmentError`，并使 binding fail closed；
-- Skill 正文不匹配或无法确认来源：根 Help 不注入，提示处理冲突或重新加载；
-- 根 Help 批次失败保留已核验边界，不产生部分 Help。可恢复读取失败带一次可见提示，身份失败和取消仍结束当前步骤。
+- 根 Help 批次失败不产生部分 Help。可恢复读取失败带一次可见提示，Runtime 身份失败和取消仍结束当前步骤。
 
 ## 公共接口与验证
 
@@ -166,6 +157,9 @@ compaction 恢复、Environment 替换、普通工具持续可见和 controller 
 
 `npm run test:help-disclosure` 执行确定性测试；`npm run validate:help-disclosure:real` 在同一真实 binding
 上验证实时 inventory、focused Help parity、混合有效/无效 target 的独立结果，以及 Skill 激活后的根 Help 注入。
+`npm run validate:runtime-skill-priority:real` 使用显式选择的 `DSH_DATA_ANALYSIS_PYTHON`、真实 Harness
+Registry 和完整插件，验证 Runtime 优先及更小 rank 的不同正文均能激活实时 Help；模型输出为脚本替身，
+不代表已安装包或真实模型验收。
 
 ## 可重放披露身份
 

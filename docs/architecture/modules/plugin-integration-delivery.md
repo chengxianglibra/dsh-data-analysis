@@ -19,7 +19,7 @@ Runtime Skill、展示与文件分析 Skill、激活式 Help 和展示交付装�
 ## 生命周期
 
 1. `apply()` 确保精确 Marivo 0.6.8 shared Runtime，并注册非秘密 `DSH_DATA_ANALYSIS_PYTHON` Shell fact。
-2. 验证随包 Skill 的嵌入构建摘要并准备不可变资源快照；通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic`、可用时的 `marivo-service`，以及快照中的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`。两个 provider 均只读取各自明确目录。
+2. 验证随包 Skill 的嵌入构建摘要并准备不可变资源快照；通过独立 filesystem provider 挂载 Runtime 的 `marivo-analysis`、`marivo-semantic`、可用时的 `marivo-service`，以及快照中的 `dsh-data-analysis-presentation`、`dsh-data-analysis-files`。两个 provider 均只读取各自明确目录。Runtime 的上述 Marivo Skill 在同一 Harness scope 内以 rank 50 优先于工作区默认来源；更小 rank 或更近 scope 的同名 Skill 仍由 Harness 选中，其他 Skill 的优先级不变。
 3. `MarivoWorkspaceEnvironmentManager` 按 Agent cwd 惰性绑定已存在 Workspace，不创建文件。
 4. 每个 Agent 安装 disclosure controller、Datasource credential bridge、Presentation Tool 与任务路由提示。
 5. 相同 Environment 共享 Help/Datasource/Presentation bridge set；Agent activation state 独立。
@@ -86,6 +86,10 @@ Skill 激活只触发对应的[实时 Help 披露](help-disclosure.md)。逐项�
 
 展示与文件分析 Skill 由 `dsh-data-analysis-presentation` provider 从已验证的内容寻址快照挂载；Runtime Skill 仍由
 `dsh-data-analysis-marivo` provider 从当前 Runtime 读取，保持独立的 Runtime identity。两者不包含默认 roots，也不监听目录变化。
+Runtime provider 同时注册在全局层和活动 Agent 的直接父 scope，使其与 Web preset 中的工作区 provider 在同层比较 rank。
+共享父 scope 的 Agent 复用同一注册；切换父 scope 时迁移，最后一个 Agent 退出时释放。没有活动 Agent 的冷会话
+目录查询可能暂时只看到 Harness 默认来源；实际创建 Agent 后才建立其父 scope 注册。直接重绑父 scope 且未发出
+`tools/change` 或 `session/event` 时，即时目录查询可能暂时看到旧选择，下一次 `agent/pre-step` 会同步注册。
 主流程与按需 references 的职责见[展示 Skill](presentation-skill.md)。旧报告 Skill、prompt、三个经典 JS
 资产、emitter、旧 transport schemas 及 Draft/图形示例不再分发，当前包不提供兼容包装。
 

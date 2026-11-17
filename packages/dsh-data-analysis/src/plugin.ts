@@ -50,6 +50,7 @@ import {
 import { registerPublishingRpc } from './report-publishing/adapters.ts'
 import { type ReportPublishingConfig, resolvePublishingConfig } from './report-publishing/config.ts'
 import { ReportPublishingService } from './report-publishing/service.ts'
+import { installRuntimeSkills } from './runtime-skills.ts'
 import { browserFailure, SemanticBrowserService } from './semantic-browser/service.ts'
 import {
   registerSemanticReferenceRpc,
@@ -180,6 +181,7 @@ export async function applyWithIntegration(
   let disposeReferences: (() => Promise<void>) | undefined
   let disposePresentation: (() => Promise<void>) | undefined
   let disposePublishing: (() => Promise<void>) | undefined
+  let disposeRuntimeSkills: (() => Promise<void>) | undefined
   let referenceService: SemanticReferenceService | undefined
   let agentInstallation: ReturnType<typeof createMarivoAgentInstallation> | undefined
   let pythonSettings: ReturnType<typeof installPythonSettings> | undefined
@@ -194,6 +196,7 @@ export async function applyWithIntegration(
     if (closing) return closing
     closing = finishCleanup([
       () => agentInstallation?.close(),
+      () => disposeRuntimeSkills?.(),
       () => nextSteps.close(),
       () => pythonSettings?.dispose(),
       () => disposeCredentials?.(),
@@ -225,12 +228,7 @@ export async function applyWithIntegration(
       ...credentialChangesHost,
       invocations: [...credentialChangesHost.invocations, ...nextStepsHost.invocations],
     })
-    installSkillFilesystem(ctx, {
-      providerName: 'dsh-data-analysis-marivo',
-      includeDefaultRoots: false,
-      customSkillDirs: [runtime.skillsRoot],
-      watch: false,
-    })
+    disposeRuntimeSkills = installRuntimeSkills(ctx, runtime.skillsRoot)
     installSkillFilesystem(ctx, {
       providerName: 'dsh-data-analysis-presentation',
       includeDefaultRoots: false,
@@ -262,6 +260,7 @@ export async function applyWithIntegration(
       ...pythonOptions,
       pythonOptionsSource: pythonSettings.get,
       helpBridgeSource: helpBridge,
+      runtimeSkillsRoot: runtime.skillsRoot,
       credentialService,
       presentationDrafts,
       ...(reportPublishing ? { reportPublishing } : {}),

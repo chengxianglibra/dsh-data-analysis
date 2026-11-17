@@ -32,6 +32,7 @@ import {
 import { restorePythonResults } from './python-results-context.ts'
 import { registerReportPublishTool } from './report-publishing/adapters.ts'
 import type { ReportPublishingService } from './report-publishing/service.ts'
+import { createRuntimeSkillScopes } from './runtime-skills.ts'
 import { resolvePresentationWorkspace } from './workspace-identity.ts'
 
 const ROUTING_PROMPT = [
@@ -62,6 +63,8 @@ export function createMarivoAgentInstallation(
       pythonOptionsSource?: () => MarivoPythonOptions
       /** Runtime-scoped Help source; normal plugin installation never binds Help to a Workspace. */
       helpBridgeSource?: MarivoHelpBridgeSource
+      /** Shared Runtime Skills to contribute in the Agent's enclosing preset layer. */
+      runtimeSkillsRoot?: string
       presentationDrafts?: AnalysisDrafts
       reportPublishing?: ReportPublishingService
       nextStepsPublish?: (notice: NextStepsNotice) => void
@@ -79,6 +82,9 @@ export function createMarivoAgentInstallation(
     new MarivoCredentialService(credentials, options.credentialInteraction)
   const ownsCredentials = options.credentialService === undefined
   const retiring = new PendingTasks()
+  const runtimeSkillScopes = options.runtimeSkillsRoot
+    ? createRuntimeSkillScopes(ctx, options.runtimeSkillsRoot)
+    : undefined
   const failures: unknown[] = []
   const stops: Array<() => void> = []
   let active = true
@@ -96,6 +102,7 @@ export function createMarivoAgentInstallation(
     closing = finishCleanup([
       ...stops.reverse(),
       ...[...installed.values()].map((controller) => () => retire(controller)),
+      ...(runtimeSkillScopes ? [() => runtimeSkillScopes.close()] : []),
       ...(ownsCredentials ? [() => credentialService.close()] : []),
       async () => {
         await retiring.drain()
@@ -106,6 +113,14 @@ export function createMarivoAgentInstallation(
     return closing
   }
   const bridgeSets = new WeakMap<MarivoEnvironment, MarivoBridgeSet>()
+  const syncRuntimeSkills = (agent: Agent) => {
+    if (!runtimeSkillScopes) return
+    try {
+      runtimeSkillScopes.sync(agent)
+    } catch {
+      ctx.logger.warn('Unable to register Marivo Runtime skills in the current Agent scope')
+    }
+  }
   const install = (agent: Agent): void => {
     if (!active || installed.has(agent)) return
     const source: MarivoEnvironmentSource =
@@ -129,6 +144,8 @@ export function createMarivoAgentInstallation(
     const savedWrites = new SavedWriteProofs()
     controller.addDisposer(() => savedWrites.close())
     try {
+      syncRuntimeSkills(agent)
+      if (runtimeSkillScopes) controller.addDisposer(() => runtimeSkillScopes.release(agent))
       controller.addDisposer(
         registerMarivoDatasourceTestTool(agent.ctx, datasourceSource, credentialService),
       )
@@ -186,6 +203,7 @@ export function createMarivoAgentInstallation(
         agent.ctx.on(
           'agent/pre-step',
           async ({ signal }, next) => {
+            syncRuntimeSkills(agent)
             const decision = await next()
             if (decision.kind === 'reject') return decision
             const restored = await restorePythonResults(
@@ -224,11 +242,23 @@ export function createMarivoAgentInstallation(
           ctx.on('session/event', (session, event) => {
             if (event.type === 'turn/end')
               presentationDrafts.clear(String(session.id), event.data.turn)
+            if (runtimeSkillScopes) {
+              for (const agent of installed.keys()) {
+                if (agent.session === session) syncRuntimeSkills(agent)
+              }
+            }
           }),
           ctx.on('agent/created', ({ agent }) => {
             install(agent)
           }),
         )
+        if (runtimeSkillScopes) {
+          stops.push(
+            ctx.on('tools/change', () => {
+              for (const agent of installed.keys()) syncRuntimeSkills(agent)
+            }),
+          )
+        }
         stops.push(
           ctx.on('agent/disposed', ({ agent }) => {
             const controller = installed.get(agent)

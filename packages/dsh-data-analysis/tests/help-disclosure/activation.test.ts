@@ -901,7 +901,7 @@ test('loading both Marivo skills injects analysis then authoring help atomically
   )
 })
 
-test('analysis and service activation share one visible root while retaining both identities', async (t) => {
+test('analysis and service activation share one visible root while retaining both activations', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -931,6 +931,28 @@ test('analysis and service activation share one visible root while retaining bot
   send(agent, 'continue')
   await agent.whenIdle()
   assert.equal(requestMessages(adapter.requests[2]).split('help-body:analysis').length - 1, 1)
+})
+
+test('an already-visible Help activation remains active after controller restoration', async (t) => {
+  const fixture = await environmentFixture()
+  t.after(fixture.cleanup)
+  const ctx = await harness(new MockAdapter([textResponse('unused')]))
+  const agent = await createAgent(ctx, 'shared-help-activation-restored')
+  const signal = new AbortController().signal
+  const first = installMarivoDisclosure(ctx, agent, fixture.bridge)
+  const [root] = await first.prepareStep([explicitInvocation('marivo-analysis')], signal)
+  assert.ok(root)
+  agent.session.append('user/message', root, { surfaceOp: 'append' })
+  const [activation] = await first.prepareStep([explicitInvocation('marivo-service')], signal)
+  assert.ok(activation)
+  assert.equal(activation.source.kind, 'marivo-skill-activation')
+  assert.match(JSON.stringify(activation), /already visible/)
+  agent.session.append('user/message', activation, { surfaceOp: 'append' })
+  await first.close()
+
+  const restored = installMarivoDisclosure(ctx, agent, fixture.bridge)
+  assert.deepEqual(restored.activeSkills, ['marivo-analysis', 'marivo-service'])
+  assert.deepEqual(await restored.prepareStep([], signal), [])
 })
 
 test('reloading the same skill refreshes live help without duplicating unchanged prompt content', async (t) => {
@@ -1358,220 +1380,75 @@ test('plugin lifecycle never mutates the Host persistence environment', async (t
   assert.deepEqual({ ...process.env }, environmentBeforeInstall)
 })
 
-test('a loaded foreign Skill is compared to the bound Runtime body; conflict and missing identity block until a verified reload', async (t) => {
+test('foreign and unverified inherited Skill results activate live Help without comparing instructions', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = await createAgent(ctx, 'skill-identity-conflict')
+  const agent = await createAgent(ctx, 'foreign-skill-accepted')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
   const signal = new AbortController().signal
   const call = { name: 'skill', agent } as unknown as import('@deepseek-ai/dsh-tools').ToolExecution
-  const result = (value: unknown) => {
-    const item = value as { name?: unknown; provider?: unknown; content?: unknown }
-    const content =
-      typeof item.name === 'string' &&
-      typeof item.provider === 'string' &&
-      typeof item.content === 'string'
-        ? [
-            {
-              type: 'text' as const,
-              text: renderSkillContent(value as Parameters<typeof renderSkillContent>[0]),
-            },
-          ]
-        : []
-    return {
+  for (const value of [
+    { name: 'marivo-analysis', provider: 'project', content: 'different instructions' },
+    { name: 'marivo-analysis' },
+  ]) {
+    controller.observeToolResult(call, {
       isError: false,
       value,
-      content,
-    } as import('@deepseek-ai/dsh-tools').ToolExecutionResult
+      content: [{ type: 'text', text: 'unverified presentation' }],
+    } as import('@deepseek-ai/dsh-tools').ToolExecutionResult)
+    const messages = await controller.prepareStep([], signal)
+    assert.equal(messages.length, 1)
+    assert.match(JSON.stringify(messages), /help-body:analysis/)
   }
-  controller.observeToolResult(
-    call,
-    result({
-      name: 'marivo-analysis',
-      provider: 'project',
-      content: 'stale',
-      resourceBase: { kind: 'directory', path: '/project/skill' },
-    }),
-  )
-  await assert.rejects(controller.prepareStep([], signal), (error: unknown) => {
-    assert(error instanceof MarivoDisclosureError)
-    assert.match(error.message, /instructions/)
-    assert.match(
-      error.message,
-      /Selected source: registry source [a-f0-9]{16}, resource kind directory/,
-    )
-    assert.match(error.message, /Expected Runtime Skill:.*skills\/marivo-analysis\/SKILL\.md/)
-    assert.equal(error.message.includes('stale'), false)
-    return true
-  })
-  await assert.rejects(stat(fixture.recordPath), { code: 'ENOENT' })
-  controller.observeToolResult(
-    call,
-    result({
-      name: 'marivo-analysis',
-      content: 'instructions:marivo-analysis',
-    }),
-  )
-  await assert.rejects(
-    controller.prepareStep([], signal),
-    /Cannot verify the loaded marivo-analysis/,
-  )
-  controller.observeToolResult(
-    call,
-    result({
-      name: 'marivo-analysis',
-      provider: 'different-provider',
-      content: 'instructions:marivo-analysis',
-      resourceBase: { kind: 'directory', path: '/project/skill' },
-    }),
-  )
-  const messages = await controller.prepareStep([], signal)
-  assert.equal(messages.length, 1)
-  assert.match(JSON.stringify(messages), /help-body:analysis/)
+  assert.deepEqual(controller.telemetry().failures, [])
 })
 
-test('explicit invocation requires the exact publicly rendered selected Skill and accepts CRLF frontmatter', async (t) => {
+test('a higher-priority selected Skill with different instructions receives Runtime Help', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = await createAgent(ctx, 'explicit-skill-identity')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
-  const signal = new AbortController().signal
-  const file = path.join(
-    path.dirname(fixture.environment.binding.packagePath),
-    'skills',
-    'marivo-analysis',
-    'SKILL.md',
-  )
-  await writeFile(
-    file,
-    '---\r\nname: marivo-analysis\r\ndescription: fixture\r\n---\r\ninstructions:marivo-analysis\r\n',
-  )
-  const forged = createUserMessage({
-    content: [{ type: 'text', text: 'instructions from an unknown source' }],
-    source: { kind: 'skill-invocation', name: 'marivo-analysis', form: 'instructions' },
-  })
-  await assert.rejects(
-    controller.prepareStep([forged], signal),
-    /Cannot verify the loaded marivo-analysis/,
-  )
-  const valid = explicitInvocation('marivo-analysis')
-  const extra = createUserMessage({
-    content: [...valid.content, { type: 'text', text: 'additional instructions' }],
-    source: { kind: 'skill-invocation', name: 'marivo-analysis', form: 'instructions' },
-  })
-  await assert.rejects(
-    controller.prepareStep([extra], signal),
-    /Cannot verify the loaded marivo-analysis/,
-  )
-  const messages = await controller.prepareStep([explicitInvocation('marivo-analysis')], signal)
-  assert.equal(messages.length, 1)
-  assert.match(JSON.stringify(messages), /help-body:analysis/)
-})
-
-test('restored Skill identity is rechecked against the current Runtime; unknown history requires reload', async (t) => {
-  const fixture = await environmentFixture()
-  t.after(fixture.cleanup)
-  const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = await createAgent(ctx, 'restored-skill-identity')
-  const signal = new AbortController().signal
-  const first = installMarivoDisclosure(ctx, agent, fixture.bridge)
-  const [disclosure] = await first.prepareStep([explicitInvocation('marivo-analysis')], signal)
-  assert.ok(disclosure)
-  agent.session.append('user/message', disclosure, { surfaceOp: 'append' })
-  await first.close()
-  const restored = installMarivoDisclosure(ctx, agent, fixture.bridge)
-  await restored.prepareStep([], signal)
-  const file = path.join(
-    path.dirname(fixture.environment.binding.packagePath),
-    'skills',
-    'marivo-analysis',
-    'SKILL.md',
-  )
-  await writeFile(
-    file,
-    '---\nname: marivo-analysis\ndescription: changed\n---\nnew runtime instructions\n',
-  )
-  await assert.rejects(restored.prepareStep([], signal), /Cannot verify the loaded marivo-analysis/)
-  await writeFile(
-    file,
-    '---\nname: marivo-analysis\ndescription: fixture\n---\ninstructions:marivo-analysis\n',
-  )
-  await restored.prepareStep([], signal)
-  await restored.close()
-  const legacyAgent = await createAgent(ctx, 'legacy-skill-identity')
-  legacyAgent.session.append(
-    'user/message',
-    createUserMessage({
-      content: [{ type: 'text', text: 'old root' }],
-      source: {
-        kind: 'marivo-disclosure',
-        form: 'root-help',
-        skill: 'marivo-analysis',
-        target: 'analysis',
-        environmentFingerprint: fixture.environment.binding.fingerprint,
-        bodyDigest: 'a'.repeat(64),
+  ctx.skills.registerProvider(() => ({
+    name: 'priority-provider',
+    list: async () => [
+      {
+        name: 'marivo-analysis',
+        description: 'explicit higher-priority Skill',
+        source: 'project-agents',
+        provider: 'priority-provider',
+        rank: 1,
+        locator: null,
+        invocation: { userInvocable: true, modelInvocable: true },
       },
-    }),
-    { surfaceOp: 'append' },
-  )
-  const legacy = installMarivoDisclosure(ctx, legacyAgent, fixture.bridge)
-  await assert.rejects(legacy.prepareStep([], signal), /Reload this Skill before continuing/)
-  await legacy.prepareStep([explicitInvocation('marivo-analysis')], signal)
-})
-
-test('Skill identity failures expose bounded repair guidance without provider text or host paths', async (t) => {
-  const fixture = await environmentFixture()
-  t.after(fixture.cleanup)
-  const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  const agent = await createAgent(ctx, 'skill-identity-redaction')
+    ],
+    get: async (candidate) => ({ ...candidate, content: 'higher-priority instructions' }),
+  }))
+  const agent = await createAgent(ctx, 'higher-priority-skill')
+  const selected = await ctx.skills.get('marivo-analysis', { scope: agent })
+  assert.equal(selected?.provider, 'priority-provider')
+  assert.equal(selected?.content, 'higher-priority instructions')
+  assert.ok(selected)
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
-  const call = { name: 'skill', agent } as unknown as import('@deepseek-ai/dsh-tools').ToolExecution
-  const value = {
-    name: 'marivo-analysis',
-    provider: 'PROVIDER_SECRET_CANARY',
-    content: 'stale',
-    resourceBase: { kind: 'directory' as const, path: '/PRIVATE_SKILL_PATH' },
-  }
-  controller.observeToolResult(call, {
-    isError: false,
-    content: [{ type: 'text', text: renderSkillContent(value) }],
-    value,
-  } as import('@deepseek-ai/dsh-tools').ToolExecutionResult)
-  const signal = new AbortController().signal
-  await assert.rejects(controller.prepareStep([], signal), (error: unknown) => {
-    assert(error instanceof MarivoDisclosureError)
-    assert.match(error.message, /Align the selected Skill/i)
-    assert.doesNotMatch(error.message, /PROVIDER_SECRET_CANARY|PRIVATE_SKILL_PATH/)
-    return true
-  })
-  const file = path.join(
-    path.dirname(fixture.environment.binding.packagePath),
-    'skills',
-    'marivo-analysis',
-    'SKILL.md',
+  controller.observeToolResult(
+    { name: 'skill', agent } as unknown as import('@deepseek-ai/dsh-tools').ToolExecution,
+    {
+      isError: false,
+      value: { name: selected.name, provider: selected.provider, content: selected.content },
+      content: [{ type: 'text', text: renderSkillContent(selected) }],
+    },
   )
-  await rm(file)
-  await assert.rejects(controller.prepareStep([], signal), (error: unknown) => {
-    assert(error instanceof MarivoDisclosureError)
-    assert.match(error.message, /Cannot read/)
-    assert.doesNotMatch(
-      error.message,
-      /ENOENT|fake-marivo|PROVIDER_SECRET_CANARY|PRIVATE_SKILL_PATH/,
-    )
-    return true
-  })
-  assert.doesNotMatch(
-    JSON.stringify(controller.telemetry()),
-    /ENOENT|fake-marivo|PROVIDER_SECRET_CANARY|PRIVATE_SKILL_PATH/,
+  assert.match(
+    JSON.stringify(await controller.prepareStep([], new AbortController().signal)),
+    /help-body:analysis/,
   )
+  assert.deepEqual(controller.telemetry().failures, [])
 })
 
-test('explicit Skill registry errors are bounded and do not leak provider details', async (t) => {
+test('explicit Skill invocations do not require a registry lookup or Runtime Skill file', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
+  let lookups = 0
   ctx.skills.registerProvider(() => ({
     name: 'broken-provider',
     list: async () => [
@@ -1586,58 +1463,75 @@ test('explicit Skill registry errors are bounded and do not leak provider detail
       },
     ],
     get: async () => {
-      throw new Error('PROVIDER_ERROR_SECRET_CANARY /private/path')
+      lookups++
+      throw new Error('provider must not be consulted for disclosure')
     },
   }))
-  const agent = await createAgent(ctx, 'skill-registry-error')
+  const agent = await createAgent(ctx, 'explicit-skill-any-content')
   const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
-  await assert.rejects(
-    controller.prepareStep([explicitInvocation('marivo-analysis')], new AbortController().signal),
-    (error: unknown) => {
-      assert(error instanceof MarivoDisclosureError)
-      assert.match(error.message, /marivo-analysis/)
-      assert.doesNotMatch(error.message, /PROVIDER_ERROR_SECRET_CANARY|\/private\/path/)
-      return true
-    },
+  await rm(
+    path.join(
+      path.dirname(fixture.environment.binding.packagePath),
+      'skills',
+      'marivo-analysis',
+      'SKILL.md',
+    ),
   )
-  assert.doesNotMatch(
-    JSON.stringify(controller.telemetry()),
-    /PROVIDER_ERROR_SECRET_CANARY|\/private\/path/,
-  )
+  const invocation = createUserMessage({
+    content: [{ type: 'text', text: 'project-specific instructions' }],
+    source: { kind: 'skill-invocation', name: 'marivo-analysis', form: 'instructions' },
+  })
+  const messages = await controller.prepareStep([invocation], new AbortController().signal)
+  assert.equal(lookups, 0)
+  assert.match(JSON.stringify(messages), /help-body:analysis/)
 })
 
-test('disposing the disclosure controller aborts an in-flight explicit Skill lookup', async (t) => {
+test('restored disclosure accepts changed Skill content and legacy events without identity digests', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
-  ctx.skills.registerProvider(() => ({
-    name: 'slow-provider',
-    list: async () => [
-      {
-        name: 'marivo-analysis',
-        description: 'fixture',
-        source: 'project-agents',
-        provider: 'slow-provider',
-        rank: 0,
-        locator: null,
-        invocation: { userInvocable: true, modelInvocable: true },
-      },
-    ],
-    get: async () => await new Promise<never>(() => {}),
-  }))
-  const agent = await createAgent(ctx, 'skill-registry-cancel')
-  const controller = installMarivoDisclosure(ctx, agent, fixture.bridge)
-  const pending = controller.prepareStep(
-    [explicitInvocation('marivo-analysis')],
-    new AbortController().signal,
+  const agent = await createAgent(ctx, 'restored-skill-any-content')
+  const signal = new AbortController().signal
+  const first = installMarivoDisclosure(ctx, agent, fixture.bridge)
+  const [disclosure] = await first.prepareStep([explicitInvocation('marivo-analysis')], signal)
+  assert.ok(disclosure)
+  agent.session.append('user/message', disclosure, { surfaceOp: 'append' })
+  await first.close()
+  await writeFile(
+    path.join(
+      path.dirname(fixture.environment.binding.packagePath),
+      'skills',
+      'marivo-analysis',
+      'SKILL.md',
+    ),
+    '---\nname: marivo-analysis\ndescription: changed\n---\nnew runtime instructions\n',
   )
-  setTimeout(() => controller.dispose(), 30)
-  await assert.rejects(pending, /Marivo disclosure controller disposed/)
-  await controller.close()
-  assert.deepEqual(controller.telemetry().failures, [])
+  const restored = installMarivoDisclosure(ctx, agent, fixture.bridge)
+  assert.deepEqual(restored.activeSkills, ['marivo-analysis'])
+  assert.deepEqual(await restored.prepareStep([], signal), [])
+  await restored.close()
+  const legacyAgent = await createAgent(ctx, 'legacy-skill-no-digest')
+  legacyAgent.session.append(
+    'user/message',
+    createUserMessage({
+      content: [{ type: 'text', text: 'old root' }],
+      source: {
+        kind: 'marivo-disclosure',
+        form: 'root-help',
+        skill: 'marivo-analysis',
+        target: 'analysis',
+        environmentFingerprint: 'old-environment',
+        bodyDigest: 'a'.repeat(64),
+      },
+    }),
+    { surfaceOp: 'append' },
+  )
+  const legacy = installMarivoDisclosure(ctx, legacyAgent, fixture.bridge)
+  assert.deepEqual(legacy.activeSkills, ['marivo-analysis'])
+  assert.match(JSON.stringify(await legacy.prepareStep([], signal)), /help-body:analysis/)
 })
 
-test('a later historical Skill tool load invalidates older attestation on recovery', async (t) => {
+test('later historical Skill results do not invalidate a prior disclosure during recovery', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
@@ -1670,8 +1564,8 @@ test('a later historical Skill tool load invalidates older attestation on recove
     { surfaceOp: 'append' },
   )
   const restored = installMarivoDisclosure(ctx, agent, fixture.bridge)
-  await assert.rejects(restored.prepareStep([], signal), /Reload this Skill before continuing/)
-  await restored.prepareStep([explicitInvocation('marivo-analysis')], signal)
+  assert.deepEqual(restored.activeSkills, ['marivo-analysis'])
+  assert.deepEqual(await restored.prepareStep([], signal), [])
 })
 
 test('recovery does not infer activation from a successful scope-local Skill shadow', async (t) => {
@@ -1725,13 +1619,13 @@ test('unattested historical Skill results cannot establish activation when provi
   )
   const restored = installMarivoDisclosure(ctx, agent, fixture.bridge)
   // The persisted event cannot distinguish a real inherited tool from a scoped
-  // shadow when interrupted before this plugin's first attestation is recorded.
+  // shadow when interrupted before this plugin's first disclosure is recorded.
   assert.deepEqual(restored.activeSkills, [])
   assert.deepEqual(await restored.prepareStep([], new AbortController().signal), [])
   await assert.rejects(stat(fixture.recordPath), { code: 'ENOENT' })
 })
 
-test('a shadow call after verified activation conservatively requires reload only on recovery', async (t) => {
+test('a shadow call after activation does not invalidate disclosure recovery', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
@@ -1756,13 +1650,10 @@ test('a shadow call after verified activation conservatively requires reload onl
   await before.close()
   const restored = installMarivoDisclosure(ctx, agent, fixture.bridge)
   assert.deepEqual(restored.activeSkills, ['marivo-analysis'])
-  await assert.rejects(
-    restored.prepareStep([], new AbortController().signal),
-    /Reload this Skill before continuing/,
-  )
+  assert.deepEqual(await restored.prepareStep([], new AbortController().signal), [])
 })
 
-test('a verified reload cannot hide an earlier conflicting Skill result still on the session surface', async (t) => {
+test('older conflicting Skill text can remain on the session surface and survive restoration', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const ctx = await harness(new MockAdapter([textResponse('unused')]))
@@ -1802,40 +1693,16 @@ test('a verified reload cannot hide an earlier conflicting Skill result still on
     )
   }
   const conflict = load('stale-skill', 'stale instructions')
-  await assert.rejects(controller.prepareStep([], signal), (error: unknown) => {
-    assert(error instanceof MarivoDisclosureError)
-    assert.match(error.message, /conflicting|different instructions/i)
-    assert.match(error.message, /Visible source/)
-    assert.match(error.message, /resource kind directory/)
-    assert.match(error.message, /Expected Runtime Skill:.*skills\/marivo-analysis\/SKILL\.md/)
-    assert.equal(error.message.includes('stale instructions'), false)
-    return true
-  })
-  load('correct-skill', 'instructions:marivo-analysis')
-  await assert.rejects(controller.prepareStep([], signal), /conflict.*visible|visible.*conflict/i)
+  const first = await controller.prepareStep([], signal)
+  assert.equal(first.length, 1)
+  assert.match(JSON.stringify(first), /already visible/)
+  agent.session.append('user/message', first[0]!, { surfaceOp: 'append' })
   assert.ok(agent.session.surface.nodes.includes(conflict.seq))
   await controller.close()
   const restored = installMarivoDisclosure(ctx, agent, fixture.bridge)
-  await assert.rejects(restored.prepareStep([], signal), /conflict.*visible|visible.*conflict/i)
-  agent.session.append(
-    'user/message',
-    createUserMessage({
-      content: [
-        {
-          type: 'text',
-          text: 'Host compaction removed the earlier instructions from the current context.',
-        },
-      ],
-      source: { kind: 'user' },
-    }),
-    {
-      surfaceOp: { op: 'replace', startSeq: conflict.seq, endSeq: conflict.seq },
-      sourceEventSeqs: [conflict.seq],
-    },
-  )
-  assert.ok(!agent.session.surface.nodes.includes(conflict.seq))
-  const safe = await restored.prepareStep([explicitInvocation('marivo-analysis')], signal)
-  assert.ok(safe.length > 0)
+  assert.deepEqual(restored.activeSkills, ['marivo-analysis'])
+  assert.deepEqual(await restored.prepareStep([], signal), [])
+  assert.ok(agent.session.surface.nodes.includes(conflict.seq))
   assert.ok(agent.session.snapshotEvents().some((event) => event.seq === conflict.seq))
 })
 
@@ -1915,14 +1782,14 @@ test('equivalent Skill bodies are accepted for every public resource-base varian
   }
 })
 
-test('a post-execute policy cannot swap Skill presentation while keeping a valid value', async (t) => {
+test('a post-execute policy may replace Skill presentation without blocking Help', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
     toolCallsResponse([
       { id: 'tampered-skill-content', name: 'skill', args: { name: 'marivo-analysis' } },
     ]),
-    textResponse('must not run'),
+    textResponse('continued'),
   ])
   const ctx = await harness(adapter)
   const agent = await createAgent(ctx, 'tampered-skill-content')
@@ -1935,22 +1802,19 @@ test('a post-execute policy cannot swap Skill presentation while keeping a valid
   })
   send(agent, 'load analysis')
   await agent.whenIdle()
-  assert.equal(adapter.requests.length, 1)
-  assert.ok(
-    controller
-      .telemetry()
-      .failures.some((item) => /conflict.*visible|visible.*conflict/i.test(item.message)),
-  )
+  assert.equal(adapter.requests.length, 2)
+  assert.match(requestMessages(adapter.requests[1]), /marivo_help_context/)
+  assert.deepEqual(controller.telemetry().failures, [])
 })
 
-test('extra text blocks in a finalized Skill result block the next model request', async (t) => {
+test('extra text blocks in a Skill result do not block Help', async (t) => {
   const fixture = await environmentFixture()
   t.after(fixture.cleanup)
   const adapter = new MockAdapter([
     toolCallsResponse([
       { id: 'extra-skill-block', name: 'skill', args: { name: 'marivo-analysis' } },
     ]),
-    textResponse('must not run'),
+    textResponse('continued'),
   ])
   const ctx = await harness(adapter)
   const agent = await createAgent(ctx, 'extra-skill-block')
@@ -1966,10 +1830,7 @@ test('extra text blocks in a finalized Skill result block the next model request
   })
   send(agent, 'load analysis')
   await agent.whenIdle()
-  assert.equal(adapter.requests.length, 1)
-  assert.ok(
-    controller
-      .telemetry()
-      .failures.some((item) => /conflict.*visible|visible.*conflict/i.test(item.message)),
-  )
+  assert.equal(adapter.requests.length, 2)
+  assert.match(requestMessages(adapter.requests[1]), /marivo_help_context/)
+  assert.deepEqual(controller.telemetry().failures, [])
 })
