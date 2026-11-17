@@ -32,12 +32,23 @@ test('native report save keeps the visible document, selected tab and scroll wit
     const reportDocument = parseAnalysisDocument({
       ...baseDocument,
       program:
+        '$category = "a";\n' +
         baseDocument.program.replace(
           'root=Stack([intro, sections, tail])',
           'root=Stack([intro, sections, tail, filter, filtered])',
         ) +
-        '\nfilter=SnapshotFilter("category", "data", {kind:"column",name:"category"}, "Category", "single", ["A"], {allowAll:false});' +
-        '\nfiltered=DatasetView("data", {chart:"table"}, {}, ["category"]);',
+        '\nfilter=FilterChips("category", $category);' +
+        '\nfiltered=DatasetView("data", {chart:"table"}, {}, [{source:"category",selection:$category}]);',
+      selectionSources: {
+        category: {
+          ref: 'data',
+          field: { kind: 'column', name: 'category' },
+          label: 'Category',
+          mode: 'single',
+          defaultValues: ['A'],
+          options: { allowAll: false },
+        },
+      },
       resources: {
         data: {
           kind: 'snapshot',
@@ -187,7 +198,10 @@ window.fixture={showEntry(){showEntry.set(true)},close(){controller.abort();open
     await page.locator('.au-report-motion').waitFor({ state: 'hidden' })
     assert.equal(await body!.evaluate((node) => node.isConnected && node.scrollTop === 180), true)
     assert.equal(await heading!.evaluate((node) => node.isConnected), true)
-    await page.getByRole('combobox', { name: 'Category' }).selectOption({ label: '"B"' })
+    const category = page.getByRole('group', { name: 'Category', exact: true })
+    const categoryA = category.getByRole('button', { name: '"A"', exact: true })
+    const categoryB = category.getByRole('button', { name: '"B"', exact: true })
+    await categoryB.click()
     await page.waitForFunction(
       () =>
         document
@@ -197,7 +211,7 @@ window.fixture={showEntry(){showEntry.set(true)},close(){controller.abort();open
     await page.evaluate(() => Reflect.get(window, 'fixture').showEntry())
     const entry = page.getByRole('button', { name: 'Open analysis view in sidebar' })
     await entry.click()
-    assert.equal(await page.getByRole('combobox', { name: 'Category' }).inputValue(), '1')
+    assert.equal(await categoryB.getAttribute('aria-pressed'), 'true')
     await page.evaluate(() => Reflect.get(window, 'fixture').close())
     await entry.click()
     await page.waitForFunction(
@@ -206,7 +220,7 @@ window.fixture={showEntry(){showEntry.set(true)},close(){controller.abort();open
           .querySelector('[data-resource="data"] tbody tr')
           ?.getAttribute('data-row-index') === '0',
     )
-    assert.equal(await page.getByRole('combobox', { name: 'Category' }).inputValue(), '0')
+    assert.equal(await categoryA.getAttribute('aria-pressed'), 'true')
     await page.waitForFunction(() =>
       Object.keys(localStorage).some((key) => key.startsWith('dsh-data-analysis:report-view:')),
     )

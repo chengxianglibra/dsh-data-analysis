@@ -106,7 +106,11 @@ import {ReportHistoryPanel} from './src/client/presentation/catalog.tsx';
 import {AnalysisSurface} from './src/client/analysis-ui/surface.tsx';
 const resource={kind:'snapshot',snapshot:${JSON.stringify(snapshot)},declaration:{kind:'dataset-snapshot',snapshotRef:'ref'},binding:{workspaceId:'workspace'}};
 const versions=[{receipt:{buildId:'b1',title:'Current'},publishedAt:'2026-11-03T00:00:00Z',source:{sessionId:'s'}},{receipt:{buildId:'b0',title:'Earlier'},publishedAt:'2026-11-02T00:00:00Z',source:{sessionId:'s'}}];
-const makeDocument=(id,defaultValue)=>({title:id,locale:'en-US',recordId:'marivo-ui:r:'+id,resources:{result:resource},program:'root = Stack([f,v]);\\nf = SnapshotFilter("category", "result", {kind:"column", name:"category"}, "Category", "multiple", ["'+defaultValue+'"]);\\nv = DatasetView("result", {chart:"table"}, {}, ["category"]);'});
+const makeDocument=(id,defaultValue)=>({
+  title:id,locale:'en-US',recordId:'marivo-ui:r:'+id,resources:{result:resource},
+  selectionSources:{category:{ref:'result',field:{kind:'column',name:'category'},label:'Category',mode:'multiple',defaultValues:[defaultValue]}},
+  program:'$category = {};\\nroot = Stack([f,v]);\\nf = FilterChips("category", $category);\\nv = DatasetView("result", {chart:"table"}, {}, [{source:"category",selection:$category}]);'
+});
 const documents={b1:makeDocument('b1','A'),b0:makeDocument('b0','B')};
 function App(){const [selected,setSelected]=React.useState('b1');return <CopyProvider t={translator('en-US')}><ReportHistoryPanel state={{history:{currentBuildId:'b1',versions},resolvedReceipt:{buildId:selected}}} model={{selectVersion:setSelected}} sessions={{s:{displayTitle:'Analysis'}}} onOpenSession={()=>{}} onClose={()=>{}}/><AnalysisSurface key={selected} document={documents[selected]}/></CopyProvider>}
 createRoot(document.getElementById('root')).render(<App/>);`,
@@ -148,12 +152,15 @@ createRoot(document.getElementById('root')).render(<App/>);`,
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto(`http://127.0.0.1:${address.port}`)
-  await page.getByRole('checkbox', { name: 'A' }).check()
-  await page.getByRole('checkbox', { name: 'B' }).check()
+  const category = page.getByRole('group', { name: 'Category', exact: true })
+  const categoryA = category.getByRole('button', { name: '"A"', exact: true })
+  const categoryB = category.getByRole('button', { name: '"B"', exact: true })
+  assert.equal(await categoryA.getAttribute('aria-pressed'), 'true')
+  await categoryB.click()
   assert.equal(await page.locator('tbody tr').count(), 3)
   await page.getByRole('button', { name: /Earlier/ }).click()
-  assert.equal(await page.getByRole('checkbox', { name: 'A' }).isChecked(), false)
-  assert.equal(await page.getByRole('checkbox', { name: 'B' }).isChecked(), true)
+  assert.equal(await categoryA.getAttribute('aria-pressed'), 'false')
+  assert.equal(await categoryB.getAttribute('aria-pressed'), 'true')
   assert.deepEqual(
     await page
       .locator('tbody tr')
@@ -161,8 +168,8 @@ createRoot(document.getElementById('root')).render(<App/>);`,
     ['1'],
   )
   await page.getByRole('button', { name: /Current/ }).click()
-  assert.equal(await page.getByRole('checkbox', { name: 'A' }).isChecked(), true)
-  assert.equal(await page.getByRole('checkbox', { name: 'B' }).isChecked(), false)
+  assert.equal(await categoryA.getAttribute('aria-pressed'), 'true')
+  assert.equal(await categoryB.getAttribute('aria-pressed'), 'false')
   assert.deepEqual(
     await page
       .locator('tbody tr')
