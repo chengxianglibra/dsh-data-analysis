@@ -27,6 +27,7 @@ import { apply as installSkillTool } from '@deepseek-ai/dsh-tool-skill'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import WorkspaceRegistry from '@deepseek-ai/dsh-workspace'
+import { MARIVO_VERSION } from '../src/compatibility.ts'
 import { apply, inject } from '../src/plugin.ts'
 import { removeSkillBuildFixture } from '../tests/plugin-integration-delivery/skill-build-fixture.ts'
 import {
@@ -39,7 +40,7 @@ import { TestShellEnv } from '../tests/test-shell-env.ts'
 // model responses. This is not an installed Web Host or a real-model check.
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
 if (!pythonExecutable || !path.isAbsolute(pythonExecutable))
-  throw new Error('DSH_DATA_ANALYSIS_PYTHON must name an absolute Marivo 0.6.9 Python')
+  throw new Error(`DSH_DATA_ANALYSIS_PYTHON must name an absolute Marivo ${MARIVO_VERSION} Python`)
 
 const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-runtime-skill-real-')))
 const runtimeRoot = path.join(root, 'runtime')
@@ -211,7 +212,10 @@ try {
       `${id}: selected Skill content missing`,
     )
     assert.match(nextRequest, /marivo_help_context/)
-    assert.match(nextRequest, /Marivo version: 0\.6\.8/)
+    assert.ok(
+      nextRequest.includes(`Marivo version: ${MARIVO_VERSION}\\n`),
+      `${id}: expected Marivo ${MARIVO_VERSION} in live Help`,
+    )
     assert.match(nextRequest, /Target: analysis/)
     const events = agent.session.snapshotEvents()
     assert.ok(events.some((event) => event.type === 'tool/call' && event.data.name === 'skill'))
@@ -310,7 +314,7 @@ try {
     'validation-project-filesystem',
   )
   console.log(
-    'Full in-process plugin: shared preset, rank 10 override, Agent disposal and preset rebind activate real Marivo 0.6.9 Help.',
+    `Full in-process plugin: shared preset, rank 10 override, Agent disposal and preset rebind activate real Marivo ${MARIVO_VERSION} Help.`,
   )
 } finally {
   await plugin?.dispose()
