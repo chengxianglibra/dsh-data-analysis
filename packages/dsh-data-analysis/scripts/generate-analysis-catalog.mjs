@@ -118,5 +118,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         ? 'build'
         : 'update',
   )
-  console.log(JSON.stringify(result))
+  if (!process.argv.includes('--quiet')) console.log(JSON.stringify(result))
 }

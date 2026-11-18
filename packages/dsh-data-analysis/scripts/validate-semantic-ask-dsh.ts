@@ -13,13 +13,12 @@ import { startPresentationWebHost } from './presentation-s4/web-host.ts'
 import { closeReport, openReport } from './right-tabs/browser.ts'
 
 const outputRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-semantic-ask-dsh-')))
+const quiet = process.argv.includes('--quiet')
 const workspaceRoot = path.join(outputRoot, 'workspace')
 const python =
   process.env.DSH_DATA_ANALYSIS_PYTHON ??
   path.join(resolveDshHome(), 'dsh-data-analysis/runtimes/marivo/.venv/bin/python')
-await mkdir(workspaceRoot)
-process.stdout.write(`Semantic Ask DSH acceptance: ${outputRoot}\n`)
-const inputs = await preparePresentationInputs(workspaceRoot, python)
+if (!quiet) process.stdout.write(`Semantic Ask DSH acceptance: ${outputRoot}\n`)
 const boroughs = [
   'Bronx',
   'Brooklyn',
@@ -30,52 +29,14 @@ const boroughs = [
   'Staten Island',
   'Unknown',
 ]
-const runner = await bindMarivoEnvironment({ projectRoot: workspaceRoot, pythonExecutable: python })
-const chartFixture = await runner.runChecked({
-  program: `
-import json
-import marivo.analysis as mv
-import pandas as pd
-boroughs = ${JSON.stringify(boroughs)}
-data = pd.DataFrame({
-    "borough": boroughs * 2,
-    "period": ["Current"] * len(boroughs) + ["Baseline"] * len(boroughs),
-    "fare_revenue": [12, 23, 2, 70, 4, 18, 1, 3, 8, 14, 1, 42, 3, 14, 1, 4],
-})
-print(json.dumps(mv.persist_dataframe(data).to_dict()))
-`,
-})
-assert.equal(chartFixture.exitCode, 0, chartFixture.stderr.toString('utf8'))
-const chartTitle = 'Fare revenue by pickup borough'
-inputs.requests.push({
-  locale: 'en-US',
-  title: chartTitle,
-  resourcePatch: {
-    put: {
-      boroughs: {
-        kind: 'dataframe',
-        ref: dataframeResultReference.parse(JSON.parse(chartFixture.stdout.toString('utf8'))),
-      },
-    },
-  },
-  program:
-    'root = DatasetView("boroughs", {chart: "bar", encoding: {axis: "borough", series: "period", values: ["fare_revenue"]}});',
-})
-const server = await startPresentationWebHost(
-  workspaceRoot,
-  path.join(outputRoot, 'web'),
-  python,
-  inputs.requests,
-  'native-first',
-  { rightTabsAcceptance: true, askDshProbe: true },
-)
 const id = 'right-tabs-semantic'
+let host: Awaited<ReturnType<typeof startPresentationWebHost>> | undefined
 let browser: Browser | undefined, page: Page | undefined
 const checks: string[] = [],
   errors: string[] = []
 const record = (check: string) => {
   checks.push(check)
-  process.stdout.write(`PASS ${check}\n`)
+  if (!quiet) process.stdout.write(`PASS ${check}\n`)
 }
 async function verifyPanelModes(page: Page, name: string, verify: (mode: string) => Promise<void>) {
   const panel = (mode: string) =>
@@ -92,6 +53,51 @@ async function verifyPanelModes(page: Page, name: string, verify: (mode: string)
 }
 
 try {
+  await mkdir(workspaceRoot)
+  const inputs = await preparePresentationInputs(workspaceRoot, python)
+  const runner = await bindMarivoEnvironment({
+    projectRoot: workspaceRoot,
+    pythonExecutable: python,
+  })
+  const chartFixture = await runner.runChecked({
+    program: `
+import json
+import marivo.analysis as mv
+import pandas as pd
+boroughs = ${JSON.stringify(boroughs)}
+data = pd.DataFrame({
+    "borough": boroughs * 2,
+    "period": ["Current"] * len(boroughs) + ["Baseline"] * len(boroughs),
+    "fare_revenue": [12, 23, 2, 70, 4, 18, 1, 3, 8, 14, 1, 42, 3, 14, 1, 4],
+})
+print(json.dumps(mv.persist_dataframe(data).to_dict()))
+`,
+  })
+  assert.equal(chartFixture.exitCode, 0, chartFixture.stderr.toString('utf8'))
+  const chartTitle = 'Fare revenue by pickup borough'
+  inputs.requests.push({
+    locale: 'en-US',
+    title: chartTitle,
+    resourcePatch: {
+      put: {
+        boroughs: {
+          kind: 'dataframe',
+          ref: dataframeResultReference.parse(JSON.parse(chartFixture.stdout.toString('utf8'))),
+        },
+      },
+    },
+    program:
+      'root = DatasetView("boroughs", {chart: "bar", encoding: {axis: "borough", series: "period", values: ["fare_revenue"]}});',
+  })
+  const server = await startPresentationWebHost(
+    workspaceRoot,
+    path.join(outputRoot, 'web'),
+    python,
+    inputs.requests,
+    'native-first',
+    { rightTabsAcceptance: true, askDshProbe: true },
+  )
+  host = server
   browser = await chromium.launch({ channel: 'chrome', headless: true })
   page = await browser.newPage({ viewport: { width: 1600, height: 1000 } })
   page.setDefaultTimeout(25_000)
@@ -477,8 +483,11 @@ try {
       2,
     ),
   )
-  process.stdout.write(`Semantic Ask DSH passed: ${outputRoot}\n`)
+  process.stdout.write(
+    `Semantic Ask DSH: ${checks.length} checks passed; evidence: ${outputRoot}\n`,
+  )
 } catch (error) {
+  process.stderr.write(`Semantic Ask DSH acceptance failed; evidence: ${outputRoot}\n`)
   if (page) {
     await writeFile(
       path.join(outputRoot, 'failure-dom.txt'),
@@ -493,16 +502,18 @@ try {
   throw error
 } finally {
   await browser?.close()
-  await server.stop()
-  const skills = path.join(outputRoot, 'web', 'web-runtime-marker', 'plugin-skills')
-  const entries = await readdir(skills, { recursive: true, withFileTypes: true }).catch(
-    (error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return []
-      throw error
-    },
-  )
-  for (const entry of entries)
-    if (entry.isDirectory()) await chmod(path.join(entry.parentPath, entry.name), 0o700)
-  await rm(workspaceRoot, { recursive: true, force: true })
-  await rm(path.dirname(server.home), { recursive: true, force: true })
+  if (host) {
+    await host.stop()
+    const skills = path.join(outputRoot, 'web', 'web-runtime-marker', 'plugin-skills')
+    const entries = await readdir(skills, { recursive: true, withFileTypes: true }).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return []
+        throw error
+      },
+    )
+    for (const entry of entries)
+      if (entry.isDirectory()) await chmod(path.join(entry.parentPath, entry.name), 0o700)
+    await rm(workspaceRoot, { recursive: true, force: true })
+    await rm(path.dirname(host.home), { recursive: true, force: true })
+  }
 }

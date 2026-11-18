@@ -7,7 +7,7 @@ if (kind !== 'source' && kind !== 'client') throw new Error('Expected source or 
 if (process.env.DSH_DATA_ANALYSIS_TEST_PREPARED !== '1') {
   const args =
     kind === 'source'
-      ? ['run', 'prepare:source']
+      ? ['run', '--silent', 'prepare:source']
       : ['packages/dsh-data-analysis/scripts/build-client.mjs']
   const command =
     kind === 'source' ? (process.platform === 'win32' ? 'npm.cmd' : 'npm') : process.execPath

@@ -58,9 +58,9 @@
     "python/presentation/*.py"
   ],
   "scripts": {
-    "build": "npm run clean && node scripts/generate-analysis-catalog.mjs --build && node scripts/generate-skill-build.mjs && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
+    "build": "npm run --silent clean && node scripts/generate-analysis-catalog.mjs --build --quiet && node scripts/generate-skill-build.mjs --quiet && tsc -p tsconfig.build.json && node scripts/finalize-build.mjs",
     "clean": "node scripts/clean.mjs",
-    "prepack": "npm run build"
+    "prepack": "npm run --silent build"
   },
   "publishConfig": {
     "access": "public",

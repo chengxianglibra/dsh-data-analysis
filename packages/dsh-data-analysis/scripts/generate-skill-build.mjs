@@ -65,5 +65,7 @@ export async function generateSkillBuild() {
   return { digest: build.digest, files: files.length }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url))
-  console.log(JSON.stringify(await generateSkillBuild()))
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const result = await generateSkillBuild()
+  if (!process.argv.includes('--quiet')) console.log(JSON.stringify(result))
+}

@@ -50,9 +50,9 @@ if (preparation === undefined) {
   throw new Error(`Unknown test suite: ${suite}`)
 }
 
-/** @param {string} command @param {string[]} args */
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: 'inherit' })
+/** @param {string} command @param {string[]} args @param {NodeJS.ProcessEnv} [env] */
+function run(command, args, env = process.env) {
+  const result = spawnSync(command, args, { stdio: 'inherit', env })
   if (result.error) throw result.error
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
@@ -121,9 +121,14 @@ if (daily || release) {
     )
   }
 }
-run(process.execPath, [
-  '--experimental-strip-types',
-  '--test',
-  '--test-reporter=./scripts/test-reporter.mjs',
-  ...paths,
-])
+run(
+  process.execPath,
+  [
+    '--experimental-strip-types',
+    '--disable-warning=ExperimentalWarning',
+    '--test',
+    '--test-reporter=./scripts/test-reporter.mjs',
+    ...paths,
+  ],
+  { ...process.env, DSH_DATA_ANALYSIS_TEST_SUITE: suite },
+)

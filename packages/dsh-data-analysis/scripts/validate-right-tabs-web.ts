@@ -13,33 +13,36 @@ import { analysisSurface, openHistory } from './right-tabs/browser.ts'
 import { verifyHomepageShortcuts } from './right-tabs/homepage-shortcuts.ts'
 
 const outputRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-right-tabs-stage-one-')))
+const quiet = process.argv.includes('--quiet')
 const workspaceRoot = path.join(outputRoot, 'workspace')
 const python =
   process.env.DSH_DATA_ANALYSIS_PYTHON ??
   path.join(resolveDshHome(), 'dsh-data-analysis/runtimes/marivo/.venv/bin/python')
-await mkdir(workspaceRoot)
-process.stdout.write(`Right Tabs isolated acceptance: ${outputRoot}\n`)
-const inputs = await preparePresentationInputs(workspaceRoot, python)
-await writeFile(
-  path.join(workspaceRoot, 'models/datasources/protected.py'),
-  'import marivo.datasource as md\nmd.duckdb(name="protected",path=":memory:",secrets=[md.http_bearer_secret(scope="http://127.0.0.1/",token=md.env("RIGHT_TABS_TEST_TOKEN"))])\n',
-)
-const server = await startPresentationWebHost(
-  workspaceRoot,
-  path.join(outputRoot, 'web'),
-  python,
-  inputs.requests,
-  'native-first',
-  { rightTabsAcceptance: true, askDshProbe: true },
-)
+if (!quiet) process.stdout.write(`Right Tabs isolated acceptance: ${outputRoot}\n`)
+let host: Awaited<ReturnType<typeof startPresentationWebHost>> | undefined
 let browser: Browser | undefined, page: Page | undefined
 const checks: string[] = [],
   errors: string[] = []
 const record = (message: string) => {
   checks.push(message)
-  process.stdout.write(`PASS ${message}\n`)
+  if (!quiet) process.stdout.write(`PASS ${message}\n`)
 }
 try {
+  await mkdir(workspaceRoot)
+  const inputs = await preparePresentationInputs(workspaceRoot, python)
+  await writeFile(
+    path.join(workspaceRoot, 'models/datasources/protected.py'),
+    'import marivo.datasource as md\nmd.duckdb(name="protected",path=":memory:",secrets=[md.http_bearer_secret(scope="http://127.0.0.1/",token=md.env("RIGHT_TABS_TEST_TOKEN"))])\n',
+  )
+  const server = await startPresentationWebHost(
+    workspaceRoot,
+    path.join(outputRoot, 'web'),
+    python,
+    inputs.requests,
+    'native-first',
+    { rightTabsAcceptance: true, askDshProbe: true },
+  )
+  host = server
   browser = await chromium.launch({ channel: 'chrome', headless: true })
   page = await browser.newPage({ viewport: { width: 1680, height: 1100 } })
   page.setDefaultTimeout(25_000)
@@ -957,8 +960,9 @@ try {
       2,
     ),
   )
-  process.stdout.write(`Right Tabs acceptance passed: ${outputRoot}\n`)
+  process.stdout.write(`Right Tabs: ${checks.length} checks passed; evidence: ${outputRoot}\n`)
 } catch (error) {
+  process.stderr.write(`Right Tabs acceptance failed; evidence: ${outputRoot}\n`)
   if (page) {
     await writeFile(
       path.join(outputRoot, 'failure-dom.txt'),
@@ -976,18 +980,20 @@ try {
   throw error
 } finally {
   await browser?.close()
-  await server.stop()
-  // Only this invocation's generated Workspace/profile contain disposable test state.
-  // Keep screenshots, HTML and audit evidence outside these directories.
-  const skills = path.join(outputRoot, 'web', 'web-runtime-marker', 'plugin-skills')
-  const entries = await readdir(skills, { recursive: true, withFileTypes: true }).catch(
-    (error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return []
-      throw error
-    },
-  )
-  for (const entry of entries)
-    if (entry.isDirectory()) await chmod(path.join(entry.parentPath, entry.name), 0o700)
-  await rm(path.join(outputRoot, 'web'), { recursive: true, force: true })
-  await rm(workspaceRoot, { recursive: true, force: true })
+  if (host) {
+    await host.stop()
+    // Only this invocation's generated Workspace/profile contain disposable test state.
+    // Keep screenshots, HTML and audit evidence outside these directories.
+    const skills = path.join(outputRoot, 'web', 'web-runtime-marker', 'plugin-skills')
+    const entries = await readdir(skills, { recursive: true, withFileTypes: true }).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return []
+        throw error
+      },
+    )
+    for (const entry of entries)
+      if (entry.isDirectory()) await chmod(path.join(entry.parentPath, entry.name), 0o700)
+    await rm(path.join(outputRoot, 'web'), { recursive: true, force: true })
+    await rm(workspaceRoot, { recursive: true, force: true })
+  }
 }

@@ -221,6 +221,14 @@ CSV 浏览器护栏由 `npm run test:full` 或 `npm run test:validation-guards` 
 单套件使用 `npm run test:<suite>` 准备自己的构建产物。`node scripts/test-suite.mjs right-tabs --plan`
 列出测试文件及前置步骤，`right-tabs` 在运行 Host client 夹具前构建 `lib/client.js`。
 
+所有 `test:*` 入口共用精简 reporter：每个套件输出测试总数、通过、失败、取消、跳过、TODO 与耗时，
+跳过原因按数量汇总；日常和发布层另保留未纳入的浏览器及 real-catalog 文件数。
+日志按文件限量缓冲，成功文件的 stdout、stderr 和 diagnostic 不输出；失败时保留错误、位置及对应日志，
+测试文件加载失败和取消仍返回非零退出码。嵌套 npm 使用 `--silent`，前置生成器使用 `--quiet`，
+不回显命令与生成清单；入口可用 `npm run --silent test:release` 或 `npm run --silent check`
+去除 npm 自身的命令回显。`validate:right-tabs:web` 和 `validate:semantic-ask-dsh:web` 使用 `--quiet`
+汇总成功检查数；真实验证入口继续保留验收结论、测量值和 evidence 路径。
+
 plugin real-model runner 验证 Help/凭据接缝，需要[清单锁定的 Marivo](runtime-workspace.md#当前安装来源)与真实模型。
 presentation integration runner 使用隔离 Workspace、真实 Tool dispatch 与 Host Web 验证交付。
 路径、runner 日志或静态 schema 不替代实际交互证据。

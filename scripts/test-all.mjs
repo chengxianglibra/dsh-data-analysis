@@ -52,5 +52,9 @@ const env = {
   DSH_DATA_ANALYSIS_TEST_TIER: tier,
 }
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-for (const suite of suites) run(npm, ['run', `test:${suite}`], env)
-if (tier !== 'daily') run(npm, ['run', 'test:validation-guards'], env)
+for (const suite of suites) run(npm, ['run', '--silent', `test:${suite}`], env)
+if (tier !== 'daily')
+  run(npm, ['run', '--silent', 'test:validation-guards'], {
+    ...env,
+    DSH_DATA_ANALYSIS_TEST_SUITE: 'validation-guards',
+  })
