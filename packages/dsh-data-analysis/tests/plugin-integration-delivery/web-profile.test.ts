@@ -82,7 +82,7 @@ if (args[0] === '-m' && args[1] === 'marivo' && args[2] === 'doctor') {
   appendFileSync(${JSON.stringify(recordPath)}, projectRoot + '\\n')
   process.stdout.write(JSON.stringify({
     status: 'ok', project_root: projectRoot, python_executable: executable,
-    marivo: { version: '0.6.8', package_path: ${JSON.stringify(packagePath)} },
+    marivo: { version: '0.6.9', package_path: ${JSON.stringify(packagePath)} },
     sections: [
       { id: 'installation', status: 'ok', checks: [
         { id: 'installation.python', status: 'ok', summary: 'shared Python' },
@@ -98,10 +98,10 @@ if (args[0] === '-m' && args[1] === 'marivo' && args[2] === 'doctor') {
 if (args[0] === '-c' && args.length === 2) {
   process.stdout.write(JSON.stringify({
     python_executable: executable,
-    marivo_distribution_version: '0.6.8',
+    marivo_distribution_version: '0.6.9',
     marivo_index_install: true,
     marivo_import_identity: true,
-    marivo_version: '0.6.8',
+    marivo_version: '0.6.9',
     package_path: ${JSON.stringify(packagePath)},
   }))
   process.exit(0)
@@ -191,7 +191,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
   await mkdir(firstRoot)
   await mkdir(secondRoot)
   await mkdir(path.dirname(packagePath), { recursive: true })
-  await writeFile(packagePath, '__version__ = "0.6.8"\n')
+  await writeFile(packagePath, '__version__ = "0.6.9"\n')
   for (const skill of ['marivo-analysis', 'marivo-semantic', 'marivo-service']) {
     const directory = path.join(path.dirname(packagePath), 'skills', skill)
     await mkdir(directory, { recursive: true })
@@ -522,7 +522,7 @@ test('Web-profile plugin exposes Runtime Help and skills without writing either 
     await readFile(path.join(runtimeRoot, 'installation.json'), 'utf8'),
   ) as Record<string, unknown>
   assert.equal(marker.schema, 'dsh-data-analysis-runtime/v5')
-  assert.equal(marker.marivoVersion, '0.6.8')
+  assert.equal(marker.marivoVersion, '0.6.9')
   await stat(path.join(runtimeRoot, 'skills', 'marivo-analysis', 'SKILL.md'))
   await plugin.dispose()
   const disposedCatalog = await ctx.skills.snapshot({ cwd: firstRoot, scope: first })

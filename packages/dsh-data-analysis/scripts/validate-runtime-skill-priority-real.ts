@@ -39,7 +39,7 @@ import { TestShellEnv } from '../tests/test-shell-env.ts'
 // model responses. This is not an installed Web Host or a real-model check.
 const pythonExecutable = process.env.DSH_DATA_ANALYSIS_PYTHON
 if (!pythonExecutable || !path.isAbsolute(pythonExecutable))
-  throw new Error('DSH_DATA_ANALYSIS_PYTHON must name an absolute Marivo 0.6.8 Python')
+  throw new Error('DSH_DATA_ANALYSIS_PYTHON must name an absolute Marivo 0.6.9 Python')
 
 const root = await realpath(await mkdtemp(path.join(tmpdir(), 'dsh-runtime-skill-real-')))
 const runtimeRoot = path.join(root, 'runtime')
@@ -310,7 +310,7 @@ try {
     'validation-project-filesystem',
   )
   console.log(
-    'Full in-process plugin: shared preset, rank 10 override, Agent disposal and preset rebind activate real Marivo 0.6.8 Help.',
+    'Full in-process plugin: shared preset, rank 10 override, Agent disposal and preset rebind activate real Marivo 0.6.9 Help.',
   )
 } finally {
   await plugin?.dispose()
